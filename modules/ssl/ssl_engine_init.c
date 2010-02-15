@@ -153,7 +153,7 @@ int ssl_init_Module(apr_pool_t *p, apr_pool_t *plog,
     mc->pid = getpid();
 
     /*
-     * Let us cleanup on restarts and exits
+     * Let us cleanup on restarts and exists
      */
     apr_pool_cleanup_register(p, base_server,
                               ssl_init_ModuleKill,
@@ -249,13 +249,6 @@ int ssl_init_Module(apr_pool_t *p, apr_pool_t *plog,
     if (!ssl_mutex_init(base_server, p)) {
         return HTTP_INTERNAL_SERVER_ERROR;
     }
-#ifdef HAVE_OCSP_STAPLING
-    if (!ssl_stapling_mutex_init(base_server, p)) {
-        return HTTP_INTERNAL_SERVER_ERROR;
-    }
-
-    ssl_stapling_ex_init();
-#endif
 
     /*
      * initialize session caching
@@ -328,9 +321,6 @@ void ssl_init_Engine(server_rec *s, apr_pool_t *p)
             ssl_log_ssl_error(APLOG_MARK, APLOG_ERR, s);
             ssl_die();
         }
-        ap_log_error(APLOG_MARK, APLOG_INFO, 0, s, 
-                     "Init: loaded Crypto Device API `%s'", 
-                     mc->szCryptoDevice);
 
         ENGINE_free(e);
     }
@@ -346,7 +336,7 @@ static void ssl_init_server_check(server_rec *s,
      * check for important parameters and the
      * possibility that the user forgot to set them.
      */
-    if (!mctx->pks->cert_files[0] && !mctx->pkcs7) {
+    if (!mctx->pks->cert_files[0]) {
         ap_log_error(APLOG_MARK, APLOG_ERR, 0, s,
                 "No SSL Certificate set [hint: SSLCertificateFile]");
         ssl_die();
@@ -356,11 +346,7 @@ static void ssl_init_server_check(server_rec *s,
      *  Check for problematic re-initializations
      */
     if (mctx->pks->certs[SSL_AIDX_RSA] ||
-        mctx->pks->certs[SSL_AIDX_DSA]
-#ifndef OPENSSL_NO_EC
-      || mctx->pks->certs[SSL_AIDX_ECC]
-#endif
-        )
+        mctx->pks->certs[SSL_AIDX_DSA])
     {
         ap_log_error(APLOG_MARK, APLOG_ERR, 0, s,
                 "Illegal attempt to re-initialise SSL for server "
@@ -368,42 +354,6 @@ static void ssl_init_server_check(server_rec *s,
         ssl_die();
     }
 }
-
-#ifndef OPENSSL_NO_TLSEXT
-static void ssl_init_ctx_tls_extensions(server_rec *s,
-                                        apr_pool_t *p,
-                                        apr_pool_t *ptemp,
-                                        modssl_ctx_t *mctx)
-{
-    /*
-     * Configure TLS extensions support
-     */
-    ap_log_error(APLOG_MARK, APLOG_DEBUG, 0, s,
-                 "Configuring TLS extension handling");
-
-    /*
-     * Server name indication (SNI)
-     */
-    if (!SSL_CTX_set_tlsext_servername_callback(mctx->ssl_ctx,
-                          ssl_callback_ServerNameIndication) ||
-        !SSL_CTX_set_tlsext_servername_arg(mctx->ssl_ctx, mctx)) {
-        ap_log_error(APLOG_MARK, APLOG_ERR, 0, s,
-                     "Unable to initialize TLS servername extension "
-                     "callback (incompatible OpenSSL version?)");
-        ssl_log_ssl_error(APLOG_MARK, APLOG_ERR, s);
-        ssl_die();
-    }
-
-#ifdef HAVE_OCSP_STAPLING
-    /*
-     * OCSP Stapling support, status_request extension
-     */
-    if ((mctx->pkp == FALSE) && (mctx->stapling_enabled == TRUE)) {
-        modssl_init_stapling(s, p, ptemp, mctx);
-    }
-#endif
-}
-#endif
 
 static void ssl_init_ctx_protocol(server_rec *s,
                                   apr_pool_t *p,
@@ -414,7 +364,6 @@ static void ssl_init_ctx_protocol(server_rec *s,
     MODSSL_SSL_METHOD_CONST SSL_METHOD *method = NULL;
     char *cp;
     int protocol = mctx->protocol;
-    SSLSrvConfigRec *sc = mySrvConfig(s);
 
     /*
      *  Create the new per-server SSL context
@@ -439,23 +388,14 @@ static void ssl_init_ctx_protocol(server_rec *s,
         method = mctx->pkp ?
             SSLv2_client_method() : /* proxy */
             SSLv2_server_method();  /* server */
+        ctx = SSL_CTX_new(method);  /* only SSLv2 is left */
     }
-    else if (protocol == SSL_PROTOCOL_SSLV3) {
-        method = mctx->pkp ?
-            SSLv3_client_method() : /* proxy */
-            SSLv3_server_method();  /* server */
-    }
-    else if (protocol == SSL_PROTOCOL_TLSV1) {
-        method = mctx->pkp ?
-            TLSv1_client_method() : /* proxy */
-            TLSv1_server_method();  /* server */
-    }
-    else { /* For multiple protocols, we need a flexible method */
+    else {
         method = mctx->pkp ?
             SSLv23_client_method() : /* proxy */
             SSLv23_server_method();  /* server */
+        ctx = SSL_CTX_new(method); /* be more flexible */
     }
-    ctx = SSL_CTX_new(method);
 
     mctx->ssl_ctx = ctx;
 
@@ -474,14 +414,11 @@ static void ssl_init_ctx_protocol(server_rec *s,
     }
 
 #ifdef SSL_OP_CIPHER_SERVER_PREFERENCE
-    if (sc->cipher_server_pref == TRUE) {
-        SSL_CTX_set_options(ctx, SSL_OP_CIPHER_SERVER_PREFERENCE);
-    }
-#endif
-
-#ifdef SSL_OP_ALLOW_UNSAFE_LEGACY_RENEGOTIATION
-    if (sc->insecure_reneg == TRUE) {
-        SSL_CTX_set_options(ctx, SSL_OP_ALLOW_UNSAFE_LEGACY_RENEGOTIATION);
+    {
+        SSLSrvConfigRec *sc = mySrvConfig(s);
+        if (sc->cipher_server_pref == TRUE) {
+            SSL_CTX_set_options(ctx, SSL_OP_CIPHER_SERVER_PREFERENCE);
+        }
     }
 #endif
 
@@ -508,14 +445,20 @@ static void ssl_init_ctx_session_cache(server_rec *s,
 {
     SSL_CTX *ctx = mctx->ssl_ctx;
     SSLModConfigRec *mc = myModConfig(s);
-
-    SSL_CTX_set_session_cache_mode(ctx, mc->sesscache_mode);
-
-    if (mc->sesscache) {
-        SSL_CTX_sess_set_new_cb(ctx,    ssl_callback_NewSessionCacheEntry);
-        SSL_CTX_sess_set_get_cb(ctx,    ssl_callback_GetSessionCacheEntry);
-        SSL_CTX_sess_set_remove_cb(ctx, ssl_callback_DelSessionCacheEntry);
+    long cache_mode = SSL_SESS_CACHE_OFF;
+    if (mc->nSessionCacheMode != SSL_SCMODE_NONE) {
+        /* SSL_SESS_CACHE_NO_INTERNAL will force OpenSSL
+         * to ignore process local-caching and
+         * to always get/set/delete sessions using mod_ssl's callbacks.
+         */
+        cache_mode = SSL_SESS_CACHE_SERVER|SSL_SESS_CACHE_NO_INTERNAL;
     }
+
+    SSL_CTX_set_session_cache_mode(ctx, cache_mode);
+
+    SSL_CTX_sess_set_new_cb(ctx,    ssl_callback_NewSessionCacheEntry);
+    SSL_CTX_sess_set_get_cb(ctx,    ssl_callback_GetSessionCacheEntry);
+    SSL_CTX_sess_set_remove_cb(ctx, ssl_callback_DelSessionCacheEntry);
 }
 
 static void ssl_init_ctx_callbacks(server_rec *s,
@@ -527,11 +470,11 @@ static void ssl_init_ctx_callbacks(server_rec *s,
 
     SSL_CTX_set_tmp_rsa_callback(ctx, ssl_callback_TmpRSA);
     SSL_CTX_set_tmp_dh_callback(ctx,  ssl_callback_TmpDH);
-#ifndef OPENSSL_NO_EC
-    SSL_CTX_set_tmp_ecdh_callback(ctx,ssl_callback_TmpECDH);
-#endif
 
-    SSL_CTX_set_info_callback(ctx, ssl_callback_Info);
+    if (s->loglevel >= APLOG_DEBUG) {
+        /* this callback only logs if LogLevel >= info */
+        SSL_CTX_set_info_callback(ctx, ssl_callback_LogTracingState);
+    }
 }
 
 static void ssl_init_ctx_verify(server_rec *s,
@@ -600,7 +543,7 @@ static void ssl_init_ctx_verify(server_rec *s,
             ssl_die();
         }
 
-        SSL_CTX_set_client_CA_list(ctx, ca_list);
+        SSL_CTX_set_client_CA_list(ctx, (STACK *)ca_list);
     }
 
     /*
@@ -608,7 +551,7 @@ static void ssl_init_ctx_verify(server_rec *s,
      * should take place. This cannot work.
      */
     if (mctx->auth.verify_mode == SSL_CVERIFY_REQUIRE) {
-        ca_list = SSL_CTX_get_client_CA_list(ctx);
+        ca_list = (STACK_OF(X509_NAME) *)SSL_CTX_get_client_CA_list(ctx);
 
         if (sk_X509_NAME_num(ca_list) == 0) {
             ap_log_error(APLOG_MARK, APLOG_WARNING, 0, s,
@@ -675,16 +618,6 @@ static void ssl_init_ctx_crl(server_rec *s,
     }
 }
 
-static void ssl_init_ctx_pkcs7_cert_chain(server_rec *s, modssl_ctx_t *mctx)
-{
-    STACK_OF(X509) *certs = ssl_read_pkcs7(s, mctx->pkcs7);
-    int n;
-
-    if (!mctx->ssl_ctx->extra_certs)
-        for (n = 1; n < sk_X509_num(certs); ++n)
-             SSL_CTX_add_extra_chain_cert(mctx->ssl_ctx, sk_X509_value(certs, n));
-}
-
 static void ssl_init_ctx_cert_chain(server_rec *s,
                                     apr_pool_t *p,
                                     apr_pool_t *ptemp,
@@ -693,11 +626,6 @@ static void ssl_init_ctx_cert_chain(server_rec *s,
     BOOL skip_first = FALSE;
     int i, n;
     const char *chain = mctx->cert_chain;
-
-    if (mctx->pkcs7) {
-        ssl_init_ctx_pkcs7_cert_chain(s, mctx);
-        return;
-    }
 
     /*
      * Optionally configure extra server certificate chain certificates.
@@ -759,9 +687,6 @@ static void ssl_init_ctx(server_rec *s,
     if (mctx->pks) {
         /* XXX: proxy support? */
         ssl_init_ctx_cert_chain(s, p, ptemp, mctx);
-#ifndef OPENSSL_NO_TLSEXT
-        ssl_init_ctx_tls_extensions(s, p, ptemp, mctx);
-#endif
     }
 }
 
@@ -797,15 +722,6 @@ static int ssl_server_import_cert(server_rec *s,
         ssl_log_ssl_error(APLOG_MARK, APLOG_ERR, s);
         ssl_die();
     }
-  
-#ifdef HAVE_OCSP_STAPLING
-    if ((mctx->pkp == FALSE) && (mctx->stapling_enabled == TRUE)) {
-        if (!ssl_stapling_init_cert(s, mctx, cert)) {
-            ap_log_error(APLOG_MARK, APLOG_ERR, 0, s,
-                         "Unable to configure server certificate for stapling");
-        }
-    }
-#endif
 
     mctx->pks->certs[idx] = cert;
 
@@ -821,15 +737,8 @@ static int ssl_server_import_key(server_rec *s,
     ssl_asn1_t *asn1;
     MODSSL_D2I_PrivateKey_CONST unsigned char *ptr;
     const char *type = ssl_asn1_keystr(idx);
-    int pkey_type;
+    int pkey_type = (idx == SSL_AIDX_RSA) ? EVP_PKEY_RSA : EVP_PKEY_DSA;
     EVP_PKEY *pkey;
-
-#ifndef OPENSSL_NO_EC
-    if (idx == SSL_AIDX_ECC)
-      pkey_type = EVP_PKEY_EC;
-    else
-#endif /* SSL_LIBRARY_VERSION */
-    pkey_type = (idx == SSL_AIDX_RSA) ? EVP_PKEY_RSA : EVP_PKEY_DSA;
 
     if (!(asn1 = ssl_asn1_table_get(mc->tPrivateKey, id))) {
         return FALSE;
@@ -941,39 +850,19 @@ static void ssl_init_server_certs(server_rec *s,
                                   modssl_ctx_t *mctx)
 {
     const char *rsa_id, *dsa_id;
-#ifndef OPENSSL_NO_EC
-    const char *ecc_id;
-#endif
     const char *vhost_id = mctx->sc->vhost_id;
     int i;
     int have_rsa, have_dsa;
-#ifndef OPENSSL_NO_EC
-    int have_ecc;
-#endif
 
     rsa_id = ssl_asn1_table_keyfmt(ptemp, vhost_id, SSL_AIDX_RSA);
     dsa_id = ssl_asn1_table_keyfmt(ptemp, vhost_id, SSL_AIDX_DSA);
-#ifndef OPENSSL_NO_EC
-    ecc_id = ssl_asn1_table_keyfmt(ptemp, vhost_id, SSL_AIDX_ECC);
-#endif
 
     have_rsa = ssl_server_import_cert(s, mctx, rsa_id, SSL_AIDX_RSA);
     have_dsa = ssl_server_import_cert(s, mctx, dsa_id, SSL_AIDX_DSA);
-#ifndef OPENSSL_NO_EC
-    have_ecc = ssl_server_import_cert(s, mctx, ecc_id, SSL_AIDX_ECC);
-#endif
 
-    if (!(have_rsa || have_dsa
-#ifndef OPENSSL_NO_EC
-        || have_ecc
-#endif
-)) {
+    if (!(have_rsa || have_dsa)) {
         ap_log_error(APLOG_MARK, APLOG_ERR, 0, s,
-#ifndef OPENSSL_NO_EC
-                "Oops, no RSA, DSA or ECC server certificate found "
-#else
                 "Oops, no RSA or DSA server certificate found "
-#endif
                 "for '%s:%d'?!", s->server_hostname, s->port);
         ssl_die();
     }
@@ -984,21 +873,10 @@ static void ssl_init_server_certs(server_rec *s,
 
     have_rsa = ssl_server_import_key(s, mctx, rsa_id, SSL_AIDX_RSA);
     have_dsa = ssl_server_import_key(s, mctx, dsa_id, SSL_AIDX_DSA);
-#ifndef OPENSSL_NO_EC
-    have_ecc = ssl_server_import_key(s, mctx, ecc_id, SSL_AIDX_ECC);
-#endif
 
-    if (!(have_rsa || have_dsa
-#ifndef OPENSSL_NO_EC
-        || have_ecc
-#endif
-          )) {
+    if (!(have_rsa || have_dsa)) {
         ap_log_error(APLOG_MARK, APLOG_ERR, 0, s,
-#ifndef OPENSSL_NO_EC
-                "Oops, no RSA, DSA or ECC server private key found?!");
-#else
                 "Oops, no RSA or DSA server private key found?!");
-#endif
         ssl_die();
     }
 }
@@ -1158,19 +1036,9 @@ void ssl_init_CheckServers(server_rec *base_server, apr_pool_t *p)
         klen = strlen(key);
 
         if ((ps = (server_rec *)apr_hash_get(table, key, klen))) {
-            ap_log_error(APLOG_MARK, 
-#ifdef OPENSSL_NO_TLSEXT
-                         APLOG_WARNING, 
-#else
-                         APLOG_DEBUG, 
-#endif
-                         0,
+            ap_log_error(APLOG_MARK, APLOG_WARNING, 0,
                          base_server,
-#ifdef OPENSSL_NO_TLSEXT
                          "Init: SSL server IP/port conflict: "
-#else
-                         "Init: SSL server IP/port overlap: "
-#endif
                          "%s (%s:%d) vs. %s (%s:%d)",
                          ssl_util_vhostid(p, s),
                          (s->defn_name ? s->defn_name : "unknown"),
@@ -1187,14 +1055,8 @@ void ssl_init_CheckServers(server_rec *base_server, apr_pool_t *p)
 
     if (conflict) {
         ap_log_error(APLOG_MARK, APLOG_WARNING, 0, base_server,
-#ifdef OPENSSL_NO_TLSEXT
                      "Init: You should not use name-based "
                      "virtual hosts in conjunction with SSL!!");
-#else
-                     "Init: Name-based SSL virtual hosts only "
-                     "work for clients with TLS server name indication "
-                     "support (RFC 4366)");
-#endif
     }
 }
 
@@ -1204,8 +1066,7 @@ static int ssl_init_FindCAList_X509NameCmp(char **a, char **b)
     return(X509_NAME_cmp((void*)*a, (void*)*b));
 }
 #else
-static int ssl_init_FindCAList_X509NameCmp(const X509_NAME * const *a, 
-                                           const X509_NAME * const *b)
+static int ssl_init_FindCAList_X509NameCmp(X509_NAME **a, X509_NAME **b)
 {
     return(X509_NAME_cmp(*a, *b));
 }
@@ -1302,7 +1163,7 @@ STACK_OF(X509_NAME) *ssl_init_FindCAList(server_rec *s,
     /*
      * Cleanup
      */
-    (void) sk_X509_NAME_set_cmp_func(ca_list, NULL);
+    sk_X509_NAME_set_cmp_func(ca_list, NULL);
 
     return ca_list;
 }
@@ -1317,9 +1178,6 @@ void ssl_init_Child(apr_pool_t *p, server_rec *s)
 
     /* open the mutex lockfile */
     ssl_mutex_reinit(s, p);
-#ifdef HAVE_OCSP_STAPLING
-    ssl_stapling_mutex_reinit(s, p);
-#endif
 }
 
 #define MODSSL_CFG_ITEM_FREE(func, item) \
@@ -1341,7 +1199,6 @@ static void ssl_init_ctx_cleanup_proxy(modssl_ctx_t *mctx)
 
     if (mctx->pkp->certs) {
         sk_X509_INFO_pop_free(mctx->pkp->certs, X509_INFO_free);
-        mctx->pkp->certs = NULL;
     }
 }
 

@@ -28,22 +28,18 @@
 #define APR_WANT_STRFUNC
 #include "apr_want.h"
 
+#define CORE_PRIVATE
 #include "ap_config.h"
 #include "httpd.h"
 #include "http_main.h"
 #include "http_log.h"
 #include "http_config.h"
 #include "http_core.h"
-#include "http_request.h"
 #include "http_vhost.h"
 #include "apr_uri.h"
 #include "util_ebcdic.h"
 #include "ap_mpm.h"
-#include "ap_expr.h"
-
-#if APR_HAVE_UNISTD_H
-#include <unistd.h>
-#endif
+#include "mpm_common.h"
 
 /* WARNING: Win32 binds http_main.c dynamically to the server. Please place
  *          extern functions and global data in another appropriate module.
@@ -97,15 +93,10 @@ static void show_compile_settings(void)
     printf("Server built:   %s\n", ap_get_server_built());
     printf("Server's Module Magic Number: %u:%u\n",
            MODULE_MAGIC_NUMBER_MAJOR, MODULE_MAGIC_NUMBER_MINOR);
-#if APR_MAJOR_VERSION >= 2
-    printf("Server loaded:  APR %s\n", apr_version_string());
-    printf("Compiled using: APR %s\n", APR_VERSION_STRING);
-#else
-    printf("Server loaded:  APR %s, APR-UTIL %s\n",
+    printf("Server loaded:  APR %s, APR-Util %s\n",
            apr_version_string(), apu_version_string());
-    printf("Compiled using: APR %s, APR-UTIL %s\n",
+    printf("Compiled using: APR %s, APR-Util %s\n",
            APR_VERSION_STRING, APU_VERSION_STRING);
-#endif
     /* sizeof(foo) is long on some platforms so we might as well
      * make it long everywhere to keep the printf format
      * consistent
@@ -125,6 +116,10 @@ static void show_compile_settings(void)
 
 #ifdef OS
     printf(" -D OS=\"" OS "\"\n");
+#endif
+
+#ifdef APACHE_MPM_DIR
+    printf(" -D APACHE_MPM_DIR=\"" APACHE_MPM_DIR "\"\n");
 #endif
 
 #ifdef HAVE_SHMGET
@@ -217,6 +212,10 @@ static void show_compile_settings(void)
     printf(" -D NEED_HASHBANG_EMUL\n");
 #endif
 
+#ifdef SHARED_CORE
+    printf(" -D SHARED_CORE\n");
+#endif
+
 /* This list displays the compiled in default paths: */
 #ifdef HTTPD_ROOT
     printf(" -D HTTPD_ROOT=\"" HTTPD_ROOT "\"\n");
@@ -226,12 +225,20 @@ static void show_compile_settings(void)
     printf(" -D SUEXEC_BIN=\"" SUEXEC_BIN "\"\n");
 #endif
 
+#if defined(SHARED_CORE) && defined(SHARED_CORE_DIR)
+    printf(" -D SHARED_CORE_DIR=\"" SHARED_CORE_DIR "\"\n");
+#endif
+
 #ifdef DEFAULT_PIDLOG
     printf(" -D DEFAULT_PIDLOG=\"" DEFAULT_PIDLOG "\"\n");
 #endif
 
 #ifdef DEFAULT_SCOREBOARD
     printf(" -D DEFAULT_SCOREBOARD=\"" DEFAULT_SCOREBOARD "\"\n");
+#endif
+
+#ifdef DEFAULT_LOCKFILE
+    printf(" -D DEFAULT_LOCKFILE=\"" DEFAULT_LOCKFILE "\"\n");
 #endif
 
 #ifdef DEFAULT_ERRORLOG
@@ -247,33 +254,12 @@ static void show_compile_settings(void)
 #endif
 }
 
-#define TASK_SWITCH_SLEEP 10000
-
 static void destroy_and_exit_process(process_rec *process,
                                      int process_exit_value)
 {
-    /*
-     * Sleep for TASK_SWITCH_SLEEP micro seconds to cause a task switch on
-     * OS layer and thus give possibly started piped loggers a chance to
-     * process their input. Otherwise it is possible that they get killed
-     * by us before they can do so. In this case maybe valueable log messages
-     * might get lost.
-     */
-    apr_sleep(TASK_SWITCH_SLEEP);
     apr_pool_destroy(process->pool); /* and destroy all descendent pools */
     apr_terminate();
     exit(process_exit_value);
-}
-
-#define OOM_MESSAGE "[crit] Memory allocation failed, " \
-    "aborting process." APR_EOL_STR
-
-/* APR callback invoked if allocation fails. */
-static int abort_on_oom(int retcode)
-{
-    write(STDERR_FILENO, OOM_MESSAGE, strlen(OOM_MESSAGE));
-    abort();
-    return retcode; /* unreachable, hopefully. */
 }
 
 static process_rec *init_process(int *argc, const char * const * *argv)
@@ -293,11 +279,6 @@ static process_rec *init_process(int *argc, const char * const * *argv)
         /* For all intents and purposes, this is impossibly unlikely,
          * but APR doesn't exist yet, we can't use it for reporting
          * these earliest two failures;
-         *
-         * XXX: Note the apr_ctime() and apr_time_now() calls.  These
-         * work, today, against an uninitialized APR, but in the future
-         * (if they relied on global pools or mutexes, for example) then
-         * the datestamp logic will need to be replaced.
          */
         char ctimebuff[APR_CTIME_LEN];
         apr_ctime(ctimebuff, apr_time_now());
@@ -308,7 +289,6 @@ static process_rec *init_process(int *argc, const char * const * *argv)
         exit(1);
     }
 
-    apr_pool_abort_set(abort_on_oom, cntx);
     apr_pool_tag(cntx, "process");
     ap_open_stderr_log(cntx);
 
@@ -340,30 +320,46 @@ static void usage(process_rec *process)
 
     pad[i] = '\0';
 
+#ifdef SHARED_CORE
+    ap_log_error(APLOG_MARK, APLOG_STARTUP, 0, NULL ,
+                 "Usage: %s [-R directory] [-D name] [-d directory] [-f file]",
+                 bin);
+#else
     ap_log_error(APLOG_MARK, APLOG_STARTUP, 0, NULL,
                  "Usage: %s [-D name] [-d directory] [-f file]", bin);
+#endif
 
     ap_log_error(APLOG_MARK, APLOG_STARTUP, 0, NULL,
                  "       %s [-C \"directive\"] [-c \"directive\"]", pad);
 
 #ifdef WIN32
     ap_log_error(APLOG_MARK, APLOG_STARTUP, 0, NULL,
-                 "       %s [-w] [-k start|restart|stop|shutdown] [-n service_name]", pad);
+                 "       %s [-w] [-k start|restart|stop|shutdown]", pad);
     ap_log_error(APLOG_MARK, APLOG_STARTUP, 0, NULL,
                  "       %s [-k install|config|uninstall] [-n service_name]",
                  pad);
-#else
-/* XXX not all MPMs support signalling the server in general or graceful-stop
- * in particular
- */
+#endif
+#ifdef AP_MPM_WANT_SIGNAL_SERVER
+#ifdef AP_MPM_WANT_SET_GRACEFUL_SHUTDOWN
     ap_log_error(APLOG_MARK, APLOG_STARTUP, 0, NULL,
                  "       %s [-k start|restart|graceful|graceful-stop|stop]",
                  pad);
+#else
+    ap_log_error(APLOG_MARK, APLOG_STARTUP, 0, NULL,
+                 "       %s [-k start|restart|graceful|stop]",
+                 pad);
+#endif /* AP_MPM_WANT_SET_GRACEFUL_SHUTDOWN */
 #endif
     ap_log_error(APLOG_MARK, APLOG_STARTUP, 0, NULL,
-                 "       %s [-v] [-V] [-h] [-l] [-L] [-t] [-T] [-S]", pad);
+                 "       %s [-v] [-V] [-h] [-l] [-L] [-t] [-S]", pad);
     ap_log_error(APLOG_MARK, APLOG_STARTUP, 0, NULL,
                  "Options:");
+
+#ifdef SHARED_CORE
+    ap_log_error(APLOG_MARK, APLOG_STARTUP, 0, NULL,
+                 "  -R directory       : specify an alternate location for "
+                 "shared object files");
+#endif
 
     ap_log_error(APLOG_MARK, APLOG_STARTUP, 0, NULL,
                  "  -D name            : define a name for use in "
@@ -387,7 +383,7 @@ static void usage(process_rec *process)
 #ifdef WIN32
     ap_log_error(APLOG_MARK, APLOG_STARTUP, 0, NULL,
                  "  -n name            : set service name and use its "
-                 "ServerConfigFile and ServerRoot");
+                 "ServerConfigFile");
     ap_log_error(APLOG_MARK, APLOG_STARTUP, 0, NULL,
                  "  -k start           : tell Apache to start");
     ap_log_error(APLOG_MARK, APLOG_STARTUP, 0, NULL,
@@ -434,8 +430,6 @@ static void usage(process_rec *process)
                  "  -M                 : a synonym for -t -D DUMP_MODULES");
     ap_log_error(APLOG_MARK, APLOG_STARTUP, 0, NULL,
                  "  -t                 : run syntax check for config files");
-    ap_log_error(APLOG_MARK, APLOG_STARTUP, 0, NULL,
-                "  -T                 : start without DocumentRoot(s) check");
 
     destroy_and_exit_process(process, 1);
 }
@@ -443,12 +437,14 @@ static void usage(process_rec *process)
 int main(int argc, const char * const argv[])
 {
     char c;
-    int configtestonly = 0, showcompile = 0;
+    int configtestonly = 0;
     const char *confname = SERVER_CONFIG_FILE;
     const char *def_server_root = HTTPD_ROOT;
     const char *temp_error_log = NULL;
     const char *error;
     process_rec *process;
+    server_rec *server_conf;
+    apr_pool_t *pglobal;
     apr_pool_t *pconf;
     apr_pool_t *plog; /* Pool of log streams, reset _after_ each read of conf */
     apr_pool_t *ptemp; /* Pool for temporary config stuff, reset often */
@@ -462,24 +458,17 @@ int main(int argc, const char * const argv[])
     AP_MONCONTROL(0); /* turn off profiling of startup */
 
     process = init_process(&argc, &argv);
-    ap_pglobal = process->pool;
+    pglobal = process->pool;
     pconf = process->pconf;
     ap_server_argv0 = process->short_name;
 
-    /* Set up the OOM callback in the global pool, so all pools should
-     * by default inherit it. */
-    apr_pool_abort_set(abort_on_oom, apr_pool_parent_get(process->pool));
-
 #if APR_CHARSET_EBCDIC
-    if (ap_init_ebcdic(ap_pglobal) != APR_SUCCESS) {
+    if (ap_init_ebcdic(pglobal) != APR_SUCCESS) {
         destroy_and_exit_process(process, 1);
     }
 #endif
-    if (ap_expr_init(ap_pglobal) != APR_SUCCESS) {
-        destroy_and_exit_process(process, 1);
-    }
 
-    apr_pool_create(&pcommands, ap_pglobal);
+    apr_pool_create(&pcommands, pglobal);
     apr_pool_tag(pcommands, "pcommands");
     ap_server_pre_read_config  = apr_array_make(pcommands, 1, sizeof(char *));
     ap_server_post_read_config = apr_array_make(pcommands, 1, sizeof(char *));
@@ -530,8 +519,33 @@ int main(int argc, const char * const argv[])
             break;
 
         case 'e':
-            if (ap_parse_log_level(optarg, &ap_default_loglevel) != NULL)
+            if (strcasecmp(optarg, "emerg") == 0) {
+                ap_default_loglevel = APLOG_EMERG;
+            }
+            else if (strcasecmp(optarg, "alert") == 0) {
+                ap_default_loglevel = APLOG_ALERT;
+            }
+            else if (strcasecmp(optarg, "crit") == 0) {
+                ap_default_loglevel = APLOG_CRIT;
+            }
+            else if (strncasecmp(optarg, "err", 3) == 0) {
+                ap_default_loglevel = APLOG_ERR;
+            }
+            else if (strncasecmp(optarg, "warn", 4) == 0) {
+                ap_default_loglevel = APLOG_WARNING;
+            }
+            else if (strcasecmp(optarg, "notice") == 0) {
+                ap_default_loglevel = APLOG_NOTICE;
+            }
+            else if (strcasecmp(optarg, "info") == 0) {
+                ap_default_loglevel = APLOG_INFO;
+            }
+            else if (strcasecmp(optarg, "debug") == 0) {
+                ap_default_loglevel = APLOG_DEBUG;
+            }
+            else {
                 usage(process);
+            }
             break;
 
         case 'E':
@@ -553,14 +567,8 @@ int main(int argc, const char * const argv[])
             destroy_and_exit_process(process, 0);
 
         case 'V':
-            if (strcmp(ap_show_mpm(), "")) { /* MPM built-in? */
-                show_compile_settings();
-                destroy_and_exit_process(process, 0);
-            }
-            else {
-                showcompile = 1;
-            }
-            break;
+            show_compile_settings();
+            destroy_and_exit_process(process, 0);
 
         case 'l':
             ap_show_modules();
@@ -573,10 +581,6 @@ int main(int argc, const char * const argv[])
         case 't':
             configtestonly = 1;
             break;
-
-       case 'T':
-           ap_document_root_check = 0;
-           break;
 
         case 'S':
             configtestonly = 1;
@@ -601,7 +605,7 @@ int main(int argc, const char * const argv[])
         usage(process);
     }
 
-    apr_pool_create(&plog, ap_pglobal);
+    apr_pool_create(&plog, pglobal);
     apr_pool_tag(plog, "plog");
     apr_pool_create(&ptemp, pconf);
     apr_pool_tag(ptemp, "ptemp");
@@ -616,8 +620,8 @@ int main(int argc, const char * const argv[])
     if (temp_error_log) {
         ap_replace_stderr_log(process->pool, temp_error_log);
     }
-    ap_server_conf = ap_read_config(process, ptemp, confname, &ap_conftree);
-    if (!ap_server_conf) {
+    server_conf = ap_read_config(process, ptemp, confname, &ap_conftree);
+    if (!server_conf) {
         destroy_and_exit_process(process, 1);
     }
 
@@ -627,26 +631,16 @@ int main(int argc, const char * const argv[])
         destroy_and_exit_process(process, 1);
     }
 
-    rv = ap_process_config_tree(ap_server_conf, ap_conftree,
+    rv = ap_process_config_tree(server_conf, ap_conftree,
                                 process->pconf, ptemp);
     if (rv == OK) {
-        ap_fixup_virtual_hosts(pconf, ap_server_conf);
-        ap_fini_vhost_config(pconf, ap_server_conf);
+        ap_fixup_virtual_hosts(pconf, server_conf);
+        ap_fini_vhost_config(pconf, server_conf);
         apr_hook_sort_all();
 
-        if (ap_run_check_config(pconf, plog, ptemp, ap_server_conf) != OK) {
-            ap_log_error(APLOG_MARK, APLOG_STARTUP |APLOG_ERR, 0,
-                         NULL, "Configuration check failed");
-            destroy_and_exit_process(process, 1);
-        }
-
         if (configtestonly) {
-            ap_run_test_config(pconf, ap_server_conf);
+            ap_run_test_config(pconf, server_conf);
             ap_log_error(APLOG_MARK, APLOG_STARTUP, 0, NULL, "Syntax OK");
-            destroy_and_exit_process(process, 0);
-        }
-        else if (showcompile) { /* deferred due to dynamically loaded MPM */
-            show_compile_settings();
             destroy_and_exit_process(process, 0);
         }
     }
@@ -667,13 +661,13 @@ int main(int argc, const char * const argv[])
 
     apr_pool_clear(plog);
 
-    if ( ap_run_open_logs(pconf, plog, ptemp, ap_server_conf) != OK) {
+    if ( ap_run_open_logs(pconf, plog, ptemp, server_conf) != OK) {
         ap_log_error(APLOG_MARK, APLOG_STARTUP |APLOG_ERR,
                      0, NULL, "Unable to open logs");
         destroy_and_exit_process(process, 1);
     }
 
-    if ( ap_run_post_config(pconf, plog, ptemp, ap_server_conf) != OK) {
+    if ( ap_run_post_config(pconf, plog, ptemp, server_conf) != OK) {
         ap_log_error(APLOG_MARK, APLOG_STARTUP |APLOG_ERR, 0,
                      NULL, "Configuration Failed");
         destroy_and_exit_process(process, 1);
@@ -684,7 +678,6 @@ int main(int argc, const char * const argv[])
     for (;;) {
         apr_hook_deregister_all();
         apr_pool_clear(pconf);
-        ap_clear_auth_internal();
 
         for (mod = ap_prelinked_modules; *mod != NULL; mod++) {
             ap_register_hooks(*mod, pconf);
@@ -698,8 +691,8 @@ int main(int argc, const char * const argv[])
         apr_pool_create(&ptemp, pconf);
         apr_pool_tag(ptemp, "ptemp");
         ap_server_root = def_server_root;
-        ap_server_conf = ap_read_config(process, ptemp, confname, &ap_conftree);
-        if (!ap_server_conf) {
+        server_conf = ap_read_config(process, ptemp, confname, &ap_conftree);
+        if (!server_conf) {
             destroy_and_exit_process(process, 1);
         }
 
@@ -709,28 +702,21 @@ int main(int argc, const char * const argv[])
             destroy_and_exit_process(process, 1);
         }
 
-        if (ap_process_config_tree(ap_server_conf, ap_conftree, process->pconf,
+        if (ap_process_config_tree(server_conf, ap_conftree, process->pconf,
                                    ptemp) != OK) {
             destroy_and_exit_process(process, 1);
         }
-        ap_fixup_virtual_hosts(pconf, ap_server_conf);
-        ap_fini_vhost_config(pconf, ap_server_conf);
+        ap_fixup_virtual_hosts(pconf, server_conf);
+        ap_fini_vhost_config(pconf, server_conf);
         apr_hook_sort_all();
-
-        if (ap_run_check_config(pconf, plog, ptemp, ap_server_conf) != OK) {
-            ap_log_error(APLOG_MARK, APLOG_STARTUP |APLOG_ERR, 0,
-                         NULL, "Configuration check failed");
-            destroy_and_exit_process(process, 1);
-        }
-
         apr_pool_clear(plog);
-        if (ap_run_open_logs(pconf, plog, ptemp, ap_server_conf) != OK) {
+        if (ap_run_open_logs(pconf, plog, ptemp, server_conf) != OK) {
             ap_log_error(APLOG_MARK, APLOG_STARTUP |APLOG_ERR,
                          0, NULL, "Unable to open logs");
             destroy_and_exit_process(process, 1);
         }
 
-        if (ap_run_post_config(pconf, plog, ptemp, ap_server_conf) != OK) {
+        if (ap_run_post_config(pconf, plog, ptemp, server_conf) != OK) {
             ap_log_error(APLOG_MARK, APLOG_STARTUP |APLOG_ERR,
                          0, NULL, "Configuration Failed");
             destroy_and_exit_process(process, 1);
@@ -741,7 +727,7 @@ int main(int argc, const char * const argv[])
 
         ap_run_optional_fn_retrieve();
 
-        if (ap_run_mpm(pconf, plog, ap_server_conf) != OK)
+        if (ap_mpm_run(pconf, plog, server_conf))
             break;
 
         apr_pool_lock(pconf, 0);
@@ -759,8 +745,8 @@ int main(int argc, const char * const argv[])
  * has all of the APR functions specified by the apr/apr.exports and
  * apr-util/aprutil.exports files.
  */
-const void *ap_suck_in_APR(void);
-const void *ap_suck_in_APR(void)
+const void *suck_in_APR(void);
+const void *suck_in_APR(void)
 {
     extern const void *ap_ugly_hack;
 

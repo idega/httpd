@@ -17,12 +17,14 @@
 #include "apr.h"
 #include "apr_strings.h"
 
+#define CORE_PRIVATE
 #include "ap_config.h"
 #include "httpd.h"
 #include "http_connection.h"
 #include "http_request.h"
 #include "http_protocol.h"
 #include "ap_mpm.h"
+#include "mpm_default.h"
 #include "http_config.h"
 #include "http_core.h"
 #include "http_vhost.h"

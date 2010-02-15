@@ -32,6 +32,7 @@
 #define APR_WANT_MEMFUNC
 #include "apr_want.h"
 
+#define CORE_PRIVATE
 #include "util_filter.h"
 #include "ap_config.h"
 #include "httpd.h"
@@ -64,7 +65,15 @@
  * and must be listed in order.
  */
 
+#ifdef UTS21
+/* The second const triggers an assembler bug on UTS 2.1.
+ * Another workaround is to move some code out of this file into another,
+ *   but this is easier.  Dave Dykstra, 3/31/99
+ */
+static const char * status_lines[RESPONSE_CODES] =
+#else
 static const char * const status_lines[RESPONSE_CODES] =
+#endif
 {
     "100 Continue",
     "101 Switching Protocols",
@@ -149,26 +158,10 @@ AP_IMPLEMENT_HOOK_VOID(insert_error_filter, (request_rec *r), (r))
  */
 #define METHOD_NUMBER_LAST  62
 
-static int is_mpm_running(void)
-{
-    int mpm_state = 0;
-
-    if (ap_mpm_query(AP_MPMQ_MPM_STATE, &mpm_state)) {
-      return 0;
-    }
-  
-    if (mpm_state == AP_MPMQ_STOPPING) {
-      return 0;
-    }
-
-    return 1;
-}
-
 
 AP_DECLARE(int) ap_set_keepalive(request_rec *r)
 {
     int ka_sent = 0;
-    int left = r->server->keep_alive_max - r->connection->keepalives;
     int wimpy = ap_find_token(r->pool,
                               apr_table_get(r->headers_out, "Connection"),
                               "close");
@@ -180,9 +173,6 @@ AP_DECLARE(int) ap_set_keepalive(request_rec *r)
      * body should use the HTTP/1.1 chunked transfer-coding.  In English,
      *
      *   IF  we have not marked this connection as errored;
-     *   and the client isn't expecting 100-continue (PR47087 - more
-     *       input here could be the client continuing when we're
-     *       closing the request).
      *   and the response body has a defined length due to the status code
      *       being 304 or 204, the request method being HEAD, already
      *       having defined Content-Length or Transfer-Encoding: chunked, or
@@ -204,7 +194,6 @@ AP_DECLARE(int) ap_set_keepalive(request_rec *r)
      * Note that the condition evaluation order is extremely important.
      */
     if ((r->connection->keepalive != AP_CONN_CLOSE)
-        && !r->expecting_100
         && ((r->status == HTTP_NOT_MODIFIED)
             || (r->status == HTTP_NO_CONTENT)
             || r->header_only
@@ -218,7 +207,7 @@ AP_DECLARE(int) ap_set_keepalive(request_rec *r)
         && r->server->keep_alive
         && (r->server->keep_alive_timeout > 0)
         && ((r->server->keep_alive_max == 0)
-            || (left > 0))
+            || (r->server->keep_alive_max > r->connection->keepalives))
         && !ap_status_drops_connection(r->status)
         && !wimpy
         && !ap_find_token(r->pool, conn, "close")
@@ -226,7 +215,8 @@ AP_DECLARE(int) ap_set_keepalive(request_rec *r)
             || apr_table_get(r->headers_in, "Via"))
         && ((ka_sent = ap_find_token(r->pool, conn, "keep-alive"))
             || (r->proto_num >= HTTP_VERSION(1,1)))
-        && is_mpm_running()) {
+        && !ap_graceful_stop_signalled()) {
+        int left = r->server->keep_alive_max - r->connection->keepalives;
 
         r->connection->keepalive = AP_CONN_KEEPALIVE;
         r->connection->keepalives++;
@@ -262,16 +252,6 @@ AP_DECLARE(int) ap_set_keepalive(request_rec *r)
         apr_table_mergen(r->headers_out, "Connection", "close");
     }
 
-    /*
-     * If we had previously been a keepalive connection and this
-     * is the last one, then bump up the number of keepalives
-     * we've had
-     */
-    if ((r->connection->keepalive != AP_CONN_CLOSE)
-        && r->server->keep_alive_max
-        && !left) {
-        r->connection->keepalives++;
-    }
     r->connection->keepalive = AP_CONN_CLOSE;
 
     return 0;
@@ -1015,19 +995,16 @@ static const char *get_canned_error_string(int status,
                "request-header field overlap the current extent\n"
                "of the selected resource.</p>\n");
     case HTTP_EXPECTATION_FAILED:
-        s1 = apr_table_get(r->headers_in, "Expect");
-        if (s1)
-            s1 = apr_pstrcat(p,
-                     "<p>The expectation given in the Expect request-header\n"
-                     "field could not be met by this server.\n"
-                     "The client sent<pre>\n    Expect: ",
-                     ap_escape_html(r->pool, s1), "\n</pre>\n",
-                     NULL);
-        else
-            s1 = "<p>No expectation was seen, the Expect request-header \n"
-                 "field was not presented by the client.\n";
-        return add_optional_notes(r, s1, "error-notes", "</p>"
-                   "<p>Only the 100-continue expectation is supported.</p>\n");
+        return(apr_pstrcat(p,
+                           "<p>The expectation given in the Expect "
+                           "request-header"
+                           "\nfield could not be met by this server.</p>\n"
+                           "<p>The client sent<pre>\n    Expect: ",
+                           ap_escape_html(r->pool, apr_table_get(r->headers_in, "Expect")),
+                           "\n</pre>\n"
+                           "but we only allow the 100-continue "
+                           "expectation.</p>\n",
+                           NULL));
     case HTTP_UNPROCESSABLE_ENTITY:
         return("<p>The server understands the media type of the\n"
                "request entity, but was unable to process the\n"
@@ -1057,8 +1034,8 @@ static const char *get_canned_error_string(int status,
                "request due to maintenance downtime or capacity\n"
                "problems. Please try again later.</p>\n");
     case HTTP_GATEWAY_TIME_OUT:
-        return("<p>The gateway did not receive a timely response\n"
-               "from the upstream server or application.</p>\n");
+        return("<p>The proxy server did not receive a timely response\n"
+               "from the upstream server.</p>\n");
     case HTTP_NOT_EXTENDED:
         return("<p>A mandatory extension policy in the request is not\n"
                "accepted by the server for this resource.</p>\n");
@@ -1241,28 +1218,16 @@ AP_DECLARE(void) ap_send_error_response(request_rec *r, int recursive_error)
         const char *h1;
 
         /* Accept a status_line set by a module, but only if it begins
-         * with the correct 3 digit status code
+         * with the 3 digit status code
          */
-        if (r->status_line) {
-            char *end;
-            int len = strlen(r->status_line);
-            if (len >= 3
-                && apr_strtoi64(r->status_line, &end, 10) == r->status
-                && (end - 3) == r->status_line
-                && (len < 4 || apr_isspace(r->status_line[3]))
-                && (len < 5 || apr_isalnum(r->status_line[4]))) {
-                /* Since we passed the above check, we know that length three
-                 * is equivalent to only a 3 digit numeric http status.
-                 * RFC2616 mandates a trailing space, let's add it.
-                 * If we have an empty reason phrase, we also add "Unknown Reason".
-                 */
-                if (len == 3) {
-                    r->status_line = apr_pstrcat(r->pool, r->status_line, " Unknown Reason", NULL);
-                } else if (len == 4) {
-                    r->status_line = apr_pstrcat(r->pool, r->status_line, "Unknown Reason", NULL);
-                }
-                title = r->status_line;
-            }
+        if (r->status_line != NULL
+            && strlen(r->status_line) > 4       /* long enough */
+            && apr_isdigit(r->status_line[0])
+            && apr_isdigit(r->status_line[1])
+            && apr_isdigit(r->status_line[2])
+            && apr_isspace(r->status_line[3])
+            && apr_isalnum(r->status_line[4])) {
+            title = r->status_line;
         }
 
         /* folks decided they didn't want the error code in the H1 text */

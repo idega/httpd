@@ -14,26 +14,8 @@
  * limitations under the License.
  */
 
-#ifdef CROSS_COMPILE
-
-#define apr_isalnum(c) (isalnum(((unsigned char)(c))))
-#define apr_isalpha(c) (isalpha(((unsigned char)(c))))
-#define apr_iscntrl(c) (iscntrl(((unsigned char)(c))))
-#define apr_isprint(c) (isprint(((unsigned char)(c))))
-#include <ctype.h>
-#define APR_HAVE_STDIO_H 1
-#define APR_HAVE_STRING_H 1
-
-#else
-
 #include "apr.h"
 #include "apr_lib.h"
-
-#ifdef WIN32
-#define WANT_WIN32
-#endif
-
-#endif
 
 #if APR_HAVE_STDIO_H
 #include <stdio.h>
@@ -80,7 +62,7 @@ int main(int argc, char *argv[])
             printf("\n    ");
 
         /* escape_shell_cmd */
-#if defined(WANT_WIN32) || defined(OS2)
+#if defined(WIN32) || defined(OS2)
         /* Win32/OS2 have many of the same vulnerable characters
          * as Unix sh, plus the carriage return and percent char.
          * The proper escaping of these characters varies from unix
@@ -108,8 +90,8 @@ int main(int argc, char *argv[])
             flags |= T_OS_ESCAPE_PATH;
         }
 
-        /* these are the "tspecials" (RFC2068) or "separators" (RFC2616) */
-        if (c && (apr_iscntrl(c) || strchr(" \t()<>@,;:\\\"/[]?={}", c))) {
+        /* these are the "tspecials" from RFC2068 */
+        if (c && (apr_iscntrl(c) || strchr(" \t()<>@,;:\\/[]?={}", c))) {
             flags |= T_HTTP_TOKEN_STOP;
         }
 

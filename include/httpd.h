@@ -53,7 +53,6 @@
 #include "apr_network_io.h"
 #include "apr_buckets.h"
 #include "apr_poll.h"
-#include "apr_thread_proc.h"
 
 #include "os.h"
 
@@ -69,6 +68,8 @@
 extern "C" {
 #endif
 
+#ifdef CORE_PRIVATE
+
 /* ----------------------------- config dir ------------------------------ */
 
 /** Define this to be the default server home dir. Most things later in this
@@ -81,6 +82,9 @@ extern "C" {
 #elif defined(WIN32)
 /** Set default for Windows file system */
 #define HTTPD_ROOT "/apache"
+#elif defined (BEOS)
+/** Set the default for BeOS */
+#define HTTPD_ROOT "/boot/home/apache"
 #elif defined (NETWARE)
 /** Set the default for NetWare */
 #define HTTPD_ROOT "/apache"
@@ -180,7 +184,7 @@ extern "C" {
  *
  * Internal buffer sizes are two bytes more than the DEFAULT_LIMIT_REQUEST_LINE
  * and DEFAULT_LIMIT_REQUEST_FIELDSIZE below, which explains the 8190.
- * These two limits can be lowered or raised by the server config
+ * These two limits can be lowered (but not raised) by the server config
  * directives LimitRequestLine and LimitRequestFieldsize, respectively.
  *
  * DEFAULT_LIMIT_REQUEST_FIELDS can be modified or disabled (set = 0) by
@@ -206,6 +210,8 @@ extern "C" {
  */
 #define DEFAULT_ADD_DEFAULT_CHARSET_NAME "iso-8859-1"
 
+#endif /* CORE_PRIVATE */
+
 /** default HTTP Server protocol */
 #define AP_SERVER_PROTOCOL "HTTP/1.1"
 
@@ -215,6 +221,24 @@ extern "C" {
 /** Define this to be what your HTML directory content files are called */
 #ifndef AP_DEFAULT_INDEX
 #define AP_DEFAULT_INDEX "index.html"
+#endif
+
+
+/** 
+ * Define this to be what type you'd like returned for files with unknown 
+ * suffixes.  
+ * @warning MUST be all lower case. 
+ */
+#ifndef DEFAULT_CONTENT_TYPE
+#define DEFAULT_CONTENT_TYPE "text/plain"
+#endif
+
+/**
+ * NO_CONTENT_TYPE is an alternative DefaultType value that suppresses
+ * setting any default type when there's no information (e.g. a proxy).
+ */
+#ifndef NO_CONTENT_TYPE
+#define NO_CONTENT_TYPE "none"
 #endif
 
 /** The name of the MIME types file */
@@ -404,6 +428,13 @@ typedef struct {
 AP_DECLARE(void) ap_get_server_revision(ap_version_t *version);
 
 /**
+ * Get the server version string, as controlled by the ServerTokens directive
+ * @return The server version string
+ * @deprecated @see ap_get_server_banner() and ap_get_server_description()
+ */
+AP_DECLARE(const char *) ap_get_server_version(void);
+
+/**
  * Get the server banner in a form suitable for sending over the
  * network, with the level of information controlled by the
  * ServerTokens directive.
@@ -422,6 +453,8 @@ AP_DECLARE(const char *) ap_get_server_description(void);
 
 /**
  * Add a component to the server description and banner strings
+ * (The latter is returned by the deprecated function
+ * ap_get_server_version().)
  * @param pconf The pool to allocate the component from
  * @param component The string to add
  */
@@ -433,26 +466,12 @@ AP_DECLARE(void) ap_add_version_component(apr_pool_t *pconf, const char *compone
  */
 AP_DECLARE(const char *) ap_get_server_built(void);
 
-/* non-HTTP status codes returned by hooks */
-
-#define OK 0			/**< Module has handled this stage. */
 #define DECLINED -1		/**< Module declines to handle */
 #define DONE -2			/**< Module has served the response completely 
 				 *  - it's safe to die() with no more output
 				 */
-#define SUSPENDED -3 /**< Module will handle the remainder of the request. 
-                      * The core will never invoke the request again, */
+#define OK 0			/**< Module has handled this stage. */
 
-/** Returned by the bottom-most filter if no data was written.
- *  @see ap_pass_brigade(). */
-#define AP_NOBODY_WROTE         -100
-/** Returned by the bottom-most filter if no data was read.
- *  @see ap_get_brigade(). */
-#define AP_NOBODY_READ          -101
-/** Returned by any filter if the filter chain encounters an error
- *  and has already dealt with the error response.
- */
-#define AP_FILTER_ERROR         -102
 
 /**
  * @defgroup HTTP_Status HTTP Status Codes
@@ -647,8 +666,6 @@ struct ap_method_list_t {
 #define LF '\n'
 #define CRLF "\r\n"
 #endif /* APR_CHARSET_EBCDIC */                                   
-/** Useful for common code with either platform charset. */
-#define CRLF_ASCII "\015\012"
 
 /**
  * @defgroup values_request_rec_body Possible values for request_rec.read_body 
@@ -980,13 +997,6 @@ struct request_rec {
     /** A flag to determine if the eos bucket has been sent yet */
     int eos_sent;
 
-    /** The optional kept body of the request. */
-    apr_bucket_brigade *kept_body;
-
-    apr_thread_mutex_t *invoke_mtx;
-
-    apr_table_t *body_table;
-
 /* Things placed at the end of the record to avoid breaking binary
  * compatibility.  It would be nice to remember to reorder the entire
  * record to improve 64bit alignment the next time we need to break
@@ -1086,22 +1096,11 @@ struct conn_rec {
     conn_state_t *cs;
     /** Is there data pending in the input filters? */ 
     int data_in_input_filters;
-    /** Is there data pending in the output filters? */
-    int data_in_output_filters;
-
+    
     /** Are there any filters that clogg/buffer the input stream, breaking
      *  the event mpm.
      */
     int clogging_input_filters;
-    
-    /** This points to the current thread being used to process this request,
-     * over the lifetime of a request, the value may change. Users of the connection
-     * record should not rely upon it staying the same between calls that invole
-     * the MPM.
-     */
-#if APR_HAS_THREADS
-    apr_thread_t *current_thread;
-#endif
 };
 
 /** 
@@ -1110,9 +1109,6 @@ struct conn_rec {
 typedef enum  {
     CONN_STATE_CHECK_REQUEST_LINE_READABLE,
     CONN_STATE_READ_REQUEST_LINE,
-    CONN_STATE_HANDLER,
-    CONN_STATE_WRITE_COMPLETION,
-    CONN_STATE_SUSPENDED,
     CONN_STATE_LINGER
 } conn_state_e;
 
@@ -1235,16 +1231,14 @@ struct server_rec {
 
     /** The server request scheme for redirect responses */
     const char *server_scheme;
-
-    /** Opaque storage location */
-    void *context;
 };
 
 typedef struct core_output_filter_ctx {
-    apr_bucket_brigade *buffered_bb;
-    apr_size_t bytes_in;
-    apr_size_t bytes_written;
-    apr_bucket_brigade *tmp_flush_bb;
+    apr_bucket_brigade *b;
+    /** subpool of c->pool used for resources 
+     * which may outlive the request
+     */
+    apr_pool_t *deferred_write_pool;
 } core_output_filter_ctx_t;
  
 typedef struct core_filter_ctx {
@@ -1445,13 +1439,6 @@ AP_DECLARE(int) ap_find_last_token(apr_pool_t *p, const char *line, const char *
 AP_DECLARE(int) ap_is_url(const char *u);
 
 /**
- * Unescape a string
- * @param url The string to unescape
- * @return 0 on success, non-zero otherwise
- */
-AP_DECLARE(int) ap_unescape_all(char *url);
-
-/**
  * Unescape a URL
  * @param url The url to unescape
  * @return 0 on success, non-zero otherwise
@@ -1487,14 +1474,6 @@ AP_DECLARE(void) ap_getparents(char *name);
 AP_DECLARE(char *) ap_escape_path_segment(apr_pool_t *p, const char *s);
 
 /**
- * Escape a path segment, as defined in RFC 1808, to a preallocated buffer.
- * @param c The preallocated buffer to write to
- * @param s The path to convert
- * @return The converted URL (c)
- */
-AP_DECLARE(char *) ap_escape_path_segment_buffer(char *c, const char *s);
-
-/**
  * convert an OS path to a URL in an OS dependant way.
  * @param p The pool to allocate from
  * @param path The path to convert
@@ -1513,15 +1492,7 @@ AP_DECLARE(char *) ap_os_escape_path(apr_pool_t *p, const char *path, int partia
  * @param s The html to escape
  * @return The escaped string
  */
-#define ap_escape_html(p,s) ap_escape_html2(p,s,0)
-/**
- * Escape an html string
- * @param p The pool to allocate from
- * @param s The html to escape
- * @param toasc Whether to escape all non-ASCII chars to \&\#nnn;
- * @return The escaped string
- */
-AP_DECLARE(char *) ap_escape_html2(apr_pool_t *p, const char *s, int toasc);
+AP_DECLARE(char *) ap_escape_html(apr_pool_t *p, const char *s);
 
 /**
  * Escape a string for logging
@@ -1705,7 +1676,6 @@ AP_DECLARE(void) ap_pregfree(apr_pool_t *p, ap_regex_t *reg);
  * @param source The string that was originally matched to the regex
  * @param nmatch the nmatch returned from ap_pregex
  * @param pmatch the pmatch array returned from ap_pregex
- * @return The substituted string, or NULL on error
  */
 AP_DECLARE(char *) ap_pregsub(apr_pool_t *p, const char *input, const char *source,
                               size_t nmatch, ap_regmatch_t pmatch[]);
@@ -1742,9 +1712,9 @@ AP_DECLARE(int) ap_ind(const char *str, char c);	/* Sigh... */
 AP_DECLARE(int) ap_rind(const char *str, char c);
 
 /**
- * Given a string, replace any bare &quot; with \\&quot; .
+ * Given a string, replace any bare " with \" .
  * @param p The pool to allocate memory from
- * @param instring The string to search for &quot;
+ * @param instring The string to search for "
  * @return A copy of the string with escaped quotes 
  */
 AP_DECLARE(char *) ap_escape_quotes(apr_pool_t *p, const char *instring);
@@ -1761,29 +1731,6 @@ AP_DECLARE(char *) ap_escape_quotes(apr_pool_t *p, const char *instring);
  */
 AP_DECLARE(char *) ap_append_pid(apr_pool_t *p, const char *string,
                                  const char *delim);
-
-/**
- * Parse a given timeout parameter string into an apr_interval_time_t value.
- * The unit of the time interval is given as postfix string to the numeric
- * string. Currently the following units are understood:
- *
- * ms    : milliseconds
- * s     : seconds
- * mi[n] : minutes
- * h     : hours
- *
- * If no unit is contained in the given timeout parameter the default_time_unit
- * will be used instead.
- * @param timeout_parameter The string containing the timeout parameter.
- * @param timeout The timeout value to be returned.
- * @param default_time_unit The default time unit to use if none is specified
- * in timeout_parameter.
- * @return Status value indicating whether the parsing was successful or not.
- */
-AP_DECLARE(apr_status_t) ap_timeout_parameter_parse(
-                                               const char *timeout_parameter,
-                                               apr_interval_time_t *timeout,
-                                               const char *default_time_unit);
 
 /* Misc system hackery */
 /**

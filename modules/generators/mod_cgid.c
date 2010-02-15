@@ -49,6 +49,8 @@
 #include <sys/types.h>
 #endif
 
+#define CORE_PRIVATE
+
 #include "util_filter.h"
 #include "httpd.h"
 #include "http_config.h"
@@ -59,7 +61,7 @@
 #include "http_log.h"
 #include "util_script.h"
 #include "ap_mpm.h"
-#include "mpm_common.h"
+#include "unixd.h"
 #include "mod_suexec.h"
 #include "../filters/mod_include.h"
 
@@ -88,19 +90,8 @@ static int daemon_should_exit = 0;
 static server_rec *root_server = NULL;
 static apr_pool_t *root_pool = NULL;
 static const char *sockname;
-static struct sockaddr_un *server_addr;
-static apr_socklen_t server_addr_len;
 static pid_t parent_pid;
 static ap_unix_identity_t empty_ugid = { (uid_t)-1, (gid_t)-1, -1 };
-
-/* The APR other-child API doesn't tell us how the daemon exited
- * (SIGSEGV vs. exit(1)).  The other-child maintenance function
- * needs to decide whether to restart the daemon after a failure
- * based on whether or not it exited due to a fatal startup error
- * or something that happened at steady-state.  This exit status
- * is unlikely to collide with exit signals.
- */
-#define DAEMON_STARTUP_ERROR 254
 
 /* Read and discard the data in the brigade produced by a CGI script */
 static void discard_script_output(apr_bucket_brigade *bb);
@@ -203,7 +194,7 @@ static char **create_argv(apr_pool_t *p, char *path, char *user, char *group,
     char *w;
     int idx = 0;
 
-    if (!(*args) || ap_strchr_c(args, '=')) {
+    if (ap_strchr_c(args, '=')) {
         numwords = 0;
     }
     else {
@@ -235,8 +226,10 @@ static char **create_argv(apr_pool_t *p, char *path, char *user, char *group,
 
     for (x = 1; x <= numwords; x++) {
         w = ap_getword_nulls(p, &args, '+');
-        ap_unescape_url(w);
-        av[idx++] = ap_escape_shell_cmd(p, w);
+        if (strcmp(w, "")) {
+            ap_unescape_url(w);
+            av[idx++] = ap_escape_shell_cmd(p, w);
+        }
     }
     av[idx] = NULL;
     return av;
@@ -263,15 +256,9 @@ static void cgid_maint(int reason, void *data, apr_wait_t status)
                 stopping = 0;
             }
             if (!stopping) {
-                if (status == DAEMON_STARTUP_ERROR) {
-                    ap_log_error(APLOG_MARK, APLOG_CRIT, 0, NULL,
-                                 "cgid daemon failed to initialize");
-                }
-                else {
-                    ap_log_error(APLOG_MARK, APLOG_ERR, 0, NULL,
-                                 "cgid daemon process died, restarting");
-                    cgid_start(root_pool, root_server, proc);
-                }
+                ap_log_error(APLOG_MARK, APLOG_ERR, 0, NULL,
+                             "cgid daemon process died, restarting");
+                cgid_start(root_pool, root_server, proc);
             }
             break;
         case APR_OC_REASON_RESTART:
@@ -301,13 +288,6 @@ static void cgid_maint(int reason, void *data, apr_wait_t status)
     }
 }
 #endif
-
-static apr_status_t close_unix_socket(void *thefd)
-{
-    int fd = (int)((long)thefd);
-
-    return close(fd);
-}
 
 /* deal with incomplete reads and signals
  * assume you really have to read buf_size bytes
@@ -343,33 +323,6 @@ static apr_status_t sock_write(int fd, const void *buf, size_t buf_size)
 
     do {
         rc = write(fd, buf, buf_size);
-    } while (rc < 0 && errno == EINTR);
-    if (rc < 0) {
-        return errno;
-    }
-
-    return APR_SUCCESS;
-}
-
-static apr_status_t sock_writev(int fd, request_rec *r, int count, ...)
-{
-    va_list ap;
-    int rc;
-    struct iovec *vec;
-    int i;
-    int total_bytes = 0;
-
-    vec = (struct iovec *)apr_palloc(r->pool, count * sizeof(struct iovec));
-    va_start(ap, count);
-    for (i = 0; i < count; i++) {
-        vec[i].iov_base = va_arg(ap, caddr_t);
-        vec[i].iov_len  = va_arg(ap, apr_size_t);
-        total_bytes += vec[i].iov_len;
-    }
-    va_end(ap);
-
-    do {
-        rc = writev(fd, vec, count);
     } while (rc < 0 && errno == EINTR);
     if (rc < 0) {
         return errno;
@@ -506,31 +459,31 @@ static apr_status_t send_req(int fd, request_rec *r, char *argv0, char **env,
     req.loglevel = r->server->loglevel;
 
     /* Write the request header */
-    if (req.args_len) {
-        stat = sock_writev(fd, r, 5,
-                           &req, sizeof(req),
-                           r->filename, req.filename_len,
-                           argv0, req.argv0_len,
-                           r->uri, req.uri_len,
-                           r->args, req.args_len);
-    } else {
-        stat = sock_writev(fd, r, 4,
-                           &req, sizeof(req),
-                           r->filename, req.filename_len,
-                           argv0, req.argv0_len,
-                           r->uri, req.uri_len);
+    if ((stat = sock_write(fd, &req, sizeof(req))) != APR_SUCCESS) {
+        return stat;
     }
 
-    if (stat != APR_SUCCESS) {
+    /* Write filename, argv0, uri, and args */
+    if ((stat = sock_write(fd, r->filename, req.filename_len)) != APR_SUCCESS ||
+        (stat = sock_write(fd, argv0, req.argv0_len)) != APR_SUCCESS ||
+        (stat = sock_write(fd, r->uri, req.uri_len)) != APR_SUCCESS) {
         return stat;
+    }
+    if (req.args_len) {
+        if ((stat = sock_write(fd, r->args, req.args_len)) != APR_SUCCESS) {
+            return stat;
+        }
     }
 
     /* write the environment variables */
     for (i = 0; i < req.env_count; i++) {
         apr_size_t curlen = strlen(env[i]);
 
-        if ((stat = sock_writev(fd, r, 2, &curlen, sizeof(curlen),
-                                env[i], curlen)) != APR_SUCCESS) {
+        if ((stat = sock_write(fd, &curlen, sizeof(curlen))) != APR_SUCCESS) {
+            return stat;
+        }
+
+        if ((stat = sock_write(fd, env[i], curlen)) != APR_SUCCESS) {
             return stat;
         }
     }
@@ -600,12 +553,13 @@ static void cgid_child_errfn(apr_pool_t *pool, apr_status_t err,
 
 static int cgid_server(void *data)
 {
+    struct sockaddr_un unix_addr;
     int sd, sd2, rc;
     mode_t omask;
+    apr_socklen_t len;
     apr_pool_t *ptrans;
     server_rec *main_server = data;
     apr_hash_t *script_hash = apr_hash_make(pcgi);
-    apr_status_t rv;
 
     apr_pool_create(&ptrans, pcgi);
 
@@ -626,23 +580,18 @@ static int cgid_server(void *data)
         return errno;
     }
 
+    memset(&unix_addr, 0, sizeof(unix_addr));
+    unix_addr.sun_family = AF_UNIX;
+    apr_cpystrn(unix_addr.sun_path, sockname, sizeof unix_addr.sun_path);
+
     omask = umask(0077); /* so that only Apache can use socket */
-    rc = bind(sd, (struct sockaddr *)server_addr, server_addr_len);
+    rc = bind(sd, (struct sockaddr *)&unix_addr, sizeof(unix_addr));
     umask(omask); /* can't fail, so can't clobber errno */
     if (rc < 0) {
         ap_log_error(APLOG_MARK, APLOG_ERR, errno, main_server,
                      "Couldn't bind unix domain socket %s",
                      sockname);
         return errno;
-    }
-
-    /* Not all flavors of unix use the current umask for AF_UNIX perms */
-    rv = apr_file_perms_set(sockname, APR_FPROT_UREAD|APR_FPROT_UWRITE|APR_FPROT_UEXECUTE);
-    if (rv != APR_SUCCESS) {
-        ap_log_error(APLOG_MARK, APLOG_CRIT, rv, main_server,
-                     "Couldn't set permissions on unix domain socket %s",
-                     sockname);
-        return rv;
     }
 
     if (listen(sd, DEFAULT_CGID_LISTENBACKLOG) < 0) {
@@ -652,7 +601,7 @@ static int cgid_server(void *data)
     }
 
     if (!geteuid()) {
-        if (chown(sockname, ap_unixd_config.user_id, -1) < 0) {
+        if (chown(sockname, unixd_config.user_id, -1) < 0) {
             ap_log_error(APLOG_MARK, APLOG_ERR, errno, main_server,
                          "Couldn't change owner of unix domain socket %s",
                          sockname);
@@ -660,18 +609,12 @@ static int cgid_server(void *data)
         }
     }
 
-    apr_pool_cleanup_register(pcgi, (void *)((long)sd),
-                              close_unix_socket, close_unix_socket);
-
-    /* if running as root, switch to configured user/group */
-    if ((rc = ap_run_drop_privileges(pcgi, ap_server_conf)) != 0) {
-        return rc;
-    }
+    unixd_setup_child(); /* if running as root, switch to configured user/group */
 
     while (!daemon_should_exit) {
         int errfileno = STDERR_FILENO;
-        char *argv0 = NULL;
-        char **env = NULL;
+        char *argv0;
+        char **env;
         const char * const *argv;
         apr_int32_t in_pipe;
         apr_int32_t out_pipe;
@@ -683,9 +626,6 @@ static int cgid_server(void *data)
         apr_file_t *inout;
         cgid_req_t cgid_req;
         apr_status_t stat;
-        void *key;
-        apr_socklen_t len;
-        struct sockaddr_un unix_addr;
 
         apr_pool_clear(ptrans);
 
@@ -728,12 +668,10 @@ static int cgid_server(void *data)
 
         if (cgid_req.req_type == GETPID_REQ) {
             pid_t pid;
-            apr_status_t rv;
 
             pid = (pid_t)((long)apr_hash_get(script_hash, &cgid_req.conn_id, sizeof(cgid_req.conn_id)));
-            rv = sock_write(sd2, &pid, sizeof(pid));
-            if (rv != APR_SUCCESS) {
-                ap_log_error(APLOG_MARK, APLOG_ERR, rv,
+            if (write(sd2, &pid, sizeof(pid)) != sizeof(pid)) {
+                ap_log_error(APLOG_MARK, APLOG_ERR, 0,
                              main_server,
                              "Error writing pid %" APR_PID_T_FMT " to handler", pid);
             }
@@ -780,9 +718,6 @@ static int cgid_server(void *data)
              */
             ap_log_error(APLOG_MARK, APLOG_ERR, rc, r->server,
                          "couldn't set child process attributes: %s", r->filename);
-
-            procnew->pid = 0; /* no process to clean up */
-            close(sd2);
         }
         else {
             apr_pool_userdata_set(r, ERRFN_USERDATA_KEY, apr_pool_cleanup_null, ptrans);
@@ -819,37 +754,33 @@ static int cgid_server(void *data)
                 ap_log_error(APLOG_MARK, APLOG_ERR, rc, r->server,
                              "couldn't create child process: %d: %s", rc,
                              apr_filepath_name_get(r->filename));
+            }
+            else {
+                /* We don't want to leak storage for the key, so only allocate
+                 * a key if the key doesn't exist yet in the hash; there are
+                 * only a limited number of possible keys (one for each
+                 * possible thread in the server), so we can allocate a copy
+                 * of the key the first time a thread has a cgid request.
+                 * Note that apr_hash_set() only uses the storage passed in
+                 * for the key if it is adding the key to the hash for the
+                 * first time; new key storage isn't needed for replacing the
+                 * existing value of a key.
+                 */
+                void *key;
 
-                procnew->pid = 0; /* no process to clean up */
+                if (apr_hash_get(script_hash, &cgid_req.conn_id, sizeof(cgid_req.conn_id))) {
+                    key = &cgid_req.conn_id;
+                }
+                else {
+                    key = apr_pcalloc(pcgi, sizeof(cgid_req.conn_id));
+                    memcpy(key, &cgid_req.conn_id, sizeof(cgid_req.conn_id));
+                }
+                apr_hash_set(script_hash, key, sizeof(cgid_req.conn_id),
+                             (void *)((long)procnew->pid));
             }
         }
-
-        /* If the script process was created, remember the pid for
-         * later cleanup.  If the script process wasn't created, clear
-         * out any prior pid with the same key.
-         *
-         * We don't want to leak storage for the key, so only allocate
-         * a key if the key doesn't exist yet in the hash; there are
-         * only a limited number of possible keys (one for each
-         * possible thread in the server), so we can allocate a copy
-         * of the key the first time a thread has a cgid request.
-         * Note that apr_hash_set() only uses the storage passed in
-         * for the key if it is adding the key to the hash for the
-         * first time; new key storage isn't needed for replacing the
-         * existing value of a key.
-         */
-
-        if (apr_hash_get(script_hash, &cgid_req.conn_id, sizeof(cgid_req.conn_id))) {
-            key = &cgid_req.conn_id;
-        }
-        else {
-            key = apr_pcalloc(pcgi, sizeof(cgid_req.conn_id));
-            memcpy(key, &cgid_req.conn_id, sizeof(cgid_req.conn_id));
-        }
-        apr_hash_set(script_hash, key, sizeof(cgid_req.conn_id),
-                     (void *)((long)procnew->pid));
     }
-    return -1; /* should be <= 0 to distinguish from startup errors */
+    return -1;
 }
 
 static int cgid_start(apr_pool_t *p, server_rec *main_server,
@@ -866,7 +797,8 @@ static int cgid_start(apr_pool_t *p, server_rec *main_server,
         if (pcgi == NULL) {
             apr_pool_create(&pcgi, p);
         }
-        exit(cgid_server(main_server) > 0 ? DAEMON_STARTUP_ERROR : -1);
+        cgid_server(main_server);
+        exit(-1);
     }
     procnew->pid = daemon_pid;
     procnew->err = procnew->in = procnew->out = NULL;
@@ -917,12 +849,6 @@ static int cgid_init(apr_pool_t *p, apr_pool_t *plog, apr_pool_t *ptemp,
 
         parent_pid = getpid();
         sockname = ap_server_root_relative(p, sockname);
-
-        server_addr_len = APR_OFFSETOF(struct sockaddr_un, sun_path) + strlen(sockname);
-        server_addr = (struct sockaddr_un *)apr_palloc(p, server_addr_len + 1);
-        server_addr->sun_family = AF_UNIX;
-        strcpy(server_addr->sun_path, sockname);
-
         ret = cgid_start(p, main_server, procnew);
         if (ret != OK ) {
             return ret;
@@ -1165,12 +1091,24 @@ static int log_script(request_rec *r, cgid_server_conf * conf, int ret,
     return ret;
 }
 
+static apr_status_t close_unix_socket(void *thefd)
+{
+    int fd = (int)((long)thefd);
+
+    return close(fd);
+}
+
 static int connect_to_daemon(int *sdptr, request_rec *r,
                              cgid_server_conf *conf)
 {
+    struct sockaddr_un unix_addr;
     int sd;
     int connect_tries;
     apr_interval_time_t sliding_timer;
+
+    memset(&unix_addr, 0, sizeof(unix_addr));
+    unix_addr.sun_family = AF_UNIX;
+    apr_cpystrn(unix_addr.sun_path, sockname, sizeof unix_addr.sun_path);
 
     connect_tries = 0;
     sliding_timer = 100000; /* 100 milliseconds */
@@ -1180,7 +1118,7 @@ static int connect_to_daemon(int *sdptr, request_rec *r,
             return log_scripterror(r, conf, HTTP_INTERNAL_SERVER_ERROR, errno,
                                    "unable to create socket to cgi daemon");
         }
-        if (connect(sd, (struct sockaddr *)server_addr, server_addr_len) < 0) {
+        if (connect(sd, (struct sockaddr *)&unix_addr, sizeof(unix_addr)) < 0) {
             if (errno == ECONNREFUSED && connect_tries < DEFAULT_CONNECT_ATTEMPTS) {
                 ap_log_rerror(APLOG_MARK, APLOG_DEBUG, errno, r,
                               "connect #%d to cgi daemon failed, sleeping before retry",
@@ -1449,11 +1387,6 @@ static int cgid_handler(request_rec *r)
                             APR_BLOCK_READ, HUGE_STRING_LEN);
 
         if (rv != APR_SUCCESS) {
-            if (APR_STATUS_IS_TIMEUP(rv)) {
-                ap_log_rerror(APLOG_MARK, APLOG_ERR, rv, r,
-                              "Timeout during reading request entity data");
-                return HTTP_REQUEST_TIME_OUT;
-            }
             ap_log_rerror(APLOG_MARK, APLOG_ERR, rv, r,
                           "Error reading request entity data");
             return HTTP_INTERNAL_SERVER_ERROR;

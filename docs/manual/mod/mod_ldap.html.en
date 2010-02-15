@@ -13,16 +13,15 @@
 <body>
 <div id="page-header">
 <p class="menu"><a href="../mod/">Modules</a> | <a href="../mod/directives.html">Directives</a> | <a href="../faq/">FAQ</a> | <a href="../glossary.html">Glossary</a> | <a href="../sitemap.html">Sitemap</a></p>
-<p class="apache">Apache HTTP Server Version 2.3</p>
+<p class="apache">Apache HTTP Server Version 2.2</p>
 <img alt="" src="../images/feather.gif" /></div>
 <div class="up"><a href="./"><img title="&lt;-" alt="&lt;-" src="../images/left.gif" /></a></div>
 <div id="path">
-<a href="http://www.apache.org/">Apache</a> &gt; <a href="http://httpd.apache.org/">HTTP Server</a> &gt; <a href="http://httpd.apache.org/docs/">Documentation</a> &gt; <a href="../">Version 2.3</a> &gt; <a href="./">Modules</a></div>
+<a href="http://www.apache.org/">Apache</a> &gt; <a href="http://httpd.apache.org/">HTTP Server</a> &gt; <a href="http://httpd.apache.org/docs/">Documentation</a> &gt; <a href="../">Version 2.2</a> &gt; <a href="./">Modules</a></div>
 <div id="page-content">
 <div id="preamble"><h1>Apache Module mod_ldap</h1>
 <div class="toplang">
-<p><span>Available Languages: </span><a href="../en/mod/mod_ldap.html" title="English">&nbsp;en&nbsp;</a> |
-<a href="../fr/mod/mod_ldap.html" hreflang="fr" rel="alternate" title="Français">&nbsp;fr&nbsp;</a></p>
+<p><span>Available Languages: </span><a href="../en/mod/mod_ldap.html" title="English">&nbsp;en&nbsp;</a></p>
 </div>
 <table class="module"><tr><th><a href="module-dict.html#Description">Description:</a></th><td>LDAP connection pooling and result caching services for use
 by other LDAP modules</td></tr>
@@ -60,14 +59,10 @@ by other LDAP modules</td></tr>
 <li><img alt="" src="../images/down.gif" /> <a href="#ldapcacheentries">LDAPCacheEntries</a></li>
 <li><img alt="" src="../images/down.gif" /> <a href="#ldapcachettl">LDAPCacheTTL</a></li>
 <li><img alt="" src="../images/down.gif" /> <a href="#ldapconnectiontimeout">LDAPConnectionTimeout</a></li>
-<li><img alt="" src="../images/down.gif" /> <a href="#ldaplibrarydebug">LDAPLibraryDebug</a></li>
 <li><img alt="" src="../images/down.gif" /> <a href="#ldapopcacheentries">LDAPOpCacheEntries</a></li>
 <li><img alt="" src="../images/down.gif" /> <a href="#ldapopcachettl">LDAPOpCacheTTL</a></li>
-<li><img alt="" src="../images/down.gif" /> <a href="#ldapreferralhoplimit">LDAPReferralHopLimit</a></li>
-<li><img alt="" src="../images/down.gif" /> <a href="#ldapreferrals">LDAPReferrals</a></li>
 <li><img alt="" src="../images/down.gif" /> <a href="#ldapsharedcachefile">LDAPSharedCacheFile</a></li>
 <li><img alt="" src="../images/down.gif" /> <a href="#ldapsharedcachesize">LDAPSharedCacheSize</a></li>
-<li><img alt="" src="../images/down.gif" /> <a href="#ldaptimeout">LDAPTimeout</a></li>
 <li><img alt="" src="../images/down.gif" /> <a href="#ldaptrustedclientcert">LDAPTrustedClientCert</a></li>
 <li><img alt="" src="../images/down.gif" /> <a href="#ldaptrustedglobalcert">LDAPTrustedGlobalCert</a></li>
 <li><img alt="" src="../images/down.gif" /> <a href="#ldaptrustedmode">LDAPTrustedMode</a></li>
@@ -95,7 +90,7 @@ by other LDAP modules</td></tr>
       # be loaded. Change the "yourdomain.example.com" to<br />
       # match your domain.<br />
       <br />
-      LDAPSharedCacheSize 500000<br />
+      LDAPSharedCacheSize 200000<br />
       LDAPCacheEntries 1024<br />
       LDAPCacheTTL 600<br />
       LDAPOpCacheEntries 1024<br />
@@ -107,11 +102,8 @@ by other LDAP modules</td></tr>
         Order deny,allow<br />
         Deny from all<br />
         Allow from yourdomain.example.com<br />
-        Satisfy any<br />
-        AuthType Basic<br />
-        AuthName "LDAP Protected"<br />
-        AuthBasicProvider ldap<br />
         AuthLDAPURL ldap://127.0.0.1/dc=example,dc=com?uid?one<br />
+        AuthzLDAPAuthoritative off<br />
         Require valid-user<br />
       </span>
       &lt;/Location&gt;
@@ -135,15 +127,6 @@ by other LDAP modules</td></tr>
     <p>There is no need to manually enable connection pooling in
     the Apache configuration. Any module using this module for
     access to LDAP services will share the connection pool.</p>
-
-    <p>LDAP connections can keep track of the ldap client
-    credentials used when binding to an LDAP server. These
-    credentials can be provided to LDAP servers that do not
-    allow anonymous binds during referral chasing. To control
-    this feature, see the <code class="directive"><a href="#&#10;    ldapreferrals">
-    LDAPReferrals</a></code> and <code class="directive"><a href="#&#10;    ldapreferralhoplimit">
-    LDAPReferralHopLimit</a></code> directives. By default,
-    this feature is enabled.</p>
 </div><div class="top"><a href="#page-header"><img alt="top" src="../images/up.gif" /></a></div>
 <div class="section">
 <h2><a name="cache" id="cache">LDAP Cache</a></h2>
@@ -192,9 +175,6 @@ by other LDAP modules</td></tr>
       group membership. The second compare cache is used to cache
       the results of comparisons done between distinguished
       names.</p>
-
-      <p>Note that, when group membership is being checked, any sub-group
-      comparison results are cached to speed future sub-group comparisons.</p>
 
       <p>The behavior of both of these caches is controlled with
       the <code class="directive"><a href="#ldapopcacheentries">LDAPOpCacheEntries</a></code>
@@ -250,11 +230,8 @@ by other LDAP modules</td></tr>
         Order deny,allow<br />
         Deny from all<br />
         Allow from yourdomain.example.com<br />
-        Satisfy any<br />
-        AuthType Basic<br />
-        AuthName "LDAP Protected"<br />
-        AuthBasicProvider ldap<br />
         AuthLDAPURL ldaps://127.0.0.1/dc=example,dc=com?uid?one<br />
+        AuthzLDAPAuthoritative off<br />
         Require valid-user<br />
       </span>
       &lt;/Location&gt;
@@ -273,11 +250,8 @@ by other LDAP modules</td></tr>
         Order deny,allow<br />
         Deny from all<br />
         Allow from yourdomain.example.com<br />
-        Satisfy any<br />
-        AuthType Basic<br />
-        AuthName "LDAP Protected"<br />
-        AuthBasicProvider ldap<br />
         AuthLDAPURL ldap://127.0.0.1/dc=example,dc=com?uid?one TLS<br />
+        AuthzLDAPAuthoritative off<br />
         Require valid-user<br />
       </span>
       &lt;/Location&gt;
@@ -327,12 +301,9 @@ by other LDAP modules</td></tr>
                 Order deny,allow<br />
                 Deny from all<br />
                 Allow from yourdomain.example.com<br />
-                Satisfy any<br />
-                AuthType Basic<br />
-                AuthName "LDAP Protected"<br />
-                AuthBasicProvider ldap<br />
                 LDAPTrustedClientCert CERT_NICKNAME &lt;nickname&gt; [password]<br />
                 AuthLDAPURL ldaps://127.0.0.1/dc=example,dc=com?uid?one<br />
+                AuthzLDAPAuthoritative off<br />
                 Require valid-user<br />
             </span>
             &lt;/Location&gt;
@@ -398,11 +369,8 @@ by other LDAP modules</td></tr>
                 Allow from yourdomain.example.com<br />
                 LDAPTrustedClientCert CERT_BASE64 /certs/cert1.pem<br />
                 LDAPTrustedClientCert KEY_BASE64 /certs/key1.pem<br />
-                Satisfy any<br />
-                AuthType Basic<br />
-                AuthName "LDAP Protected"<br />
-                AuthBasicProvider ldap<br />
                 AuthLDAPURL ldaps://127.0.0.1/dc=example,dc=com?uid?one<br />
+                AuthzLDAPAuthoritative off<br />
                 Require valid-user<br />
             </span>
             &lt;/Location&gt;
@@ -473,51 +441,11 @@ by other LDAP modules</td></tr>
 <tr><th><a href="directive-dict.html#Status">Status:</a></th><td>Extension</td></tr>
 <tr><th><a href="directive-dict.html#Module">Module:</a></th><td>mod_ldap</td></tr>
 </table>
-    <p>This directive configures the LDAP_OPT_NETWORK_TIMEOUT option in the
-    underlying LDAP client library, when available.  This value typically 
-    controls how long the LDAP client library will wait for the TCP connection
-    to the LDAP server to complete.</p>
-
-    <p> If a connection is not successful with the timeout period, either an error will be 
-    returned or the LDAP client library will attempt to connect to a secondary LDAP 
-    server if one is specified (via a space-separated list of hostnames in the 
-    <code class="directive"><a href="#authldapurl">AuthLDAPURL</a></code>).</p>
-
-    <p>The default is 10 seconds, if the LDAP client library linked with the 
-    server supports the LDAP_OPT_NETWORK_TIMEOUT option.</p>
-
-    <div class="note">LDAPConnectionTimeout is only available when the LDAP client library linked
-    with the server supports the LDAP_OPT_NETWORK_TIMEOUT option, and the
-    ultimate behavior is dictated entirely by the LDAP client library.
-    </div>
-
-</div>
-<div class="top"><a href="#page-header"><img alt="top" src="../images/up.gif" /></a></div>
-<div class="directive-section"><h2><a name="LDAPLibraryDebug" id="LDAPLibraryDebug">LDAPLibraryDebug</a> <a name="ldaplibrarydebug" id="ldaplibrarydebug">Directive</a></h2>
-<table class="directive">
-<tr><th><a href="directive-dict.html#Description">Description:</a></th><td>Enable debugging in the LDAP SDK</td></tr>
-<tr><th><a href="directive-dict.html#Syntax">Syntax:</a></th><td><code>LDAPLibraryDebug <var>7</var></code></td></tr>
-<tr><th><a href="directive-dict.html#Default">Default:</a></th><td><code>disabled</code></td></tr>
-<tr><th><a href="directive-dict.html#Context">Context:</a></th><td>server config</td></tr>
-<tr><th><a href="directive-dict.html#Status">Status:</a></th><td>Extension</td></tr>
-<tr><th><a href="directive-dict.html#Module">Module:</a></th><td>mod_ldap</td></tr>
-</table>
-    <p>Turns on SDK-specific LDAP debug options that generally cause the LDAP 
-    SDK to log verbose trace information to the main Apache error log.  
-    The trace messages from the LDAP SDK provide gory details that
-    can be useful during debugging of connectivity problems with backend LDAP servers</p>
-
-    <p>This option is only configurable when Apache HTTP Server is linked with 
-    an LDAP SDK that implements <code>LDAP_OPT_DEBUG</code> or 
-    <code>LDAP_OPT_DEBUG_LEVEL</code>, such as OpenLDAP (a value of 7 is verbose) 
-    or Tivoli Directory Server (a value of 65535 is verbose).</p>
-
-    <div class="warning">
-    <p>The logged information will likely contain plaintext credentials being used or 
-    validated by LDAP authentication, so care should be taken in protecting and purging
-    the error log when this directive is used.</p>
-    </div>
-    
+    <p>Specifies the timeout value (in seconds) in which the module will
+    attempt to connect to the LDAP server.  If a connection is not
+    successful with the timeout period, either an error will be 
+    returned or the module will attempt to connect to a secondary LDAP 
+    server if one is specified. The default is 10 seconds.</p>
 
 </div>
 <div class="top"><a href="#page-header"><img alt="top" src="../images/up.gif" /></a></div>
@@ -552,46 +480,6 @@ valid</td></tr>
 
 </div>
 <div class="top"><a href="#page-header"><img alt="top" src="../images/up.gif" /></a></div>
-<div class="directive-section"><h2><a name="LDAPReferralHopLimit" id="LDAPReferralHopLimit">LDAPReferralHopLimit</a> <a name="ldapreferralhoplimit" id="ldapreferralhoplimit">Directive</a></h2>
-<table class="directive">
-<tr><th><a href="directive-dict.html#Description">Description:</a></th><td>The maximum number of referral hops to chase before terminating an LDAP query.</td></tr>
-<tr><th><a href="directive-dict.html#Syntax">Syntax:</a></th><td><code>LDAPReferralHopLimit <var>number</var></code></td></tr>
-<tr><th><a href="directive-dict.html#Default">Default:</a></th><td><code>SDK dependent, typically between 5 and 10</code></td></tr>
-<tr><th><a href="directive-dict.html#Context">Context:</a></th><td>directory, .htaccess</td></tr>
-<tr><th><a href="directive-dict.html#Override">Override:</a></th><td>AuthConfig</td></tr>
-<tr><th><a href="directive-dict.html#Status">Status:</a></th><td>Extension</td></tr>
-<tr><th><a href="directive-dict.html#Module">Module:</a></th><td>mod_ldap</td></tr>
-</table>
-    <p>This directive, if enabled by the <code>LDAPReferrals</code> directive,
-    limits the number of referral hops that are followed before terminating an
-    LDAP query.</p>
-
-<div class="warning">
-<p> Support for this tunable is uncommon in LDAP SDKs.</p>
-</div>
-
-</div>
-<div class="top"><a href="#page-header"><img alt="top" src="../images/up.gif" /></a></div>
-<div class="directive-section"><h2><a name="LDAPReferrals" id="LDAPReferrals">LDAPReferrals</a> <a name="ldapreferrals" id="ldapreferrals">Directive</a></h2>
-<table class="directive">
-<tr><th><a href="directive-dict.html#Description">Description:</a></th><td>Enable referral chasing during queries to the LDAP server.</td></tr>
-<tr><th><a href="directive-dict.html#Syntax">Syntax:</a></th><td><code>LDAPReferrals <var>On|Off</var></code></td></tr>
-<tr><th><a href="directive-dict.html#Default">Default:</a></th><td><code>LDAPReferrals On</code></td></tr>
-<tr><th><a href="directive-dict.html#Context">Context:</a></th><td>directory, .htaccess</td></tr>
-<tr><th><a href="directive-dict.html#Override">Override:</a></th><td>AuthConfig</td></tr>
-<tr><th><a href="directive-dict.html#Status">Status:</a></th><td>Extension</td></tr>
-<tr><th><a href="directive-dict.html#Module">Module:</a></th><td>mod_ldap</td></tr>
-</table>
-    <p>Some LDAP servers divide their directory among multiple domains and use referrals
-    to direct a client when a domain boundary is crossed. By setting <code>LDAPReferrals On</code>
-    referrals will be chased (setting it to off causes referrals to be ignored). The directive
-    <code>LDAPReferralHopLimit</code> works in conjunction with this directive to limit the
-    number of referral hops to follow before terminating the LDAP query. When referral processing
-    is enabled client credentials will be provided, via a rebind callback, for any LDAP server
-    requiring them. </p> 
-
-</div>
-<div class="top"><a href="#page-header"><img alt="top" src="../images/up.gif" /></a></div>
 <div class="directive-section"><h2><a name="LDAPSharedCacheFile" id="LDAPSharedCacheFile">LDAPSharedCacheFile</a> <a name="ldapsharedcachefile" id="ldapsharedcachefile">Directive</a></h2>
 <table class="directive">
 <tr><th><a href="directive-dict.html#Description">Description:</a></th><td>Sets the shared memory cache file</td></tr>
@@ -610,38 +498,14 @@ valid</td></tr>
 <table class="directive">
 <tr><th><a href="directive-dict.html#Description">Description:</a></th><td>Size in bytes of the shared-memory cache</td></tr>
 <tr><th><a href="directive-dict.html#Syntax">Syntax:</a></th><td><code>LDAPSharedCacheSize <var>bytes</var></code></td></tr>
-<tr><th><a href="directive-dict.html#Default">Default:</a></th><td><code>LDAPSharedCacheSize 500000</code></td></tr>
+<tr><th><a href="directive-dict.html#Default">Default:</a></th><td><code>LDAPSharedCacheSize 102400</code></td></tr>
 <tr><th><a href="directive-dict.html#Context">Context:</a></th><td>server config</td></tr>
 <tr><th><a href="directive-dict.html#Status">Status:</a></th><td>Extension</td></tr>
 <tr><th><a href="directive-dict.html#Module">Module:</a></th><td>mod_ldap</td></tr>
 </table>
     <p>Specifies the number of bytes to allocate for the shared
-    memory cache. The default is 500kb. If set to 0, shared memory
+    memory cache. The default is 100kb. If set to 0, shared memory
     caching will not be used.</p>
-
-</div>
-<div class="top"><a href="#page-header"><img alt="top" src="../images/up.gif" /></a></div>
-<div class="directive-section"><h2><a name="LDAPTimeout" id="LDAPTimeout">LDAPTimeout</a> <a name="ldaptimeout" id="ldaptimeout">Directive</a></h2>
-<table class="directive">
-<tr><th><a href="directive-dict.html#Description">Description:</a></th><td>Specifies the timeout for LDAP search and bind operations, in seconds</td></tr>
-<tr><th><a href="directive-dict.html#Syntax">Syntax:</a></th><td><code>LDAPTimeout <var>seconds</var></code></td></tr>
-<tr><th><a href="directive-dict.html#Default">Default:</a></th><td><code>LDAPTimeout 60</code></td></tr>
-<tr><th><a href="directive-dict.html#Context">Context:</a></th><td>server config</td></tr>
-<tr><th><a href="directive-dict.html#Status">Status:</a></th><td>Extension</td></tr>
-<tr><th><a href="directive-dict.html#Module">Module:</a></th><td>mod_ldap</td></tr>
-</table>
-    <p>This directive configures the timeout for bind and search operations, as well as
-    the LDAP_OPT_TIMEOUT option in the underlying LDAP client library, when available.</p>
-
-    <p> If the timeout expires, httpd will retry in case an existing connection has
-    been silently dropped by a firewall. However, performance will be much better if
-    the firewall is configured to send TCP RST packets instead of silently dropping
-    packets.</p>
-
-    <div class="note">
-    <p>Timeouts for ldap compare operations requires an SDK with LDAP_OPT_TIMEOUT, such as OpenLDAP &gt;= 2.4.4.</p>
-    </div>
-
 
 </div>
 <div class="top"><a href="#page-header"><img alt="top" src="../images/up.gif" /></a></div>
@@ -756,9 +620,8 @@ Certificate Authority or global client certificates</td></tr>
 </div>
 </div>
 <div class="bottomlang">
-<p><span>Available Languages: </span><a href="../en/mod/mod_ldap.html" title="English">&nbsp;en&nbsp;</a> |
-<a href="../fr/mod/mod_ldap.html" hreflang="fr" rel="alternate" title="Français">&nbsp;fr&nbsp;</a></p>
+<p><span>Available Languages: </span><a href="../en/mod/mod_ldap.html" title="English">&nbsp;en&nbsp;</a></p>
 </div><div id="footer">
-<p class="apache">Copyright 2010 The Apache Software Foundation.<br />Licensed under the <a href="http://www.apache.org/licenses/LICENSE-2.0">Apache License, Version 2.0</a>.</p>
+<p class="apache">Copyright 2007 The Apache Software Foundation.<br />Licensed under the <a href="http://www.apache.org/licenses/LICENSE-2.0">Apache License, Version 2.0</a>.</p>
 <p class="menu"><a href="../mod/">Modules</a> | <a href="../mod/directives.html">Directives</a> | <a href="../faq/">FAQ</a> | <a href="../glossary.html">Glossary</a> | <a href="../sitemap.html">Sitemap</a></p></div>
 </body></html>

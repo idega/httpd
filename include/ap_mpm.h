@@ -15,7 +15,7 @@
  */
 
 /**
- * @file  ap_mpm.h
+ * @file  ap_mmn.h
  * @brief Apache Multi-Processing Module library
  *
  * @defgroup APACHE_CORE_MPM Multi-Processing Module library
@@ -27,7 +27,6 @@
 #define AP_MPM_H
 
 #include "apr_thread_proc.h"
-#include "httpd.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -80,22 +79,31 @@ extern "C" {
 */
 
 /**
- * Pass control to the MPM for steady-state processing.  It is responsible
- * for controlling the parent and child processes.  It will run until a
+ * This is the function that MPMs must create.  This function is responsible
+ * for controlling the parent and child processes.  It will run until a 
  * restart/shutdown is indicated.
  * @param pconf the configuration pool, reset before the config file is read
  * @param plog the log pool, reset after the config file is read
  * @param server_conf the global server config.
- * @return DONE for shutdown OK otherwise.
+ * @return 1 for shutdown 0 otherwise.
+ * @deffunc int ap_mpm_run(apr_pool_t *pconf, apr_pool_t *plog, server_rec *server_conf)
  */
-AP_DECLARE_HOOK(int, mpm, (apr_pool_t *pconf, apr_pool_t *plog, server_rec *server_conf))
+AP_DECLARE(int) ap_mpm_run(apr_pool_t *pconf, apr_pool_t *plog, server_rec *server_conf);
+
+/**
+ * predicate indicating if a graceful stop has been requested ...
+ * used by the connection loop 
+ * @return 1 if a graceful stop has been requested, 0 otherwise
+ * @deffunc int ap_graceful_stop_signalled(*void)
+ */
+AP_DECLARE(int) ap_graceful_stop_signalled(void);
 
 /**
  * Spawn a process with privileges that another module has requested
  * @param r The request_rec of the current request
  * @param newproc The resulting process handle.
  * @param progname The program to run 
- * @param args the arguments to pass to the new program.  The first 
+ * @param const_args the arguments to pass to the new program.  The first 
  *                   one should be the program name.
  * @param env The new environment apr_table_t for the new process.  This 
  *            should be a list of NULL-terminated strings.
@@ -142,30 +150,16 @@ AP_DECLARE(apr_status_t) ap_os_create_privileged_process(
 #define AP_MPMQ_MAX_DAEMONS          12  /* Max # of daemons by config   */
 #define AP_MPMQ_MPM_STATE            13  /* starting, running, stopping  */
 #define AP_MPMQ_IS_ASYNC             14  /* MPM can process async connections  */
-#define AP_MPMQ_GENERATION           15  /* MPM generation */
-#define AP_MPMQ_HAS_SERF             16  /* MPM can drive serf internally  */
 
 /**
- * Query a property of the current MPM.
+ * Query a property of the current MPM.  
  * @param query_code One of APM_MPMQ_*
  * @param result A location to place the result of the query
- * @return APR_EGENERAL if an mpm-query hook has not been registered;
- * APR_SUCCESS or APR_ENOTIMPL otherwise
- * @remark The MPM doesn't register the implementing hook until the
- * register_hooks hook is called, so modules cannot use ap_mpm_query()
- * until after that point.
- * @fn int ap_mpm_query(int query_code, int *result)
+ * @return APR_SUCCESS or APR_ENOTIMPL
+ * @deffunc int ap_mpm_query(int query_code, int *result)
  */
 AP_DECLARE(apr_status_t) ap_mpm_query(int query_code, int *result);
 
-
-typedef void (ap_mpm_callback_fn_t)(void *baton);
-
-/* only added support in the Event MPM....  check for APR_ENOTIMPL */
-AP_DECLARE(apr_status_t) ap_mpm_register_timed_callback(apr_time_t t,
-                                                       ap_mpm_callback_fn_t *cbfn,
-                                                       void *baton);
-    
 /* Defining GPROF when compiling uses the moncontrol() function to
  * disable gprof profiling in the parent, and enable it only for
  * request processing in children (or in one_process mode).  It's

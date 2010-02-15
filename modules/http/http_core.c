@@ -20,6 +20,7 @@
 #define APR_WANT_STRFUNC
 #include "apr_want.h"
 
+#define CORE_PRIVATE
 #include "httpd.h"
 #include "http_config.h"
 #include "http_connection.h"
@@ -41,43 +42,44 @@ AP_DECLARE_DATA ap_filter_rec_t *ap_chunk_filter_handle;
 AP_DECLARE_DATA ap_filter_rec_t *ap_http_outerror_filter_handle;
 AP_DECLARE_DATA ap_filter_rec_t *ap_byterange_filter_handle;
 
-/* If we are using an MPM That Supports Async Connections,
- * use a different processing function
- */
-static int async_mpm = 0;
+static int ap_process_http_connection(conn_rec *c);
 
 static const char *set_keep_alive_timeout(cmd_parms *cmd, void *dummy,
                                           const char *arg)
 {
-    apr_interval_time_t timeout;
-    const char *err = ap_check_cmd_context(cmd, NOT_IN_DIR_LOC_FILE);
+    const char *err = ap_check_cmd_context(cmd, NOT_IN_DIR_LOC_FILE|NOT_IN_LIMIT);
     if (err != NULL) {
         return err;
     }
 
-    /* Stolen from mod_proxy.c */
-    if (ap_timeout_parameter_parse(arg, &timeout, "s") != APR_SUCCESS)
-        return "KeepAliveTimeout has wrong format";
-    cmd->server->keep_alive_timeout = timeout;
+    cmd->server->keep_alive_timeout = apr_time_from_sec(atoi(arg));
     return NULL;
 }
 
 static const char *set_keep_alive(cmd_parms *cmd, void *dummy,
-                                  int arg)
+                                  const char *arg)
 {
-    const char *err = ap_check_cmd_context(cmd, NOT_IN_DIR_LOC_FILE);
+    const char *err = ap_check_cmd_context(cmd, NOT_IN_DIR_LOC_FILE|NOT_IN_LIMIT);
     if (err != NULL) {
         return err;
     }
 
-    cmd->server->keep_alive = arg;
+    /* We've changed it to On/Off, but used to use numbers
+     * so we accept anything but "Off" or "0" as "On"
+     */
+    if (!strcasecmp(arg, "off") || !strcmp(arg, "0")) {
+        cmd->server->keep_alive = 0;
+    }
+    else {
+        cmd->server->keep_alive = 1;
+    }
     return NULL;
 }
 
 static const char *set_keep_alive_max(cmd_parms *cmd, void *dummy,
                                       const char *arg)
 {
-    const char *err = ap_check_cmd_context(cmd, NOT_IN_DIR_LOC_FILE);
+    const char *err = ap_check_cmd_context(cmd, NOT_IN_DIR_LOC_FILE|NOT_IN_LIMIT);
     if (err != NULL) {
         return err;
     }
@@ -92,7 +94,7 @@ static const command_rec http_cmds[] = {
     AP_INIT_TAKE1("MaxKeepAliveRequests", set_keep_alive_max, NULL, RSRC_CONF,
                   "Maximum number of Keep-Alive requests per connection, "
                   "or 0 for infinite"),
-    AP_INIT_FLAG("KeepAlive", set_keep_alive, NULL, RSRC_CONF,
+    AP_INIT_TAKE1("KeepAlive", set_keep_alive, NULL, RSRC_CONF,
                   "Whether persistent connections should be On or Off"),
     { NULL }
 };
@@ -124,10 +126,14 @@ static int ap_process_http_async_connection(conn_rec *c)
     request_rec *r;
     conn_state_t *cs = c->cs;
 
+    if (c->clogging_input_filters) {
+        return ap_process_http_connection(c);
+    }
+    
     AP_DEBUG_ASSERT(cs->state == CONN_STATE_READ_REQUEST_LINE);
 
     while (cs->state == CONN_STATE_READ_REQUEST_LINE) {
-        ap_update_child_status_from_conn(c->sbh, SERVER_BUSY_READ, c);
+        ap_update_child_status(c->sbh, SERVER_BUSY_READ, NULL);
 
         if ((r = ap_read_request(c))) {
 
@@ -135,24 +141,25 @@ static int ap_process_http_async_connection(conn_rec *c)
             /* process the request if it was read without error */
 
             ap_update_child_status(c->sbh, SERVER_BUSY_WRITE, r);
-            if (r->status == HTTP_OK) {
-                cs->state = CONN_STATE_HANDLER;
-                ap_process_async_request(r);
-                /* After the call to ap_process_request, the
-                 * request pool may have been deleted.  We set
-                 * r=NULL here to ensure that any dereference
-                 * of r that might be added later in this function
-                 * will result in a segfault immediately instead
-                 * of nondeterministic failures later.
-                 */
-                r = NULL;
-            }
+            if (r->status == HTTP_OK)
+                ap_process_request(r);
 
-            if (cs->state != CONN_STATE_WRITE_COMPLETION && 
-                cs->state != CONN_STATE_SUSPENDED) {
-                /* Something went wrong; close the connection */
+            if (ap_extended_status)
+                ap_increment_counts(c->sbh, r);
+
+            if (c->keepalive != AP_CONN_KEEPALIVE || c->aborted
+                    || ap_graceful_stop_signalled()) {
                 cs->state = CONN_STATE_LINGER;
             }
+            else if (!c->data_in_input_filters) {
+                cs->state = CONN_STATE_CHECK_REQUEST_LINE_READABLE;
+            }
+
+            /* else we are pipelining.  Stay in READ_REQUEST_LINE state
+             *  and stay in the loop
+             */
+
+            apr_pool_destroy(r->pool);
         }
         else {   /* ap_read_request failed - client may have closed */
             cs->state = CONN_STATE_LINGER;
@@ -162,50 +169,37 @@ static int ap_process_http_async_connection(conn_rec *c)
     return OK;
 }
 
-static int ap_process_http_sync_connection(conn_rec *c)
+static int ap_process_http_connection(conn_rec *c)
 {
     request_rec *r;
-    conn_state_t *cs = c->cs;
     apr_socket_t *csd = NULL;
-    int mpm_state = 0;
 
     /*
      * Read and process each request found on our connection
      * until no requests are left or we decide to close.
      */
 
-    ap_update_child_status_from_conn(c->sbh, SERVER_BUSY_READ, c);
+    ap_update_child_status(c->sbh, SERVER_BUSY_READ, NULL);
     while ((r = ap_read_request(c)) != NULL) {
 
         c->keepalive = AP_CONN_UNKNOWN;
         /* process the request if it was read without error */
 
         ap_update_child_status(c->sbh, SERVER_BUSY_WRITE, r);
-        if (r->status == HTTP_OK) {
-            cs->state = CONN_STATE_HANDLER;
+        if (r->status == HTTP_OK)
             ap_process_request(r);
-            /* After the call to ap_process_request, the
-             * request pool will have been deleted.  We set
-             * r=NULL here to ensure that any dereference
-             * of r that might be added later in this function
-             * will result in a segfault immediately instead
-             * of nondeterministic failures later.
-             */
-            r = NULL;
-        }
+
+        if (ap_extended_status)
+            ap_increment_counts(c->sbh, r);
 
         if (c->keepalive != AP_CONN_KEEPALIVE || c->aborted)
             break;
 
-        ap_update_child_status(c->sbh, SERVER_BUSY_KEEPALIVE, NULL);
+        ap_update_child_status(c->sbh, SERVER_BUSY_KEEPALIVE, r);
+        apr_pool_destroy(r->pool);
 
-        if (ap_mpm_query(AP_MPMQ_MPM_STATE, &mpm_state)) {
+        if (ap_graceful_stop_signalled())
             break;
-        }
-
-        if (mpm_state == AP_MPMQ_STOPPING) {
-          break;
-        }
 
         if (!csd) {
             csd = ap_get_module_config(c->conn_config, &core_module);
@@ -216,16 +210,6 @@ static int ap_process_http_sync_connection(conn_rec *c)
     }
 
     return OK;
-}
-
-static int ap_process_http_connection(conn_rec *c)
-{
-    if (async_mpm && !c->clogging_input_filters) {
-        return ap_process_http_async_connection(c);
-    }
-    else {
-        return ap_process_http_sync_connection(c);
-    }
 }
 
 static int http_create_request(request_rec *r)
@@ -253,19 +237,23 @@ static int http_send_options(request_rec *r)
     return DECLINED;
 }
 
-static int http_post_config(apr_pool_t *p, apr_pool_t *plog, apr_pool_t *ptemp, server_rec *s)
-{
-    if (ap_mpm_query(AP_MPMQ_IS_ASYNC, &async_mpm) != APR_SUCCESS) {
-        async_mpm = 0;
-    }
-    return OK;
-}
-
 static void register_hooks(apr_pool_t *p)
 {
-    ap_hook_post_config(http_post_config, NULL, NULL, APR_HOOK_MIDDLE);
-    ap_hook_process_connection(ap_process_http_connection, NULL, NULL,
-                               APR_HOOK_REALLY_LAST);
+    /**
+     * If we ae using an MPM That Supports Async Connections,
+     * use a different processing function
+     */
+    int async_mpm = 0;
+    if (ap_mpm_query(AP_MPMQ_IS_ASYNC, &async_mpm) == APR_SUCCESS
+        && async_mpm == 1) {
+        ap_hook_process_connection(ap_process_http_async_connection, NULL,
+                                   NULL, APR_HOOK_REALLY_LAST);
+    }
+    else {
+        ap_hook_process_connection(ap_process_http_connection, NULL, NULL,
+                                   APR_HOOK_REALLY_LAST);
+    }
+
     ap_hook_map_to_storage(ap_send_http_trace,NULL,NULL,APR_HOOK_MIDDLE);
     ap_hook_map_to_storage(http_send_options,NULL,NULL,APR_HOOK_MIDDLE);
     ap_hook_http_scheme(http_scheme,NULL,NULL,APR_HOOK_REALLY_LAST);

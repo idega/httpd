@@ -46,7 +46,6 @@ struct dav_resource_private {
     apr_pool_t *pool;        /* memory storage pool associated with request */
     const char *pathname;   /* full pathname to resource */
     apr_finfo_t finfo;       /* filesystem info */
-    request_rec *r;
 };
 
 /* private context for doing a filesystem walk */
@@ -120,30 +119,15 @@ enum {
 ** Does this platform support an executable flag?
 **
 ** ### need a way to portably abstract this query
-**
-** DAV_FINFO_MASK gives the appropriate mask to use for the stat call
-** used to get file attributes.
 */
 #ifndef WIN32
 #define DAV_FS_HAS_EXECUTABLE
-#define DAV_FINFO_MASK (APR_FINFO_LINK | APR_FINFO_TYPE | APR_FINFO_INODE | \
-                        APR_FINFO_SIZE | APR_FINFO_CTIME | APR_FINFO_MTIME | \
-                        APR_FINFO_PROT)
-#else
-/* as above, but without APR_FINFO_PROT */
-#define DAV_FINFO_MASK (APR_FINFO_LINK | APR_FINFO_TYPE | APR_FINFO_INODE | \
-                        APR_FINFO_SIZE | APR_FINFO_CTIME | APR_FINFO_MTIME)
 #endif
 
 /*
 ** The single property that we define (in the DAV_FS_URI_MYPROPS namespace)
 */
 #define DAV_PROPID_FS_executable        1
-
-/*
- * prefix for temporary files
- */
-#define DAV_FS_TMP_PREFIX ".davfs." 
 
 static const dav_liveprop_spec dav_fs_props[] =
 {
@@ -197,14 +181,11 @@ struct dav_stream {
     apr_pool_t *p;
     apr_file_t *f;
     const char *pathname;       /* we may need to remove it at close time */
-    char *temppath;
-    int unlink_on_error;
 };
 
 /* returns an appropriate HTTP status code given an APR status code for a
  * failed I/O operation.  ### use something besides 500? */
 #define MAP_IO2HTTP(e) (APR_STATUS_IS_ENOSPC(e) ? HTTP_INSUFFICIENT_STORAGE : \
-                        APR_STATUS_IS_ENOENT(e) ? HTTP_CONFLICT : \
                         HTTP_INTERNAL_SERVER_ERROR)
 
 /* forward declaration for internal treewalkers */
@@ -219,11 +200,6 @@ static dav_error * dav_fs_internal_walk(const dav_walk_params *params,
 **
 ** PRIVATE REPOSITORY FUNCTIONS
 */
-static request_rec *dav_fs_get_request_rec(const dav_resource *resource)
-{
-    return resource->info->r;
-}
-
 apr_pool_t *dav_fs_pool(const dav_resource *resource)
 {
     return resource->info->pool;
@@ -282,7 +258,7 @@ dav_error * dav_fs_dir_file_name(
                 *fname_p = ctx->pathname + dirlen;
         }
         else {
-            return dav_new_error(ctx->pool, HTTP_INTERNAL_SERVER_ERROR, 0, rv,
+            return dav_new_error(ctx->pool, HTTP_INTERNAL_SERVER_ERROR, 0,
                                  "An incomplete/bad path was found in "
                                  "dav_fs_dir_file_name.");
         }
@@ -349,8 +325,8 @@ static dav_error * dav_fs_copymove_file(
 
         if (dst_finfo != NULL) {
             /* chmod it if it already exist */
-            if ((status = apr_file_perms_set(dst, perms)) != APR_SUCCESS) {
-                return dav_new_error(p, HTTP_INTERNAL_SERVER_ERROR, 0, status,
+            if (apr_file_perms_set(dst, perms)) {
+                return dav_new_error(p, HTTP_INTERNAL_SERVER_ERROR, 0,
                                      "Could not set permissions on destination");
             }
         }
@@ -361,10 +337,10 @@ static dav_error * dav_fs_copymove_file(
 
     dav_set_bufsize(p, pbuf, DAV_FS_COPY_BLOCKSIZE);
 
-    if ((status = apr_file_open(&inf, src, APR_READ | APR_BINARY, 
-                                APR_OS_DEFAULT, p)) != APR_SUCCESS) {
+    if ((apr_file_open(&inf, src, APR_READ | APR_BINARY, APR_OS_DEFAULT, p))
+            != APR_SUCCESS) {
         /* ### use something besides 500? */
-        return dav_new_error(p, HTTP_INTERNAL_SERVER_ERROR, 0, status,
+        return dav_new_error(p, HTTP_INTERNAL_SERVER_ERROR, 0,
                              "Could not open file for reading");
     }
 
@@ -374,7 +350,7 @@ static dav_error * dav_fs_copymove_file(
     if (status != APR_SUCCESS) {
         apr_file_close(inf);
 
-        return dav_new_error(p, MAP_IO2HTTP(status), 0, status,
+        return dav_new_error(p, MAP_IO2HTTP(status), 0,
                              "Could not open file for writing");
     }
 
@@ -383,24 +359,21 @@ static dav_error * dav_fs_copymove_file(
 
         status = apr_file_read(inf, pbuf->buf, &len);
         if (status != APR_SUCCESS && status != APR_EOF) {
-            apr_status_t lcl_status;
-
             apr_file_close(inf);
             apr_file_close(outf);
 
-            if ((lcl_status = apr_file_remove(dst, p)) != APR_SUCCESS) {
+            if (apr_file_remove(dst, p) != APR_SUCCESS) {
                 /* ### ACK! Inconsistent state... */
 
                 /* ### use something besides 500? */
-                return dav_new_error(p, HTTP_INTERNAL_SERVER_ERROR, 0, 
-                                     lcl_status,
+                return dav_new_error(p, HTTP_INTERNAL_SERVER_ERROR, 0,
                                      "Could not delete output after read "
                                      "failure. Server is now in an "
                                      "inconsistent state.");
             }
 
             /* ### use something besides 500? */
-            return dav_new_error(p, HTTP_INTERNAL_SERVER_ERROR, 0, status,
+            return dav_new_error(p, HTTP_INTERNAL_SERVER_ERROR, 0,
                                  "Could not read input file");
         }
 
@@ -410,23 +383,20 @@ static dav_error * dav_fs_copymove_file(
         /* write any bytes that were read */
         status = apr_file_write_full(outf, pbuf->buf, len, NULL);
         if (status != APR_SUCCESS) {
-            apr_status_t lcl_status;
-
             apr_file_close(inf);
             apr_file_close(outf);
 
-            if ((lcl_status = apr_file_remove(dst, p)) != APR_SUCCESS) {
+            if (apr_file_remove(dst, p) != APR_SUCCESS) {
                 /* ### ACK! Inconsistent state... */
 
                 /* ### use something besides 500? */
                 return dav_new_error(p, HTTP_INTERNAL_SERVER_ERROR, 0,
-                                     lcl_status,
                                      "Could not delete output after write "
                                      "failure. Server is now in an "
                                      "inconsistent state.");
             }
 
-            return dav_new_error(p, MAP_IO2HTTP(status), 0, status,
+            return dav_new_error(p, MAP_IO2HTTP(status), 0,
                                  "Could not write output file");
         }
     }
@@ -434,36 +404,26 @@ static dav_error * dav_fs_copymove_file(
     apr_file_close(inf);
     apr_file_close(outf);
 
-    if (is_move && (status = apr_file_remove(src, p)) != APR_SUCCESS) {
+    if (is_move && apr_file_remove(src, p) != APR_SUCCESS) {
         dav_error *err;
-        apr_status_t lcl_status;
+        int save_errno = errno;   /* save the errno that got us here */
 
-        if (APR_STATUS_IS_ENOENT(status)) {
-            /*
-             * Something is wrong here but the result is what we wanted.
-             * We definitely should not remove the destination file.
-             */
-            err = dav_new_error(p, HTTP_INTERNAL_SERVER_ERROR, 0, status,
-                                 apr_psprintf(p, "Could not remove source "
-                                              "file %s after move to %s. The "
-                                              "server may be in an "
-                                              "inconsistent state.", src, dst));
-            return err;
-        } 
-        else if ((lcl_status = apr_file_remove(dst, p)) != APR_SUCCESS) {
+        if (apr_file_remove(dst, p) != APR_SUCCESS) {
             /* ### ACK. this creates an inconsistency. do more!? */
 
             /* ### use something besides 500? */
-            return dav_new_error(p, HTTP_INTERNAL_SERVER_ERROR, 0, lcl_status,
+            /* Note that we use the latest errno */
+            return dav_new_error(p, HTTP_INTERNAL_SERVER_ERROR, 0,
                                  "Could not remove source or destination "
                                  "file. Server is now in an inconsistent "
                                  "state.");
         }
 
         /* ### use something besides 500? */
-        err = dav_new_error(p, HTTP_INTERNAL_SERVER_ERROR, 0, status,
+        err = dav_new_error(p, HTTP_INTERNAL_SERVER_ERROR, 0,
                             "Could not remove source file after move. "
                             "Destination was removed to ensure consistency.");
+        err->save_errno = save_errno;
         return err;
     }
 
@@ -504,7 +464,7 @@ static dav_error * dav_fs_copymove_state(
     if (rv != APR_SUCCESS) {
         if (!APR_STATUS_IS_EEXIST(rv)) {
             /* ### use something besides 500? */
-            return dav_new_error(p, HTTP_INTERNAL_SERVER_ERROR, 0, rv,
+            return dav_new_error(p, HTTP_INTERNAL_SERVER_ERROR, 0,
                                  "Could not create internal state directory");
         }
     }
@@ -514,7 +474,7 @@ static dav_error * dav_fs_copymove_state(
     if (rv != APR_SUCCESS && rv != APR_INCOMPLETE) {
         /* Ack! Where'd it go? */
         /* ### use something besides 500? */
-        return dav_new_error(p, HTTP_INTERNAL_SERVER_ERROR, 0, rv,
+        return dav_new_error(p, HTTP_INTERNAL_SERVER_ERROR, 0,
                              "State directory disappeared");
     }
 
@@ -522,7 +482,7 @@ static dav_error * dav_fs_copymove_state(
     if (dst_state_finfo.filetype != APR_DIR) {
         /* ### try to recover by deleting this file? (and mkdir again) */
         /* ### use something besides 500? */
-        return dav_new_error(p, HTTP_INTERNAL_SERVER_ERROR, 0, 0,
+        return dav_new_error(p, HTTP_INTERNAL_SERVER_ERROR, 0,
                              "State directory is actually a file");
     }
 
@@ -530,15 +490,11 @@ static dav_error * dav_fs_copymove_state(
     dst = apr_pstrcat(p, dst, "/", dst_file, NULL);
 
     /* copy/move the file now */
-    if (is_move) {
-        /* try simple rename first */
-        rv = apr_file_rename(src, dst, p);
-        if (APR_STATUS_IS_EXDEV(rv)) {
-            return dav_fs_copymove_file(is_move, p, src, dst, NULL, NULL, pbuf);
-        }
-        if (rv != APR_SUCCESS) {
+    if (is_move && src_finfo.device == dst_state_finfo.device) {
+        /* simple rename is possible since it is on the same device */
+        if (apr_file_rename(src, dst, p) != APR_SUCCESS) {
             /* ### use something besides 500? */
-            return dav_new_error(p, HTTP_INTERNAL_SERVER_ERROR, 0, rv,
+            return dav_new_error(p, HTTP_INTERNAL_SERVER_ERROR, 0,
                                  "Could not move state file.");
         }
     }
@@ -577,7 +533,7 @@ static dav_error *dav_fs_copymoveset(int is_move, apr_pool_t *p,
 #if DAV_DEBUG
     if ((src_state2 != NULL && dst_state2 == NULL) ||
         (src_state2 == NULL && dst_state2 != NULL)) {
-        return dav_new_error(p, HTTP_INTERNAL_SERVER_ERROR, 0, 0,
+        return dav_new_error(p, HTTP_INTERNAL_SERVER_ERROR, 0,
                              "DESIGN ERROR: dav_dbm_get_statefiles() "
                              "returned inconsistent results.");
     }
@@ -634,7 +590,7 @@ static dav_error *dav_fs_deleteset(apr_pool_t *p, const dav_resource *resource)
     /* note: we may get ENOENT if the state dir is not present */
     if ((status = apr_file_remove(pathname, p)) != APR_SUCCESS
         && !APR_STATUS_IS_ENOENT(status)) {
-        return dav_new_error(p, HTTP_INTERNAL_SERVER_ERROR, 0, status,
+        return dav_new_error(p, HTTP_INTERNAL_SERVER_ERROR, 0,
                              "Could not remove properties.");
     }
 
@@ -649,7 +605,7 @@ static dav_error *dav_fs_deleteset(apr_pool_t *p, const dav_resource *resource)
         if ((status = apr_file_remove(pathname, p)) != APR_SUCCESS
             && !APR_STATUS_IS_ENOENT(status)) {
             /* ### CRAP. only removed half. */
-            return dav_new_error(p, HTTP_INTERNAL_SERVER_ERROR, 0, status,
+            return dav_new_error(p, HTTP_INTERNAL_SERVER_ERROR, 0,
                                  "Could not fully remove properties. "
                                  "The server is now in an inconsistent "
                                  "state.");
@@ -682,7 +638,6 @@ static dav_error * dav_fs_get_resource(
     /* Create private resource context descriptor */
     ctx = apr_pcalloc(r->pool, sizeof(*ctx));
     ctx->finfo = r->finfo;
-    ctx->r = r;
 
     /* ### this should go away */
     ctx->pool = r->pool;
@@ -754,7 +709,7 @@ static dav_error * dav_fs_get_resource(
                 ** be in path_info. The resource is simply an error: it
                 ** can't be a null or a locknull resource.
                 */
-                return dav_new_error(r->pool, HTTP_BAD_REQUEST, 0, 0,
+                return dav_new_error(r->pool, HTTP_BAD_REQUEST, 0,
                                      "The URL contains extraneous path "
                                      "components. The resource could not "
                                      "be identified.");
@@ -876,14 +831,6 @@ static int dav_fs_is_parent_resource(
             && ctx2->pathname[len1] == '/');
 }
 
-static apr_status_t tmpfile_cleanup(void *data) {
-        dav_stream *ds = data;
-        if (ds->temppath) {
-                apr_file_remove(ds->temppath, ds->p);
-        }
-        return APR_SUCCESS;
-}
-
 static dav_error * dav_fs_open_stream(const dav_resource *resource,
                                       dav_stream_mode mode,
                                       dav_stream **stream)
@@ -908,34 +855,9 @@ static dav_error * dav_fs_open_stream(const dav_resource *resource,
 
     ds->p = p;
     ds->pathname = resource->info->pathname;
-    ds->temppath = NULL;
-    ds->unlink_on_error = 0;
-
-    if (mode == DAV_MODE_WRITE_TRUNC) {
-        ds->temppath = apr_pstrcat(p, ap_make_dirstr_parent(p, ds->pathname),
-                                   DAV_FS_TMP_PREFIX "XXXXXX", NULL);
-        rv = apr_file_mktemp(&ds->f, ds->temppath, flags, ds->p);
-        apr_pool_cleanup_register(p, ds, tmpfile_cleanup,
-                                  apr_pool_cleanup_null);
-    }
-    else if (mode == DAV_MODE_WRITE_SEEKABLE) {
-        rv = apr_file_open(&ds->f, ds->pathname, flags | APR_FOPEN_EXCL,
-                           APR_OS_DEFAULT, ds->p);
-        if (rv == APR_SUCCESS) {
-            /* we have created a new file */
-            ds->unlink_on_error = 1;
-        }
-        else if (APR_STATUS_IS_EEXIST(rv)) {
-            rv = apr_file_open(&ds->f, ds->pathname, flags, APR_OS_DEFAULT,
-                               ds->p);
-        }
-    }
-    else {
-        rv = apr_file_open(&ds->f, ds->pathname, flags, APR_OS_DEFAULT, ds->p);
-    }
-
+    rv = apr_file_open(&ds->f, ds->pathname, flags, APR_OS_DEFAULT, ds->p);
     if (rv != APR_SUCCESS) {
-        return dav_new_error(p, MAP_IO2HTTP(rv), 0, rv,
+        return dav_new_error(p, MAP_IO2HTTP(rv), 0,
                              "An error occurred while opening a resource.");
     }
 
@@ -947,34 +869,16 @@ static dav_error * dav_fs_open_stream(const dav_resource *resource,
 
 static dav_error * dav_fs_close_stream(dav_stream *stream, int commit)
 {
-    apr_status_t rv;
-
     apr_file_close(stream->f);
 
     if (!commit) {
-        if (stream->temppath) {
-            apr_pool_cleanup_run(stream->p, stream, tmpfile_cleanup);
+        if (apr_file_remove(stream->pathname, stream->p) != APR_SUCCESS) {
+            /* ### use a better description? */
+            return dav_new_error(stream->p, HTTP_INTERNAL_SERVER_ERROR, 0,
+                                 "There was a problem removing (rolling "
+                                 "back) the resource "
+                                 "when it was being closed.");
         }
-        else if (stream->unlink_on_error) {
-            if ((rv = apr_file_remove(stream->pathname, stream->p))
-                != APR_SUCCESS) {
-                /* ### use a better description? */
-                return dav_new_error(stream->p, HTTP_INTERNAL_SERVER_ERROR, 0,
-                                     rv,
-                                     "There was a problem removing (rolling "
-                                     "back) the resource "
-                                     "when it was being closed.");
-            }
-        }
-    }
-    else if (stream->temppath) {
-        rv = apr_file_rename(stream->temppath, stream->pathname, stream->p);
-        if (rv) {
-            return dav_new_error(stream->p, HTTP_INTERNAL_SERVER_ERROR, 0, rv,
-                                 "There was a problem writing the file "
-                                 "atomically after writes.");
-        }
-        apr_pool_cleanup_kill(stream->p, stream, tmpfile_cleanup);
     }
 
     return NULL;
@@ -987,13 +891,13 @@ static dav_error * dav_fs_write_stream(dav_stream *stream,
 
     status = apr_file_write_full(stream->f, buf, bufsize, NULL);
     if (APR_STATUS_IS_ENOSPC(status)) {
-        return dav_new_error(stream->p, HTTP_INSUFFICIENT_STORAGE, 0, status,
+        return dav_new_error(stream->p, HTTP_INSUFFICIENT_STORAGE, 0,
                              "There is not enough storage to write to "
                              "this resource.");
     }
     else if (status != APR_SUCCESS) {
         /* ### use something besides 500? */
-        return dav_new_error(stream->p, HTTP_INTERNAL_SERVER_ERROR, 0, status,
+        return dav_new_error(stream->p, HTTP_INTERNAL_SERVER_ERROR, 0,
                              "An error occurred while writing to a "
                              "resource.");
     }
@@ -1002,14 +906,11 @@ static dav_error * dav_fs_write_stream(dav_stream *stream,
 
 static dav_error * dav_fs_seek_stream(dav_stream *stream, apr_off_t abs_pos)
 {
-    apr_status_t status;
-
-    if ((status = apr_file_seek(stream->f, APR_SET, &abs_pos))
-        != APR_SUCCESS) {
+    if (apr_file_seek(stream->f, APR_SET, &abs_pos) != APR_SUCCESS) {
         /* ### should check whether apr_file_seek set abs_pos was set to the
          * correct position? */
         /* ### use something besides 500? */
-        return dav_new_error(stream->p, HTTP_INTERNAL_SERVER_ERROR, 0, status,
+        return dav_new_error(stream->p, HTTP_INTERNAL_SERVER_ERROR, 0,
                              "Could not seek to specified position in the "
                              "resource.");
     }
@@ -1061,11 +962,11 @@ static dav_error * dav_fs_deliver(const dav_resource *resource,
     if (resource->type != DAV_RESOURCE_TYPE_REGULAR
         && resource->type != DAV_RESOURCE_TYPE_VERSION
         && resource->type != DAV_RESOURCE_TYPE_WORKING) {
-        return dav_new_error(pool, HTTP_CONFLICT, 0, 0,
+        return dav_new_error(pool, HTTP_CONFLICT, 0,
                              "Cannot GET this type of resource.");
     }
     if (resource->collection) {
-        return dav_new_error(pool, HTTP_CONFLICT, 0, 0,
+        return dav_new_error(pool, HTTP_CONFLICT, 0,
                              "There is no default response to GET for a "
                              "collection.");
     }
@@ -1073,19 +974,23 @@ static dav_error * dav_fs_deliver(const dav_resource *resource,
     if ((status = apr_file_open(&fd, resource->info->pathname,
                                 APR_READ | APR_BINARY, 0,
                                 pool)) != APR_SUCCESS) {
-        return dav_new_error(pool, HTTP_FORBIDDEN, 0, status,
+        return dav_new_error(pool, HTTP_FORBIDDEN, 0,
                              "File permissions deny server access.");
     }
 
     bb = apr_brigade_create(pool, output->c->bucket_alloc);
 
-    apr_brigade_insert_file(bb, fd, 0, resource->info->finfo.size, pool);
+    /* ### this does not handle large files. but this is test code anyway */
+    bkt = apr_bucket_file_create(fd, 0,
+                                 (apr_size_t)resource->info->finfo.size,
+                                 pool, output->c->bucket_alloc);
+    APR_BRIGADE_INSERT_TAIL(bb, bkt);
 
     bkt = apr_bucket_eos_create(output->c->bucket_alloc);
     APR_BRIGADE_INSERT_TAIL(bb, bkt);
 
     if ((status = ap_pass_brigade(output, bb)) != APR_SUCCESS) {
-        return dav_new_error(pool, HTTP_FORBIDDEN, 0, status,
+        return dav_new_error(pool, HTTP_FORBIDDEN, 0,
                              "Could not write contents to filter.");
     }
 
@@ -1102,18 +1007,18 @@ static dav_error * dav_fs_create_collection(dav_resource *resource)
 
     status = apr_dir_make(ctx->pathname, APR_OS_DEFAULT, ctx->pool);
     if (APR_STATUS_IS_ENOSPC(status)) {
-        return dav_new_error(ctx->pool, HTTP_INSUFFICIENT_STORAGE, 0, status,
+        return dav_new_error(ctx->pool, HTTP_INSUFFICIENT_STORAGE, 0,
                              "There is not enough storage to create "
                              "this collection.");
     }
     else if (APR_STATUS_IS_ENOENT(status)) {
-        return dav_new_error(ctx->pool, HTTP_CONFLICT, 0, status,
+        return dav_new_error(ctx->pool, HTTP_CONFLICT, 0,
                              "Cannot create collection; intermediate "
                              "collection does not exist.");
     }
     else if (status != APR_SUCCESS) {
         /* ### refine this error message? */
-        return dav_new_error(ctx->pool, HTTP_FORBIDDEN, 0, status,
+        return dav_new_error(ctx->pool, HTTP_FORBIDDEN, 0,
                              "Unable to create collection.");
     }
 
@@ -1127,7 +1032,6 @@ static dav_error * dav_fs_create_collection(dav_resource *resource)
 static dav_error * dav_fs_copymove_walker(dav_walk_resource *wres,
                                           int calltype)
 {
-    apr_status_t status;
     dav_fs_copymove_walk_ctx *ctx = wres->walk_ctx;
     dav_resource_private *srcinfo = wres->resource->info;
     dav_resource_private *dstinfo = ctx->res_dst->info;
@@ -1143,11 +1047,11 @@ static dav_error * dav_fs_copymove_walker(dav_walk_resource *wres,
         }
         else {
             /* copy/move of a collection. Create the new, target collection */
-            if ((status = apr_dir_make(dstinfo->pathname, APR_OS_DEFAULT,
-                                       ctx->pool)) != APR_SUCCESS) {
+            if (apr_dir_make(dstinfo->pathname, APR_OS_DEFAULT,
+                             ctx->pool) != APR_SUCCESS) {
                 /* ### assume it was a permissions problem */
                 /* ### need a description here */
-                err = dav_new_error(ctx->pool, HTTP_FORBIDDEN, 0, status, NULL);
+                err = dav_new_error(ctx->pool, HTTP_FORBIDDEN, 0, NULL);
             }
         }
     }
@@ -1226,7 +1130,7 @@ static dav_error *dav_fs_copymove_resource(
 
         if ((*response = multi_status) != NULL) {
             /* some multistatus responses exist. wrap them in a 207 */
-            return dav_new_error(src->info->pool, HTTP_MULTI_STATUS, 0, 0,
+            return dav_new_error(src->info->pool, HTTP_MULTI_STATUS, 0,
                                  "Error(s) occurred on some resources during "
                                  "the COPY/MOVE process.");
         }
@@ -1262,7 +1166,7 @@ static dav_error * dav_fs_copy_resource(
         ** ### strictly speaking, this is a design error; we should not
         ** ### have reached this point.
         */
-        return dav_new_error(src->info->pool, HTTP_INTERNAL_SERVER_ERROR, 0, 0,
+        return dav_new_error(src->info->pool, HTTP_INTERNAL_SERVER_ERROR, 0,
                              "DESIGN ERROR: a mix of repositories "
                              "was passed to copy_resource.");
     }
@@ -1287,7 +1191,7 @@ static dav_error * dav_fs_move_resource(
     dav_resource_private *srcinfo = src->info;
     dav_resource_private *dstinfo = dst->info;
     dav_error *err;
-    apr_status_t rv;
+    int can_rename = 0;
 
 #if DAV_DEBUG
     if (src->hooks != dst->hooks) {
@@ -1295,18 +1199,45 @@ static dav_error * dav_fs_move_resource(
         ** ### strictly speaking, this is a design error; we should not
         ** ### have reached this point.
         */
-        return dav_new_error(src->info->pool, HTTP_INTERNAL_SERVER_ERROR, 0, 0,
+        return dav_new_error(src->info->pool, HTTP_INTERNAL_SERVER_ERROR, 0,
                              "DESIGN ERROR: a mix of repositories "
                              "was passed to move_resource.");
     }
 #endif
 
+    /* determine whether a simple rename will work.
+     * Assume source exists, else we wouldn't get called.
+     */
+    if (dstinfo->finfo.filetype != 0) {
+        if (dstinfo->finfo.device == srcinfo->finfo.device) {
+            /* target exists and is on the same device. */
+            can_rename = 1;
+        }
+    }
+    else {
+        const char *dirpath;
+        apr_finfo_t finfo;
+        apr_status_t rv;
 
-    /* try rename first */
-    rv = apr_file_rename(srcinfo->pathname, dstinfo->pathname, srcinfo->pool);
+        /* destination does not exist, but the parent directory should,
+         * so try it
+         */
+        dirpath = ap_make_dirstr_parent(dstinfo->pool, dstinfo->pathname);
+        /*
+         * XXX: If missing dev ... then what test?
+         * Really need a try and failover for those platforms.
+         *
+         */
+        rv = apr_stat(&finfo, dirpath, APR_FINFO_DEV, dstinfo->pool);
+        if ((rv == APR_SUCCESS || rv == APR_INCOMPLETE)
+            && (finfo.valid & srcinfo->finfo.valid & APR_FINFO_DEV)
+            && (finfo.device == srcinfo->finfo.device)) {
+            can_rename = 1;
+        }
+    }
 
     /* if we can't simply rename, then do it the hard way... */
-    if (APR_STATUS_IS_EXDEV(rv)) {
+    if (!can_rename) {
         if ((err = dav_fs_copymove_resource(1, src, dst, DAV_INFINITY,
                                             response)) == NULL) {
             /* update resource states */
@@ -1319,16 +1250,20 @@ static dav_error * dav_fs_move_resource(
         return err;
     }
 
+    /* a rename should work. do it, and move properties as well */
+
     /* no multistatus response */
     *response = NULL;
 
-    if (rv != APR_SUCCESS) {
+    /* ### APR has no rename? */
+    if (apr_file_rename(srcinfo->pathname, dstinfo->pathname,
+                       srcinfo->pool) != APR_SUCCESS) {
         /* ### should have a better error than this. */
-        return dav_new_error(srcinfo->pool, HTTP_INTERNAL_SERVER_ERROR, 0, rv,
+        return dav_new_error(srcinfo->pool, HTTP_INTERNAL_SERVER_ERROR, 0,
                              "Could not rename resource.");
     }
 
-    /* Rename did work. Update resource states and move properties as well */
+    /* update resource states */
     dst->exists = 1;
     dst->collection = src->collection;
     src->exists = 0;
@@ -1409,7 +1344,6 @@ static dav_error * dav_fs_delete_walker(dav_walk_resource *wres, int calltype)
 static dav_error * dav_fs_remove_resource(dav_resource *resource,
                                           dav_response **response)
 {
-    apr_status_t status;
     dav_resource_private *info = resource->info;
 
     *response = NULL;
@@ -1437,7 +1371,7 @@ static dav_error * dav_fs_remove_resource(dav_resource *resource,
 
         if ((*response = multi_status) != NULL) {
             /* some multistatus responses exist. wrap them in a 207 */
-            return dav_new_error(info->pool, HTTP_MULTI_STATUS, 0, 0,
+            return dav_new_error(info->pool, HTTP_MULTI_STATUS, 0,
                                  "Error(s) occurred on some resources during "
                                  "the deletion process.");
         }
@@ -1450,9 +1384,9 @@ static dav_error * dav_fs_remove_resource(dav_resource *resource,
     }
 
     /* not a collection; remove the file and its properties */
-    if ((status = apr_file_remove(info->pathname, info->pool)) != APR_SUCCESS) {
+    if (apr_file_remove(info->pathname, info->pool) != APR_SUCCESS) {
         /* ### put a description in here */
-        return dav_new_error(info->pool, HTTP_FORBIDDEN, 0, status, NULL);
+        return dav_new_error(info->pool, HTTP_FORBIDDEN, 0, NULL);
     }
 
     /* update resource state */
@@ -1470,7 +1404,6 @@ static dav_error * dav_fs_walker(dav_fs_walker_context *fsctx, int depth)
 {
     const dav_walk_params *params = fsctx->params;
     apr_pool_t *pool = params->pool;
-    apr_status_t status;
     dav_error *err = NULL;
     int isdir = fsctx->res1.collection;
     apr_finfo_t dirent;
@@ -1512,12 +1445,13 @@ static dav_error * dav_fs_walker(dav_fs_walker_context *fsctx, int depth)
     fsctx->res2.collection = 0;
 
     /* open and scan the directory */
-    if ((status = apr_dir_open(&dirp, fsctx->path1.buf, pool)) != APR_SUCCESS) {
+    if ((apr_dir_open(&dirp, fsctx->path1.buf, pool)) != APR_SUCCESS) {
         /* ### need a better error */
-        return dav_new_error(pool, HTTP_NOT_FOUND, 0, status, NULL);
+        return dav_new_error(pool, HTTP_NOT_FOUND, 0, NULL);
     }
     while ((apr_dir_read(&dirent, APR_FINFO_DIRENT, dirp)) == APR_SUCCESS) {
         apr_size_t len;
+        apr_status_t status;
 
         len = strlen(dirent.name);
 
@@ -1531,30 +1465,28 @@ static dav_error * dav_fs_walker(dav_fs_walker_context *fsctx, int depth)
             /* ### need to authorize each file */
             /* ### example: .htaccess is normally configured to fail auth */
 
-            /* stuff in the state directory and temp files are never authorized! */
-            if (!strcmp(dirent.name, DAV_FS_STATE_DIR) ||
-                !strncmp(dirent.name, DAV_FS_TMP_PREFIX,
-                         strlen(DAV_FS_TMP_PREFIX))) {
+            /* stuff in the state directory is never authorized! */
+            if (!strcmp(dirent.name, DAV_FS_STATE_DIR)) {
                 continue;
             }
         }
-        /* skip the state dir and temp files unless a HIDDEN is performed */
+        /* skip the state dir unless a HIDDEN is performed */
         if (!(params->walk_type & DAV_WALKTYPE_HIDDEN)
-            && (!strcmp(dirent.name, DAV_FS_STATE_DIR) ||
-                !strncmp(dirent.name, DAV_FS_TMP_PREFIX,
-                         strlen(DAV_FS_TMP_PREFIX)))) {
+            && !strcmp(dirent.name, DAV_FS_STATE_DIR)) {
             continue;
         }
 
         /* append this file onto the path buffer (copy null term) */
         dav_buffer_place_mem(pool, &fsctx->path1, dirent.name, len + 1, 0);
 
+
+        /* ### Optimize me, dirent can give us what we need! */
         status = apr_stat(&fsctx->info1.finfo, fsctx->path1.buf,
-                          DAV_FINFO_MASK, pool);
+                          APR_FINFO_NORM | APR_FINFO_LINK, pool);
         if (status != APR_SUCCESS && status != APR_INCOMPLETE) {
             /* woah! where'd it go? */
             /* ### should have a better error here */
-            err = dav_new_error(pool, HTTP_NOT_FOUND, 0, status, NULL);
+            err = dav_new_error(pool, HTTP_NOT_FOUND, 0, NULL);
             break;
         }
 
@@ -1754,7 +1686,7 @@ static dav_error * dav_fs_internal_walk(const dav_walk_params *params,
 #if DAV_DEBUG
     if ((params->walk_type & DAV_WALKTYPE_LOCKNULL) != 0
         && params->lockdb == NULL) {
-        return dav_new_error(params->pool, HTTP_INTERNAL_SERVER_ERROR, 0, 0,
+        return dav_new_error(params->pool, HTTP_INTERNAL_SERVER_ERROR, 0,
                              "DESIGN ERROR: walker called to walk locknull "
                              "resources, but a lockdb was not provided.");
     }
@@ -1880,9 +1812,6 @@ static const dav_hooks_repository dav_hooks_repository_fs =
     dav_fs_remove_resource,
     dav_fs_walk,
     dav_fs_getetag,
-    NULL,
-    dav_fs_get_request_rec,
-    dav_fs_pathname
 };
 
 static dav_prop_insert dav_fs_insert_prop(const dav_resource *resource,
@@ -2025,7 +1954,7 @@ static dav_error *dav_fs_patch_validate(const dav_resource *resource,
     }
 
     if (operation == DAV_PROP_OP_DELETE) {
-        return dav_new_error(resource->info->pool, HTTP_CONFLICT, 0, 0,
+        return dav_new_error(resource->info->pool, HTTP_CONFLICT, 0,
                              "The 'executable' property cannot be removed.");
     }
 
@@ -2040,7 +1969,7 @@ static dav_error *dav_fs_patch_validate(const dav_resource *resource,
 
     if (cdata == NULL) {
         if (f_cdata == NULL) {
-            return dav_new_error(resource->info->pool, HTTP_CONFLICT, 0, 0,
+            return dav_new_error(resource->info->pool, HTTP_CONFLICT, 0,
                                  "The 'executable' property expects a single "
                                  "character, valued 'T' or 'F'. There was no "
                                  "value submitted.");
@@ -2055,7 +1984,7 @@ static dav_error *dav_fs_patch_validate(const dav_resource *resource,
 
     value = cdata->text[0];
     if (value != 'T' && value != 'F') {
-        return dav_new_error(resource->info->pool, HTTP_CONFLICT, 0, 0,
+        return dav_new_error(resource->info->pool, HTTP_CONFLICT, 0,
                              "The 'executable' property expects a single "
                              "character, valued 'T' or 'F'. The value "
                              "submitted is invalid.");
@@ -2066,7 +1995,7 @@ static dav_error *dav_fs_patch_validate(const dav_resource *resource,
     return NULL;
 
   too_long:
-    return dav_new_error(resource->info->pool, HTTP_CONFLICT, 0, 0,
+    return dav_new_error(resource->info->pool, HTTP_CONFLICT, 0,
                          "The 'executable' property expects a single "
                          "character, valued 'T' or 'F'. The value submitted "
                          "has too many characters.");
@@ -2081,7 +2010,6 @@ static dav_error *dav_fs_patch_exec(const dav_resource *resource,
 {
     long value = context != NULL;
     apr_fileperms_t perms = resource->info->finfo.protection;
-    apr_status_t status;
     long old_value = (perms & APR_UEXECUTE) != 0;
 
     /* assert: prop == executable. operation == SET. */
@@ -2095,10 +2023,9 @@ static dav_error *dav_fs_patch_exec(const dav_resource *resource,
     if (value)
         perms |= APR_UEXECUTE;
 
-    if ((status = apr_file_perms_set(resource->info->pathname, perms))
-        != APR_SUCCESS) {
+    if (apr_file_perms_set(resource->info->pathname, perms) != APR_SUCCESS) {
         return dav_new_error(resource->info->pool,
-                             HTTP_INTERNAL_SERVER_ERROR, 0, status,
+                             HTTP_INTERNAL_SERVER_ERROR, 0,
                              "Could not set the executable flag of the "
                              "target resource.");
     }
@@ -2124,7 +2051,6 @@ static dav_error *dav_fs_patch_rollback(const dav_resource *resource,
                                         dav_liveprop_rollback *rollback_ctx)
 {
     apr_fileperms_t perms = resource->info->finfo.protection & ~APR_UEXECUTE;
-    apr_status_t status;
     int value = rollback_ctx != NULL;
 
     /* assert: prop == executable. operation == SET. */
@@ -2133,10 +2059,9 @@ static dav_error *dav_fs_patch_rollback(const dav_resource *resource,
     if (value)
         perms |= APR_UEXECUTE;
 
-    if ((status = apr_file_perms_set(resource->info->pathname, perms))
-        != APR_SUCCESS) {
+    if (apr_file_perms_set(resource->info->pathname, perms) != APR_SUCCESS) {
         return dav_new_error(resource->info->pool,
-                             HTTP_INTERNAL_SERVER_ERROR, 0, status,
+                             HTTP_INTERNAL_SERVER_ERROR, 0,
                              "After a failure occurred, the resource's "
                              "executable flag could not be restored.");
     }

@@ -15,6 +15,7 @@
  */
 
 #include "ap_config.h"
+#define CORE_PRIVATE
 #include "httpd.h"
 #include "http_config.h"
 #include "http_main.h"
@@ -50,12 +51,177 @@
 #include <sys/prctl.h>
 #endif
 
-unixd_config_rec ap_unixd_config;
+unixd_config_rec unixd_config;
+
+/* Set group privileges.
+ *
+ * Note that we use the username as set in the config files, rather than
+ * the lookup of to uid --- the same uid may have multiple passwd entries,
+ * with different sets of groups for each.
+ */
+
+static int set_group_privs(void)
+{
+    if (!geteuid()) {
+        const char *name;
+
+        /* Get username if passed as a uid */
+
+        if (unixd_config.user_name[0] == '#') {
+            struct passwd *ent;
+            uid_t uid = atoi(&unixd_config.user_name[1]);
+
+            if ((ent = getpwuid(uid)) == NULL) {
+                ap_log_error(APLOG_MARK, APLOG_ALERT, errno, NULL,
+                         "getpwuid: couldn't determine user name from uid %u, "
+                         "you probably need to modify the User directive",
+                         (unsigned)uid);
+                return -1;
+            }
+
+            name = ent->pw_name;
+        }
+        else
+            name = unixd_config.user_name;
+
+#if !defined(OS2) && !defined(TPF)
+        /* OS/2 and TPF don't support groups. */
+
+        /*
+         * Set the GID before initgroups(), since on some platforms
+         * setgid() is known to zap the group list.
+         */
+        if (setgid(unixd_config.group_id) == -1) {
+            ap_log_error(APLOG_MARK, APLOG_ALERT, errno, NULL,
+                        "setgid: unable to set group id to Group %u",
+                        (unsigned)unixd_config.group_id);
+            return -1;
+        }
+
+        /* Reset `groups' attributes. */
+
+        if (initgroups(name, unixd_config.group_id) == -1) {
+            ap_log_error(APLOG_MARK, APLOG_ALERT, errno, NULL,
+                        "initgroups: unable to set groups for User %s "
+                        "and Group %u", name, (unsigned)unixd_config.group_id);
+            return -1;
+        }
+#endif /* !defined(OS2) && !defined(TPF) */
+    }
+    return 0;
+}
 
 
-AP_DECLARE(void) ap_unixd_set_rlimit(cmd_parms *cmd, struct rlimit **plimit,
-                                     const char *arg,
-                                     const char * arg2, int type)
+AP_DECLARE(int) unixd_setup_child(void)
+{
+    if (set_group_privs()) {
+        return -1;
+    }
+#ifdef MPE
+    /* Only try to switch if we're running as MANAGER.SYS */
+    if (geteuid() == 1 && unixd_config.user_id > 1) {
+        GETPRIVMODE();
+        if (setuid(unixd_config.user_id) == -1) {
+            GETUSERMODE();
+            ap_log_error(APLOG_MARK, APLOG_ALERT, errno, NULL,
+                        "setuid: unable to change to uid: %ld",
+                        (long) unixd_config.user_id);
+            exit(1);
+        }
+        GETUSERMODE();
+    }
+#else
+    /* Only try to switch if we're running as root */
+    if (!geteuid() && (
+#ifdef _OSD_POSIX
+        os_init_job_environment(NULL, unixd_config.user_name, ap_exists_config_define("DEBUG")) != 0 ||
+#endif
+        setuid(unixd_config.user_id) == -1)) {
+        ap_log_error(APLOG_MARK, APLOG_ALERT, errno, NULL,
+                    "setuid: unable to change to uid: %ld",
+                    (long) unixd_config.user_id);
+        return -1;
+    }
+#if defined(HAVE_PRCTL) && defined(PR_SET_DUMPABLE)
+    /* this applies to Linux 2.4+ */
+#ifdef AP_MPM_WANT_SET_COREDUMPDIR
+    if (ap_coredumpdir_configured) {
+        if (prctl(PR_SET_DUMPABLE, 1)) {
+            ap_log_error(APLOG_MARK, APLOG_ALERT, errno, NULL,
+                         "set dumpable failed - this child will not coredump"
+                         " after software errors");
+        }
+    }
+#endif
+#endif
+#endif
+    return 0;
+}
+
+
+AP_DECLARE(const char *) unixd_set_user(cmd_parms *cmd, void *dummy,
+                                        const char *arg)
+{
+    const char *err = ap_check_cmd_context(cmd, GLOBAL_ONLY);
+    if (err != NULL) {
+        return err;
+    }
+
+    unixd_config.user_name = arg;
+    unixd_config.user_id = ap_uname2id(arg);
+#if !defined (BIG_SECURITY_HOLE) && !defined (OS2)
+    if (unixd_config.user_id == 0) {
+        return "Error:\tApache has not been designed to serve pages while\n"
+                "\trunning as root.  There are known race conditions that\n"
+                "\twill allow any local user to read any file on the system.\n"
+                "\tIf you still desire to serve pages as root then\n"
+                "\tadd -DBIG_SECURITY_HOLE to the CFLAGS env variable\n"
+                "\tand then rebuild the server.\n"
+                "\tIt is strongly suggested that you instead modify the User\n"
+                "\tdirective in your httpd.conf file to list a non-root\n"
+                "\tuser.\n";
+    }
+#endif
+
+    return NULL;
+}
+
+AP_DECLARE(const char *) unixd_set_group(cmd_parms *cmd, void *dummy,
+                                         const char *arg)
+{
+    const char *err = ap_check_cmd_context(cmd, GLOBAL_ONLY);
+    if (err != NULL) {
+        return err;
+    }
+
+    unixd_config.group_id = ap_gname2id(arg);
+
+    return NULL;
+}
+
+AP_DECLARE(void) unixd_pre_config(apr_pool_t *ptemp)
+{
+    apr_finfo_t wrapper;
+
+    unixd_config.user_name = DEFAULT_USER;
+    unixd_config.user_id = ap_uname2id(DEFAULT_USER);
+    unixd_config.group_id = ap_gname2id(DEFAULT_GROUP);
+
+    /* Check for suexec */
+    unixd_config.suexec_enabled = 0;
+    if ((apr_stat(&wrapper, SUEXEC_BIN,
+                  APR_FINFO_NORM, ptemp)) != APR_SUCCESS) {
+        return;
+    }
+
+    if ((wrapper.protection & APR_USETID) && wrapper.user == 0) {
+        unixd_config.suexec_enabled = 1;
+    }
+}
+
+
+AP_DECLARE(void) unixd_set_rlimit(cmd_parms *cmd, struct rlimit **plimit,
+                           const char *arg, const char * arg2, int type)
 {
 #if (defined(RLIMIT_CPU) || defined(RLIMIT_DATA) || defined(RLIMIT_VMEM) || defined(RLIMIT_NPROC) || defined(RLIMIT_AS)) && APR_HAVE_STRUCT_RLIMIT && APR_HAVE_GETRLIMIT
     char *str;
@@ -134,7 +300,7 @@ static apr_status_t ap_unix_create_privileged_process(
     char *execuser, *execgroup;
     const char *argv0;
 
-    if (!ap_unixd_config.suexec_enabled) {
+    if (!unixd_config.suexec_enabled) {
         return apr_proc_create(newproc, progname, args, env, attr, p);
     }
 
@@ -222,7 +388,7 @@ static apr_lockmech_e proc_mutex_mech(apr_proc_mutex_t *pmutex)
     return APR_LOCK_DEFAULT;
 }
 
-AP_DECLARE(apr_status_t) ap_unixd_set_proc_mutex_perms(apr_proc_mutex_t *pmutex)
+AP_DECLARE(apr_status_t) unixd_set_proc_mutex_perms(apr_proc_mutex_t *pmutex)
 {
     if (!geteuid()) {
         apr_lockmech_e mech = proc_mutex_mech(pmutex);
@@ -243,8 +409,8 @@ AP_DECLARE(apr_status_t) ap_unixd_set_proc_mutex_perms(apr_proc_mutex_t *pmutex)
             struct semid_ds buf;
 
             apr_os_proc_mutex_get(&ospmutex, pmutex);
-            buf.sem_perm.uid = ap_unixd_config.user_id;
-            buf.sem_perm.gid = ap_unixd_config.group_id;
+            buf.sem_perm.uid = unixd_config.user_id;
+            buf.sem_perm.gid = unixd_config.group_id;
             buf.sem_perm.mode = 0600;
             ick.buf = &buf;
             if (semctl(ospmutex.crossproc, 0, IPC_SET, ick) < 0) {
@@ -259,7 +425,7 @@ AP_DECLARE(apr_status_t) ap_unixd_set_proc_mutex_perms(apr_proc_mutex_t *pmutex)
             const char *lockfile = apr_proc_mutex_lockfile(pmutex);
 
             if (lockfile) {
-                if (chown(lockfile, ap_unixd_config.user_id,
+                if (chown(lockfile, unixd_config.user_id,
                           -1 /* no gid change */) < 0) {
                     return errno;
                 }
@@ -275,20 +441,20 @@ AP_DECLARE(apr_status_t) ap_unixd_set_proc_mutex_perms(apr_proc_mutex_t *pmutex)
     return APR_SUCCESS;
 }
 
-AP_DECLARE(apr_status_t) ap_unixd_set_global_mutex_perms(apr_global_mutex_t *gmutex)
+AP_DECLARE(apr_status_t) unixd_set_global_mutex_perms(apr_global_mutex_t *gmutex)
 {
 #if !APR_PROC_MUTEX_IS_GLOBAL
     apr_os_global_mutex_t osgmutex;
     apr_os_global_mutex_get(&osgmutex, gmutex);
-    return ap_unixd_set_proc_mutex_perms(osgmutex.proc_mutex);
+    return unixd_set_proc_mutex_perms(osgmutex.proc_mutex);
 #else  /* APR_PROC_MUTEX_IS_GLOBAL */
     /* In this case, apr_proc_mutex_t and apr_global_mutex_t are the same. */
-    return ap_unixd_set_proc_mutex_perms(gmutex);
+    return unixd_set_proc_mutex_perms(gmutex);
 #endif /* APR_PROC_MUTEX_IS_GLOBAL */
 }
 
-AP_DECLARE(apr_status_t) ap_unixd_accept(void **accepted, ap_listen_rec *lr,
-                                         apr_pool_t *ptrans)
+AP_DECLARE(apr_status_t) unixd_accept(void **accepted, ap_listen_rec *lr,
+                                        apr_pool_t *ptrans)
 {
     apr_socket_t *csd;
     apr_status_t status;
@@ -415,18 +581,22 @@ AP_DECLARE(apr_status_t) ap_unixd_accept(void **accepted, ap_listen_rec *lr,
             return APR_EGENERAL;
 #endif /*ENETDOWN*/
 
+#ifdef TPF
+        case EINACT:
+            ap_log_error(APLOG_MARK, APLOG_EMERG, status, ap_server_conf,
+                         "offload device inactive");
+            return APR_EGENERAL;
+            break;
         default:
-#ifdef _OSD_POSIX /* Possibly on other platforms too */
-            /* If the socket has been closed in ap_close_listeners()
-             * by the restart/stop action, we may get EBADF.
-             * Do not print an error in this case.
-             */
-            if (!lr->active && status == EBADF)
-                return status;
-#endif
+            ap_log_error(APLOG_MARK, APLOG_ERR, 0, ap_server_conf,
+                         "select/accept error (%d)", status);
+            return APR_EGENERAL;
+#else
+        default:
             ap_log_error(APLOG_MARK, APLOG_ERR, status, ap_server_conf,
                          "apr_socket_accept: (client socket)");
             return APR_EGENERAL;
+#endif
     }
     return status;
 }

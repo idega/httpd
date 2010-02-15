@@ -1,18 +1,19 @@
 Content-language: cs
-Content-type: text/html; charset=UTF-8
+Content-type: text/html; charset=ISO-8859-2
 Body:----------cs--
 <!--#set var="CONTENT_LANGUAGE" value="cs"
---><!--#set var="TITLE" value="VstupnÃ­ podmÃ­nka selhala!"
+--><!--#set var="CHARACTER_ENCODING" value="ISO-8859-2"
+--><!--#set var="TITLE" value="Vstupní podmínka selhala!"
 --><!--#include virtual="include/top.html" -->
 
-    VstupnÃ­ podmÃ­nka pro poÅ¾adavek o&nbsp;zadanÃ© URL nesplnila pozitivnÃ­
-    vyhodnocenÃ­.
+    Vstupní podmínka pro po¾adavek o&nbsp;zadané URL nesplnila pozitivní
+    vyhodnocení.
   
 <!--#include virtual="include/bottom.html" -->
 ----------cs--
 
 Content-language: de
-Content-type: text/html; charset=UTF-8
+Content-type: text/html; charset=ISO-8859-1
 Body:----------de--
 <!--#set var="CONTENT_LANGUAGE" value="de"
 --><!--#set var="TITLE" value="Vorbedingung verfehlt!"
@@ -25,7 +26,7 @@ Body:----------de--
 ----------de--
 
 Content-language: en
-Content-type: text/html; charset=UTF-8
+Content-type: text/html; charset=ISO-8859-1
 Body:----------en--
 <!--#set var="TITLE" value="Precondition failed!"
 --><!--#include virtual="include/top.html" -->
@@ -36,7 +37,7 @@ Body:----------en--
 ----------en--
 
 Content-language: es
-Content-type: text/html; charset=UTF-8
+Content-type: text/html; charset=ISO-8859-1
 Body:----------es--
 <!--#set var="CONTENT_LANGUAGE" value="es"
 --><!--#set var="TITLE" value="&iexcl;Precondici&oacute;n err&oacute;nea!"
@@ -49,7 +50,7 @@ Body:----------es--
 ----------es--
 
 Content-language: fr
-Content-type: text/html; charset=UTF-8
+Content-type: text/html; charset=ISO-8859-1
 Body:----------fr--
 <!--#set var="CONTENT_LANGUAGE" value="fr"
 --><!--#set var="TITLE" value="Pr&eacute;condition n&eacute;gative!"
@@ -62,7 +63,7 @@ Body:----------fr--
 ----------fr--
 
 Content-language: ga
-Content-type: text/html; charset=UTF-8
+Content-type: text/html; charset=ISO-8859-1
 Body:----------ga--
 <!--#set var="TITLE" value="Theip ar r&eacute;amhchoinn&iacute;oll!"
 --><!--#include virtual="include/top.html" -->
@@ -74,7 +75,7 @@ Body:----------ga--
 ----------ga--
 
 Content-language: it
-Content-type: text/html; charset=UTF-8
+Content-type: text/html; charset=ISO-8859-1
 Body:----------it--
 <!--#set var="CONTENT_LANGUAGE" value="it"
 --><!--#set var="TITLE" value="Criteri di precondizione non soddisfatti!"
@@ -87,31 +88,33 @@ Body:----------it--
 ----------it--
 
 Content-language: ja
-Content-type: text/html; charset=UTF-8
+Content-type: text/html; charset=ISO-2022-JP
 Body:----------ja--
 <!--#set var="CONTENT_LANGUAGE" value="ja"
+--><!--#set var="CHARACTER_ENCODING" value="iso-2022-jp"
 --><!--#set var="TITLE" value="Precondition failed!"
 --><!--#include virtual="include/top.html" -->
 
-    æŒ‡å®šã•ã‚ŒãŸ URL ã¸ã®ãƒªã‚¯ã‚¨ã‚¹ãƒˆã«ãŠã‘ã‚‹äº‹å‰æ¡ä»¶ãŒæº€ãŸã•ã‚Œã¾ã›ã‚“ã§ã—ãŸã€‚
+    $B;XDj$5$l$?(B URL $B$X$N%j%/%(%9%H$K$*$1$k;vA0>r7o$,K~$?$5$l$^$;$s$G$7$?!#(B
   
 <!--#include virtual="include/bottom.html" --> 
 ----------ja--
 
 Content-language: ko
-Content-type: text/html; charset=UTF-8
+Content-type: text/html; charset=EUC-KR
 Body:----------ko--
 <!--#set var="CONTENT_LANGUAGE" value="ko"
---><!--#set var="TITLE" value="ì£¼ì–´ì§„ ì¡°ê±´ ì‹¤íŒ¨!"
+--><!--#set var="TITLE" value="ÁÖ¾îÁø Á¶°Ç ½ÇÆĞ!"
+--><!--#set var="CHARACTER_ENCODING" value="EUC-KR"
 --><!--#include virtual="include/top.html" -->
 
-    ë¯¸ë¦¬ ì£¼ì–´ì§„ ì¡°ê±´ì´ ë§Œì¡±ë˜ì§€ ì•Šì•„ì„œ URL ìš”ì²­ì„ ì²˜ë¦¬í•  ìˆ˜ ì—†ìŠµë‹ˆë‹¤.
+    ¹Ì¸® ÁÖ¾îÁø Á¶°ÇÀÌ ¸¸Á·µÇÁö ¾Ê¾Æ¼­ URL ¿äÃ»À» Ã³¸®ÇÒ ¼ö ¾ø½À´Ï´Ù.
 
 <!--#include virtual="include/bottom.html" -->
 ----------ko--
 
 Content-language: nl
-Content-type: text/html; charset=UTF-8
+Content-type: text/html; charset=ISO-8859-1
 Body:----------nl--
 <!--#set var="CONTENT_LANGUAGE" value="nl"
 --><!--#set var="TITLE" value="Startvoorwaarde niet voldaan!"
@@ -123,19 +126,20 @@ Body:----------nl--
 ----------nl--
 
 Content-language: pl
-Content-type: text/html; charset=UTF-8
+Content-type: text/html; charset=ISO-8859-2
 Body:----------pl--
 <!--#set var="CONTENT_LANGUAGE" value="pl"
---><!--#set var="TITLE" value="NiespeÅ‚niony warunek!"
+--><!--#set var="TITLE" value="Niespe³niony warunek!"
+--><!--#set var="CHARACTER_ENCODING" value="ISO-8859-2"
 --><!--#include virtual="include/top.html" -->
 
-    Warunek wstÄ™pny dla URLa nie zostaÅ‚ speÅ‚niony.
+    Warunek wstêpny dla URLa nie zosta³ spe³niony.
 
 <!--#include virtual="include/bottom.html" -->
 ----------pl--
 
 Content-language: pt-br
-Content-type: text/html; charset=UTF-8
+Content-type: text/html; charset=ISO-8859-1
 Body:-------pt-br--
 <!--#set var="CONTENT_LANGUAGE" value="pt-br"
 --><!--#set var="TITLE" value="Falha de precondi&ccedil;&atilde;o!"
@@ -148,7 +152,7 @@ Body:-------pt-br--
 -------pt-br--
 
 Content-language: ro
-Content-type: text/html; charset=UTF-8
+Content-type: text/html; charset=ISO-8859-1
 Body:----------ro--
 <!--#set var="CONTENT_LANGUAGE" value="ro"
 --><!--#set var="TITLE" value="Precondition failed!"
@@ -160,19 +164,20 @@ Body:----------ro--
 ----------ro--
 
 Content-language: sr
-Content-type: text/html; charset=UTF-8
+Content-type: text/html; charset=ISO-8859-5
 Body:----------sr--
 <!--#set var="CONTENT_LANGUAGE" value="sr"
---><!--#set var="TITLE" value="ĞŸÑ€ĞµĞ´ÑƒÑĞ»Ğ¾Ğ² Ğ½Ğ¸Ñ˜Ğµ Ğ¸ÑĞ¿ÑƒÑšĞµĞ½!"
+--><!--#set var="CHARACTER_ENCODING" value="ISO-8859-5"
+--><!--#set var="TITLE" value="¿àÕÔãáÛŞÒ İØøÕ ØáßãúÕİ!"
 --><!--#include virtual="include/top.html" -->
 
-    ĞŸÑ€ĞµĞ´ÑƒÑĞ»Ğ¾Ğ² Ğ·Ğ° Ğ·Ğ°Ñ…Ñ‚ĞµĞ² Ğ£Ğ Ğ›-Ğ° Ğ½Ğ¸Ñ˜Ğµ Ğ¸ÑĞ¿ÑƒÑšĞµĞ½.
+    ¿àÕÔãáÛŞÒ ×Ğ ×ĞåâÕÒ ÃÀ»-Ğ İØøÕ ØáßãúÕİ.
 
 <!--#include virtual="include/bottom.html" -->
 ----------sr--
 
 Content-language: sv
-Content-type: text/html; charset=UTF-8
+Content-type: text/html; charset=ISO-8859-1
 Body:----------sv--
 <!--#set var="CONTENT_LANGUAGE" value="sv"
 --><!--#set var="TITLE" value="N&ouml;dv&auml;ndig f&ouml;ruts&auml;ttning misslyckades!"
@@ -186,13 +191,15 @@ Body:----------sv--
 ----------sv--
 
 Content-language: tr
-Content-type: text/html; charset=UTF-8
+Content-type: text/html; charset=ISO-8859-9
 Body:----------tr--
 <!--#set var="CONTENT_LANGUAGE" value="tr"
---><!--#set var="TITLE" value="Ã–nkoÅŸul saÄŸlanamadÄ±!"
+--><!--#set var="CHARACTER_ENCODING" value="ISO-8859-9"
+--><!--#set var="TITLE" value="Precondition failed!"
 --><!--#include virtual="include/top.html" -->
 
-    URL talebinin Ã¶nkoÅŸulu olumlanamadÄ±.
+    URL talebinin ön&#351;art&#305;, olumlu süreci
+    ba&#351;ar&#305;s&#305;zl&#305;kla sonland&#305;rd&#305;.
 
 <!--#include virtual="include/bottom.html" -->
 ----------tr--

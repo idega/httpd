@@ -68,11 +68,11 @@ void ssl_var_register(apr_pool_t *p)
 
     APR_REGISTER_OPTIONAL_FN(ssl_is_https);
     APR_REGISTER_OPTIONAL_FN(ssl_var_lookup);
-    APR_REGISTER_OPTIONAL_FN(ssl_ext_list);
+    APR_REGISTER_OPTIONAL_FN(ssl_ext_lookup);
 
     /* Perform once-per-process library version determination: */
     var_library = apr_pstrdup(p, SSL_LIBRARY_DYNTEXT);
-    
+
     if ((cp = strchr(var_library, ' ')) != NULL) {
         *cp = '/';
         if ((cp2 = strchr(cp, ' ')) != NULL)
@@ -297,12 +297,6 @@ static char *ssl_var_lookup_ssl(apr_pool_t *p, conn_rec *c, char *var)
                                      buf, sizeof(buf)));
         }
     }
-    else if(ssl != NULL && strcEQ(var, "SESSION_RESUMED")) {
-        if (SSL_session_reused(ssl) == 1) 
-            result = "Resumed";
-        else
-            result = "Initial";
-    }
     else if (ssl != NULL && strlen(var) >= 6 && strcEQn(var, "CIPHER", 6)) {
         result = ssl_var_lookup_ssl_cipher(p, c, var+6);
     }
@@ -326,20 +320,6 @@ static char *ssl_var_lookup_ssl(apr_pool_t *p, conn_rec *c, char *var)
     else if (ssl != NULL && strcEQ(var, "COMPRESS_METHOD")) {
         result = ssl_var_lookup_ssl_compress_meth(ssl);
     }
-#ifndef OPENSSL_NO_TLSEXT
-    else if (ssl != NULL && strcEQ(var, "TLS_SNI")) {
-        result = apr_pstrdup(p, SSL_get_servername(ssl,
-                                                   TLSEXT_NAMETYPE_host_name));
-    }
-#endif
-    else if (ssl != NULL && strcEQ(var, "SECURE_RENEG")) {
-        int flag = 0;
-#ifdef SSL_get_secure_renegotiation_support
-        flag = SSL_get_secure_renegotiation_support(ssl);
-#endif
-        result = apr_pstrdup(p, flag ? "true" : "false");
-    }                             
-
     return result;
 }
 
@@ -416,31 +396,29 @@ static char *ssl_var_lookup_ssl_cert(apr_pool_t *p, X509 *xs, char *var)
     return result;
 }
 
-/* In this table, .extract is non-zero if RDNs using the NID should be
- * extracted to for the SSL_{CLIENT,SERVER}_{I,S}_DN_* environment
- * variables. */
 static const struct {
     char *name;
     int   nid;
-    int   extract;
 } ssl_var_lookup_ssl_cert_dn_rec[] = {
-    { "C",     NID_countryName,            1 },
-    { "ST",    NID_stateOrProvinceName,    1 }, /* officially    (RFC2156) */
-    { "SP",    NID_stateOrProvinceName,    0 }, /* compatibility (SSLeay)  */
-    { "L",     NID_localityName,           1 },
-    { "O",     NID_organizationName,       1 },
-    { "OU",    NID_organizationalUnitName, 1 },
-    { "CN",    NID_commonName,             1 },
-    { "T",     NID_title,                  1 },
-    { "I",     NID_initials,               1 },
-    { "G",     NID_givenName,              1 },
-    { "S",     NID_surname,                1 },
-    { "D",     NID_description,            1 },
-#ifdef NID_userId
-    { "UID",   NID_userId,                 1 },
+    { "C",     NID_countryName            },
+    { "ST",    NID_stateOrProvinceName    }, /* officially    (RFC2156) */
+    { "SP",    NID_stateOrProvinceName    }, /* compatibility (SSLeay)  */
+    { "L",     NID_localityName           },
+    { "O",     NID_organizationName       },
+    { "OU",    NID_organizationalUnitName },
+    { "CN",    NID_commonName             },
+    { "T",     NID_title                  },
+    { "I",     NID_initials               },
+    { "G",     NID_givenName              },
+    { "S",     NID_surname                },
+    { "D",     NID_description            },
+#ifdef NID_x500UniqueIdentifier /* new name as of Openssl 0.9.7 */
+    { "UID",   NID_x500UniqueIdentifier   },
+#else /* old name, OpenSSL < 0.9.7 */
+    { "UID",   NID_uniqueIdentifier       },
 #endif
-    { "Email", NID_pkcs9_emailAddress,     1 },
-    { NULL,    0,                          0 }
+    { "Email", NID_pkcs9_emailAddress     },
+    { NULL,    0                          }
 };
 
 static char *ssl_var_lookup_ssl_cert_dn(apr_pool_t *p, X509_NAME *xsname, char *var)
@@ -611,7 +589,7 @@ static char *ssl_var_lookup_ssl_cert_verify(apr_pool_t *p, conn_rec *c)
     vrc   = SSL_get_verify_result(ssl);
     xs    = SSL_get_peer_certificate(ssl);
 
-    if (vrc == X509_V_OK && verr == NULL && xs == NULL)
+    if (vrc == X509_V_OK && verr == NULL && vinfo == NULL && xs == NULL)
         /* no client verification done at all */
         result = "NONE";
     else if (vrc == X509_V_OK && verr == NULL && vinfo == NULL && xs != NULL)
@@ -644,7 +622,7 @@ static char *ssl_var_lookup_ssl_cipher(apr_pool_t *p, conn_rec *c, char *var)
     ssl_var_lookup_ssl_cipher_bits(ssl, &usekeysize, &algkeysize);
 
     if (ssl && strEQ(var, "")) {
-        MODSSL_SSL_CIPHER_CONST SSL_CIPHER *cipher = SSL_get_current_cipher(ssl);
+        SSL_CIPHER *cipher = SSL_get_current_cipher(ssl);
         result = (cipher != NULL ? (char *)SSL_CIPHER_get_name(cipher) : NULL);
     }
     else if (strcEQ(var, "_EXPORT"))
@@ -665,7 +643,7 @@ static char *ssl_var_lookup_ssl_cipher(apr_pool_t *p, conn_rec *c, char *var)
 
 static void ssl_var_lookup_ssl_cipher_bits(SSL *ssl, int *usekeysize, int *algkeysize)
 {
-    MODSSL_SSL_CIPHER_CONST SSL_CIPHER *cipher;
+    SSL_CIPHER *cipher;
 
     *usekeysize = 0;
     *algkeysize = 0;
@@ -688,121 +666,24 @@ static char *ssl_var_lookup_ssl_version(apr_pool_t *p, char *var)
     }
     return NULL;
 }
-  
-/* Add each RDN in 'xn' to the table 't' where the NID is present in
- * 'nids', using key prefix 'pfx'.  */
-static void extract_dn(apr_table_t *t, apr_hash_t *nids, const char *pfx, 
-                       X509_NAME *xn, apr_pool_t *p)
-{
-    STACK_OF(X509_NAME_ENTRY) *ents = X509_NAME_get_entries(xn);
-    X509_NAME_ENTRY *xsne;
-    apr_hash_t *count;
-    int i, nid;
 
-    /* Hash of (int) NID -> (int *) counter to count each time an RDN
-     * with the given NID has been seen. */
-    count = apr_hash_make(p);
-
-    /* For each RDN... */
-    for (i = 0; i < sk_X509_NAME_ENTRY_num(ents); i++) {
-         const char *tag;
-
-         xsne = sk_X509_NAME_ENTRY_value(ents, i);
-
-         /* Retrieve the nid, and check whether this is one of the nids
-          * which are to be extracted. */
-         nid = OBJ_obj2nid((ASN1_OBJECT *)X509_NAME_ENTRY_get_object(xsne));
-
-         tag = apr_hash_get(nids, &nid, sizeof nid);
-         if (tag) {
-             unsigned char *data = X509_NAME_ENTRY_get_data_ptr(xsne);
-             const char *key;
-             int *dup;
-             char *value;
-
-             /* Check whether a variable with this nid was already
-              * been used; if so, use the foo_N=bar syntax. */
-             dup = apr_hash_get(count, &nid, sizeof nid);
-             if (dup) {
-                 key = apr_psprintf(p, "%s%s_%d", pfx, tag, ++(*dup));
-             }
-             else {
-                 /* Otherwise, use the plain foo=bar syntax. */
-                 dup = apr_pcalloc(p, sizeof *dup);
-                 apr_hash_set(count, &nid, sizeof nid, dup);
-                 key = apr_pstrcat(p, pfx, tag, NULL);
-             }
-             
-             /* cast needed from 'unsigned char *' to 'char *' */
-             value = apr_pstrmemdup(p, (char *)data,
-                                    X509_NAME_ENTRY_get_data_len(xsne));
-#if APR_CHARSET_EBCDIC
-             ap_xlate_proto_from_ascii(value, X509_NAME_ENTRY_get_data_len(xsne));
-#endif /* APR_CHARSET_EBCDIC */
-             apr_table_setn(t, key, value);
-         }
-    }
-}
-
-void modssl_var_extract_dns(apr_table_t *t, SSL *ssl, apr_pool_t *p)
-{
-    apr_hash_t *nids;
-    unsigned n;
-    X509 *xs;
-
-    /* Build up a hash table of (int *)NID->(char *)short-name for all
-     * the tags which are to be extracted: */
-    nids = apr_hash_make(p);
-    for (n = 0; ssl_var_lookup_ssl_cert_dn_rec[n].name; n++) {
-        if (ssl_var_lookup_ssl_cert_dn_rec[n].extract) {
-            apr_hash_set(nids, &ssl_var_lookup_ssl_cert_dn_rec[n].nid,
-                         sizeof(ssl_var_lookup_ssl_cert_dn_rec[0].nid),
-                         ssl_var_lookup_ssl_cert_dn_rec[n].name);
-        }
-    }
-    
-    /* Extract the server cert DNS -- note that the refcount does NOT
-     * increase: */
-    xs = SSL_get_certificate(ssl);
-    if (xs) {
-        extract_dn(t, nids, "SSL_SERVER_S_DN_", X509_get_subject_name(xs), p);
-        extract_dn(t, nids, "SSL_SERVER_I_DN_", X509_get_issuer_name(xs), p);
-    }
-    
-    /* Extract the client cert DNs -- note that the refcount DOES
-     * increase: */
-    xs = SSL_get_peer_certificate(ssl);
-    if (xs) {
-        extract_dn(t, nids, "SSL_CLIENT_S_DN_", X509_get_subject_name(xs), p);
-        extract_dn(t, nids, "SSL_CLIENT_I_DN_", X509_get_issuer_name(xs), p);
-        X509_free(xs);
-    }
-}
-
-apr_array_header_t *ssl_ext_list(apr_pool_t *p, conn_rec *c, int peer,
-                                 const char *extension)
+const char *ssl_ext_lookup(apr_pool_t *p, conn_rec *c, int peer,
+                           const char *oidnum)
 {
     SSLConnRec *sslconn = myConnConfig(c);
-    SSL *ssl = NULL;
-    apr_array_header_t *array = NULL;
+    SSL *ssl;
     X509 *xs = NULL;
-    ASN1_OBJECT *oid = NULL;
+    ASN1_OBJECT *oid;
     int count = 0, j;
+    char *result = NULL;
 
-    if (!sslconn || !sslconn->ssl || !extension) {
+    if (!sslconn || !sslconn->ssl) {
         return NULL;
     }
     ssl = sslconn->ssl;
 
-    /* We accept the "extension" string to be converted as
-     * a long name (nsComment), short name (DN) or
-     * numeric OID (1.2.3.4).
-     */
-    oid = OBJ_txt2obj(extension, 0);
+    oid = OBJ_txt2obj(oidnum, 1);
     if (!oid) {
-        ap_log_cerror(APLOG_MARK, APLOG_DEBUG, 0, c,
-                      "Failed to create an object for extension '%s'",
-                      extension);
         ERR_clear_error();
         return NULL;
     }
@@ -813,40 +694,24 @@ apr_array_header_t *ssl_ext_list(apr_pool_t *p, conn_rec *c, int peer,
     }
 
     count = X509_get_ext_count(xs);
-    /* Create an array large enough to accomodate every extension. This is
-     * likely overkill, but safe.
-     */
-    array = apr_array_make(p, count, sizeof(char *));
+
     for (j = 0; j < count; j++) {
         X509_EXTENSION *ext = X509_get_ext(xs, j);
 
         if (OBJ_cmp(ext->object, oid) == 0) {
             BIO *bio = BIO_new(BIO_s_mem());
 
-            /* We want to obtain a string representation of the extensions
-             * value and add it to the array we're building.
-             * X509V3_EXT_print() doesn't know about all the possible
-             * data types, but the value is stored as an ASN1_OCTET_STRING
-             * allowing us a fallback in case of X509V3_EXT_print
-             * not knowing how to handle the data.
-             */
-            if (X509V3_EXT_print(bio, ext, 0, 0) == 1 ||
-                ASN1_STRING_print(bio, ext->value) == 1) {
+            if (X509V3_EXT_print(bio, ext, 0, 0) == 1) {
                 BUF_MEM *buf;
-                char **ptr = apr_array_push(array);
+
                 BIO_get_mem_ptr(bio, &buf);
-                *ptr = apr_pstrmemdup(p, buf->data, buf->length);
-            } else {
-                ap_log_cerror(APLOG_MARK, APLOG_DEBUG, 0, c,
-                              "Found an extension '%s', but failed to "
-                              "create a string from it", extension);
+                result = apr_pstrmemdup(p, buf->data, buf->length);
             }
+
             BIO_vfree(bio);
+            break;
         }
     }
-
-    if (array->nelts == 0)
-        array = NULL;
 
     if (peer) {
         /* only SSL_get_peer_certificate raises the refcount */
@@ -854,7 +719,7 @@ apr_array_header_t *ssl_ext_list(apr_pool_t *p, conn_rec *c, int peer,
     }
 
     ERR_clear_error();
-    return array;
+    return result;
 }
 
 static char *ssl_var_lookup_ssl_compress_meth(SSL *ssl)

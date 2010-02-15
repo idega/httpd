@@ -97,7 +97,7 @@ endif
 NLM_NAME	= userdir
 
 #
-# This is used by the link '-desc ' directive.
+# This is used by the link '-desc ' directive. 
 # If left blank, NLM_NAME will be used.
 #
 NLM_DESCRIPTION	= Apache $(VERSION_STR) User Dir Module
@@ -109,7 +109,7 @@ NLM_DESCRIPTION	= Apache $(VERSION_STR) User Dir Module
 NLM_THREAD_NAME	= UserDir Module
 
 #
-# If this is specified, it will override VERSION value in
+# If this is specified, it will override VERSION value in 
 # $(AP_WORK)\build\NWGNUenvironment.inc
 #
 NLM_VERSION	=
@@ -141,11 +141,11 @@ NLM_CHECK_SYM	=
 NLM_FLAGS	= AUTOUNLOAD, PSEUDOPREEMPTION
 
 #
-# If this is specified it will be linked in with the XDCData option in the def
+# If this is specified it will be linked in with the XDCData option in the def 
 # file instead of the default of $(NWOS)/apache.xdc.  XDCData can be disabled
 # by setting APACHE_UNIPROC in the environment
 #
-XDCDATA		=
+XDCDATA		= 
 
 #
 # If there is an NLM target, put it here
@@ -189,7 +189,7 @@ FILES_nlm_modules = \
 # If the nlm has a msg file, put it's path here
 #
 FILE_nlm_msg =
-
+ 
 #
 # If the nlm has a hlp file put it's path here
 #
@@ -208,15 +208,15 @@ FILES_nlm_Ximports = \
 	@$(NWOS)/httpd.imp \
 	@libc.imp \
 	$(EOLIST)
-
-#
+ 
+#   
 # Any symbols exported to here
 #
 FILES_nlm_exports = \
 	userdir_module \
 	$(EOLIST)
 
-#
+#   
 # These are the OBJ files needed to create the LIB target above.
 # Paths must all use the '/' character
 #
@@ -232,7 +232,7 @@ libs :: $(OBJDIR) $(TARGET_lib)
 nlms :: libs $(TARGET_nlm)
 
 #
-# Updated this target to create necessary directories and copy files to the
+# Updated this target to create necessary directories and copy files to the 
 # correct place.  (See $(AP_WORK)\build\NWGNUhead.inc for examples)
 #
 install :: nlms FORCE

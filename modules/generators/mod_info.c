@@ -44,12 +44,10 @@
 #include "apr.h"
 #include "apr_strings.h"
 #include "apr_lib.h"
-#include "apr_version.h"
-#if APR_MAJOR_VERSION < 2
-#include "apu_version.h"
-#endif
 #define APR_WANT_STRFUNC
 #include "apr_want.h"
+
+#define CORE_PRIVATE
 
 #include "httpd.h"
 #include "http_config.h"
@@ -238,7 +236,6 @@ typedef struct
 
 static hook_lookup_t startup_hooks[] = {
     {"Pre-Config", ap_hook_get_pre_config},
-    {"Check Configuration", ap_hook_get_check_config},
     {"Test Configuration", ap_hook_get_test_config},
     {"Post Configuration", ap_hook_get_post_config},
     {"Open Logs", ap_hook_get_open_logs},
@@ -355,20 +352,6 @@ static int show_server_settings(request_rec * r)
                "<font size=\"+1\"><tt>%s</tt></font></dt>\n",
                ap_get_server_built());
     ap_rprintf(r,
-               "<dt><strong>Server loaded APR Version:</strong> "
-               "<tt>%s</tt></dt>\n", apr_version_string());
-    ap_rprintf(r,
-               "<dt><strong>Compiled with APR Version:</strong> "
-               "<tt>%s</tt></dt>\n", APR_VERSION_STRING);
-#if APR_MAJOR_VERSION < 2
-    ap_rprintf(r,
-               "<dt><strong>Server loaded APU Version:</strong> "
-               "<tt>%s</tt></dt>\n", apu_version_string());
-    ap_rprintf(r,
-               "<dt><strong>Compiled with APU Version:</strong> "
-               "<tt>%s</tt></dt>\n", APU_VERSION_STRING);
-#endif
-    ap_rprintf(r,
                "<dt><strong>Module Magic Number:</strong> "
                "<tt>%d:%d</tt></dt>\n", MODULE_MAGIC_NUMBER_MAJOR,
                MODULE_MAGIC_NUMBER_MINOR);
@@ -381,7 +364,7 @@ static int show_server_settings(request_rec * r)
                "<tt>connection: %d &nbsp;&nbsp; "
                "keep-alive: %d</tt></dt>",
                (int) (apr_time_sec(serv->timeout)),
-               (int) (apr_time_sec(serv->keep_alive_timeout)));
+               (int) (apr_time_sec(serv->timeout)));
     ap_mpm_query(AP_MPMQ_MAX_DAEMON_USED, &max_daemons);
     ap_mpm_query(AP_MPMQ_IS_THREADED, &threaded);
     ap_mpm_query(AP_MPMQ_IS_FORKED, &forked);
@@ -418,6 +401,10 @@ static int show_server_settings(request_rec * r)
 
 #ifdef OS
     ap_rputs(" -D OS=\"" OS "\"\n", r);
+#endif
+
+#ifdef APACHE_MPM_DIR
+    ap_rputs(" -D APACHE_MPM_DIR=\"" APACHE_MPM_DIR "\"\n", r);
 #endif
 
 #ifdef HAVE_SHMGET
@@ -503,6 +490,10 @@ static int show_server_settings(request_rec * r)
     ap_rputs(" -D NEED_HASHBANG_EMUL\n", r);
 #endif
 
+#ifdef SHARED_CORE
+    ap_rputs(" -D SHARED_CORE\n", r);
+#endif
+
 /* This list displays the compiled in default paths: */
 #ifdef HTTPD_ROOT
     ap_rputs(" -D HTTPD_ROOT=\"" HTTPD_ROOT "\"\n", r);
@@ -512,12 +503,20 @@ static int show_server_settings(request_rec * r)
     ap_rputs(" -D SUEXEC_BIN=\"" SUEXEC_BIN "\"\n", r);
 #endif
 
+#if defined(SHARED_CORE) && defined(SHARED_CORE_DIR)
+    ap_rputs(" -D SHARED_CORE_DIR=\"" SHARED_CORE_DIR "\"\n", r);
+#endif
+
 #ifdef DEFAULT_PIDLOG
     ap_rputs(" -D DEFAULT_PIDLOG=\"" DEFAULT_PIDLOG "\"\n", r);
 #endif
 
 #ifdef DEFAULT_SCOREBOARD
     ap_rputs(" -D DEFAULT_SCOREBOARD=\"" DEFAULT_SCOREBOARD "\"\n", r);
+#endif
+
+#ifdef DEFAULT_LOCKFILE
+    ap_rputs(" -D DEFAULT_LOCKFILE=\"" DEFAULT_LOCKFILE "\"\n", r);
 #endif
 
 #ifdef DEFAULT_ERRORLOG

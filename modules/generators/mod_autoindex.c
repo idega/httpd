@@ -71,7 +71,6 @@ module AP_MODULE_DECLARE_DATA autoindex_module;
 #define IGNORE_CASE         (1 << 16)
 #define EMIT_XHTML          (1 << 17)
 #define SHOW_FORBIDDEN      (1 << 18)
-#define ADDALTCLASS         (1 << 19)
 
 #define K_NOADJUST 0
 #define K_ADJUST 1
@@ -120,9 +119,6 @@ typedef struct autoindex_config_struct {
 
     char *default_icon;
     char *style_sheet;
-    char *head_insert;
-    char *header;
-    char *readme;
     apr_int32_t opts;
     apr_int32_t incremented_opts;
     apr_int32_t decremented_opts;
@@ -139,6 +135,8 @@ typedef struct autoindex_config_struct {
     apr_array_header_t *alt_list;
     apr_array_header_t *desc_list;
     apr_array_header_t *ign_list;
+    apr_array_header_t *hdr_list;
+    apr_array_header_t *rdme_list;
 
     char *ctype;
     char *charset;
@@ -149,14 +147,6 @@ static char c_by_encoding, c_by_type, c_by_path;
 #define BY_ENCODING &c_by_encoding
 #define BY_TYPE &c_by_type
 #define BY_PATH &c_by_path
-
-static APR_INLINE int response_is_html(request_rec *r)
-{
-    char *ctype = ap_field_noparam(r->pool, r->content_type);
-    ap_str_tolower(ctype);
-    return !strcmp(ctype, "text/html")
-        || !strcmp(ctype, "application/xhtml+xml");
-}
 
 /*
  * This routine puts the standard HTML header at the top of the index page.
@@ -185,9 +175,6 @@ static void emit_preamble(request_rec *r, int xhtml, const char *title)
     if (d->style_sheet != NULL) {
         ap_rvputs(r, "  <link rel=\"stylesheet\" href=\"", d->style_sheet,
                 "\" type=\"text/css\"", xhtml ? " />\n" : ">\n", NULL);
-    }
-    if (d->head_insert != NULL) {
-        ap_rputs(d->head_insert, r);
     }
     ap_rvputs(r, " </head>\n <body>\n", NULL);
 }
@@ -322,6 +309,20 @@ static const char *add_ignore(cmd_parms *cmd, void *d, const char *ext)
     return NULL;
 }
 
+static const char *add_header(cmd_parms *cmd, void *d, const char *name)
+{
+    push_item(((autoindex_config_rec *) d)->hdr_list, 0, NULL, cmd->path,
+              name);
+    return NULL;
+}
+
+static const char *add_readme(cmd_parms *cmd, void *d, const char *name)
+{
+    push_item(((autoindex_config_rec *) d)->rdme_list, 0, NULL, cmd->path,
+              name);
+    return NULL;
+}
+
 static const char *add_opts(cmd_parms *cmd, void *d, int argc, char *const argv[])
 {
     int i;
@@ -399,9 +400,6 @@ static const char *add_opts(cmd_parms *cmd, void *d, int argc, char *const argv[
         }
         else if (!strcasecmp(w, "ShowForbidden")) {
             option = SHOW_FORBIDDEN;
-        }
-        else if (!strcasecmp(w, "AddAltClass")) {
-            option = ADDALTCLASS;
         }
         else if (!strcasecmp(w, "None")) {
             if (action != '\0') {
@@ -583,12 +581,10 @@ static const command_rec autoindex_cmds[] =
                     "one or more file extensions"),
     AP_INIT_ITERATE2("AddDescription", add_desc, BY_PATH, DIR_CMD_PERMS,
                      "Descriptive text followed by one or more filenames"),
-    AP_INIT_TAKE1("HeaderName", ap_set_string_slot,
-                  (void *)APR_OFFSETOF(autoindex_config_rec, header),
-                  DIR_CMD_PERMS, "a filename"),
-    AP_INIT_TAKE1("ReadmeName", ap_set_string_slot,
-                  (void *)APR_OFFSETOF(autoindex_config_rec, readme),
-                  DIR_CMD_PERMS, "a filename"),
+    AP_INIT_TAKE1("HeaderName", add_header, NULL, DIR_CMD_PERMS,
+                  "a filename"),
+    AP_INIT_TAKE1("ReadmeName", add_readme, NULL, DIR_CMD_PERMS,
+                  "a filename"),
     AP_INIT_RAW_ARGS("FancyIndexing", ap_set_deprecated, NULL, OR_ALL,
                      "The FancyIndexing directive is no longer supported. "
                      "Use IndexOptions FancyIndexing."),
@@ -598,9 +594,6 @@ static const command_rec autoindex_cmds[] =
     AP_INIT_TAKE1("IndexStyleSheet", ap_set_string_slot,
                   (void *)APR_OFFSETOF(autoindex_config_rec, style_sheet),
                   DIR_CMD_PERMS, "URL to style sheet"),
-    AP_INIT_TAKE1("IndexHeadInsert", ap_set_string_slot,
-                  (void *)APR_OFFSETOF(autoindex_config_rec, head_insert),
-                  DIR_CMD_PERMS, "String to insert in HTML HEAD section"),
     {NULL}
 };
 
@@ -619,6 +612,8 @@ static void *create_autoindex_config(apr_pool_t *p, char *dummy)
     new->alt_list = apr_array_make(p, 4, sizeof(struct item));
     new->desc_list = apr_array_make(p, 4, sizeof(ai_desc_t));
     new->ign_list = apr_array_make(p, 4, sizeof(struct item));
+    new->hdr_list = apr_array_make(p, 4, sizeof(struct item));
+    new->rdme_list = apr_array_make(p, 4, sizeof(struct item));
     new->opts = 0;
     new->incremented_opts = 0;
     new->decremented_opts = 0;
@@ -639,12 +634,6 @@ static void *merge_autoindex_configs(apr_pool_t *p, void *basev, void *addv)
                                           : base->default_icon;
     new->style_sheet = add->style_sheet ? add->style_sheet
                                           : base->style_sheet;
-    new->head_insert = add->head_insert ? add->head_insert
-                                          : base->head_insert;
-    new->header = add->header ? add->header
-                                : base->header;
-    new->readme = add->readme ? add->readme
-                                : base->readme;
     new->icon_height = add->icon_height ? add->icon_height : base->icon_height;
     new->icon_width = add->icon_width ? add->icon_width : base->icon_width;
 
@@ -653,8 +642,10 @@ static void *merge_autoindex_configs(apr_pool_t *p, void *basev, void *addv)
 
     new->alt_list = apr_array_append(p, add->alt_list, base->alt_list);
     new->ign_list = apr_array_append(p, add->ign_list, base->ign_list);
+    new->hdr_list = apr_array_append(p, add->hdr_list, base->hdr_list);
     new->desc_list = apr_array_append(p, add->desc_list, base->desc_list);
     new->icon_list = apr_array_append(p, add->icon_list, base->icon_list);
+    new->rdme_list = apr_array_append(p, add->rdme_list, base->rdme_list);
     if (add->opts & NO_OPTIONS) {
         /*
          * If the current directory says 'no options' then we also
@@ -750,9 +741,12 @@ struct ent {
     int isdir;
 };
 
-static char *find_item(const char *content_type, const char *content_encoding,
-                       char *path, apr_array_header_t *list, int path_only)
+static char *find_item(request_rec *r, apr_array_header_t *list, int path_only)
 {
+    const char *content_type = ap_field_noparam(r->pool, r->content_type);
+    const char *content_encoding = r->content_encoding;
+    char *path = r->filename;
+
     struct item *items = (struct item *) list->elts;
     int i;
 
@@ -793,16 +787,25 @@ static char *find_item(const char *content_type, const char *content_encoding,
     return NULL;
 }
 
-static char *find_item_by_request(request_rec *r, apr_array_header_t *list, int path_only)
+#define find_icon(d,p,t) find_item(p,d->icon_list,t)
+#define find_alt(d,p,t) find_item(p,d->alt_list,t)
+#define find_header(d,p) find_item(p,d->hdr_list,0)
+#define find_readme(d,p) find_item(p,d->rdme_list,0)
+
+static char *find_default_item(char *bogus_name, apr_array_header_t *list)
 {
-    return find_item(ap_field_noparam(r->pool, r->content_type),
-                     r->content_encoding, r->filename, list, path_only);
+    request_rec r;
+    /* Bleah.  I tried to clean up find_item, and it lead to this bit
+     * of ugliness.   Note that the fields initialized are precisely
+     * those that find_item looks at...
+     */
+    r.filename = bogus_name;
+    r.content_type = r.content_encoding = NULL;
+    return find_item(&r, list, 1);
 }
 
-#define find_icon(d,p,t) find_item_by_request(p,d->icon_list,t)
-#define find_alt(d,p,t) find_item_by_request(p,d->alt_list,t)
-#define find_default_icon(d,n) find_item(NULL, NULL, n, d->icon_list, 1)
-#define find_default_alt(d,n) find_item(NULL, NULL, n, d->alt_list, 1)
+#define find_default_icon(d,n) find_default_item(n, d->icon_list)
+#define find_default_alt(d,n) find_default_item(n, d->alt_list)
 
 /*
  * Look through the list of pattern/description pairs and return the first one
@@ -992,7 +995,6 @@ static void do_emit_plain(request_rec *r, apr_file_t *f)
 static void emit_head(request_rec *r, char *header_fname, int suppress_amble,
                       int emit_xhtml, char *title)
 {
-    autoindex_config_rec *d;
     apr_table_t *hdrs = r->headers_in;
     apr_file_t *f = NULL;
     request_rec *rr = NULL;
@@ -1026,7 +1028,8 @@ static void emit_head(request_rec *r, char *header_fname, int suppress_amble,
          * SSIs.
          */
         if (rr->content_type != NULL) {
-            if (response_is_html(rr)) {
+            if (!strcasecmp(ap_field_noparam(r->pool, rr->content_type),
+                            "text/html")) {
                 ap_filter_t *f;
                /* Hope everything will work... */
                 emit_amble = 0;
@@ -1095,16 +1098,8 @@ static void emit_head(request_rec *r, char *header_fname, int suppress_amble,
     if (emit_amble) {
         emit_preamble(r, emit_xhtml, title);
     }
-    
-    d = (autoindex_config_rec *) ap_get_module_config(r->per_dir_config, &autoindex_module);
-    
     if (emit_H1) {
-        if (d->style_sheet != NULL) {
-    	    /* Insert style id if stylesheet used */
-    	    ap_rvputs(r, "  <h1 id=\"indextitle\">Index of ", title, "</h1>\n", NULL);
-    	} else {
         ap_rvputs(r, "<h1>Index of ", title, "</h1>\n", NULL);
-    }
     }
     if (rr != NULL) {
         ap_destroy_sub_req(rr);
@@ -1144,7 +1139,8 @@ static void emit_tail(request_rec *r, char *readme_fname, int suppress_amble)
          * SSIs.
          */
         if (rr->content_type != NULL) {
-            if (response_is_html(rr)) {
+            if (!strcasecmp(ap_field_noparam(r->pool, rr->content_type),
+                            "text/html")) {
                 ap_filter_t *f;
                 for (f=rr->output_filters;
                      f->frec != ap_subreq_core_filter_handle; f = f->next);
@@ -1194,7 +1190,8 @@ static char *find_title(request_rec *r)
         return NULL;
     }
     if ((r->content_type != NULL)
-        && (response_is_html(r)
+        && (!strcasecmp(ap_field_noparam(r->pool, r->content_type),
+                        "text/html")
             || !strcmp(r->content_type, INCLUDES_MAGIC_TYPE))
         && !r->content_encoding) {
         if (apr_file_open(&thefile, r->filename, APR_READ,
@@ -1280,9 +1277,7 @@ static struct ent *make_parent_entry(apr_int32_t autoindex_opts,
         }
         if (!(p->alt = find_default_alt(d, testpath))) {
             if (!(p->alt = find_default_alt(d, "^^DIRECTORY^^"))) {
-            	/* Special alt text for parent dir to distinguish it from other directories
-            	   this is essential when trying to style this dir entry via AddAltClass */
-                p->alt = "PARENTDIR";
+                p->alt = "DIR";
             }
         }
         p->desc = find_desc(d, testpath);
@@ -1545,14 +1540,9 @@ static void output_directories(struct ent **ar, int n,
 
     if (autoindex_opts & TABLE_INDEXING) {
         int cols = 1;
-        if (d->style_sheet != NULL) {
-            /* Emit table with style id */
-            ap_rputs("  <table id=\"indexlist\">\n   <tr class=\"indexhead\">", r);
-        } else {
-            ap_rputs("  <table>\n   <tr>", r);
-        }
+        ap_rputs("<table><tr>", r);
         if (!(autoindex_opts & SUPPRESS_ICON)) {
-            ap_rvputs(r, "<th", (d->style_sheet != NULL) ? " class=\"indexcolicon\">" : " valign=\"top\">", NULL);
+            ap_rputs("<th>", r);
             if ((tp = find_default_icon(d, "^^BLANKICON^^"))) {
                 ap_rvputs(r, "<img src=\"", ap_escape_html(scratch, tp),
                              "\" alt=\"[ICO]\"", NULL);
@@ -1574,36 +1564,34 @@ static void output_directories(struct ent **ar, int n,
 
             ++cols;
         }
-        ap_rvputs(r, "<th", (d->style_sheet != NULL) ? " class=\"indexcolname\">" : ">", NULL);
+        ap_rputs("<th>", r);
         emit_link(r, "Name", K_NAME, keyid, direction,
                   colargs, static_columns);
         if (!(autoindex_opts & SUPPRESS_LAST_MOD)) {
-            ap_rvputs(r, "</th><th", (d->style_sheet != NULL) ? " class=\"indexcollastmod\">" : ">", NULL);
+            ap_rputs("</th><th>", r);
             emit_link(r, "Last modified", K_LAST_MOD, keyid, direction,
                       colargs, static_columns);
             ++cols;
         }
         if (!(autoindex_opts & SUPPRESS_SIZE)) {
-            ap_rvputs(r, "</th><th", (d->style_sheet != NULL) ? " class=\"indexcolsize\">" : ">", NULL);
+            ap_rputs("</th><th>", r);
             emit_link(r, "Size", K_SIZE, keyid, direction,
                       colargs, static_columns);
             ++cols;
         }
         if (!(autoindex_opts & SUPPRESS_DESC)) {
-            ap_rvputs(r, "</th><th", (d->style_sheet != NULL) ? " class=\"indexcoldesc\">" : ">", NULL);
+            ap_rputs("</th><th>", r);
             emit_link(r, "Description", K_DESC, keyid, direction,
                       colargs, static_columns);
             ++cols;
         }
         if (!(autoindex_opts & SUPPRESS_RULES)) {
             breakrow = apr_psprintf(r->pool,
-                                    "   <tr%s><th colspan=\"%d\">"
-                                    "<hr%s></th></tr>\n",
-                                    (d->style_sheet != NULL) ? " class=\"indexbreakrow\"" : "",
-                                    cols,
+                                    "<tr><th colspan=\"%d\">"
+                                    "<hr%s></th></tr>\n", cols,
                                     (autoindex_opts & EMIT_XHTML) ? " /" : "");
         }
-        ap_rvputs(r, "</th></tr>\n", breakrow, NULL);
+        ap_rvputs(r, "</th></tr>", breakrow, NULL);
     }
     else if (autoindex_opts & FANCY_INDEXING) {
         ap_rputs("<pre>", r);
@@ -1680,23 +1668,9 @@ static void output_directories(struct ent **ar, int n,
         }
 
         if (autoindex_opts & TABLE_INDEXING) {
-            /* Even/Odd rows for IndexStyleSheet */
-            if (d->style_sheet != NULL) {
-                if (ar[x]->alt && (autoindex_opts & ADDALTCLASS)) {
-                    /* Include alt text in class name, distinguish between odd and even rows */
-                    char *altclass = apr_pstrdup(scratch, ar[x]->alt);
-                    ap_str_tolower(altclass);
-                    ap_rvputs(r, "   <tr class=\"", ( x & 0x1) ? "odd-" : "even-", altclass, "\">", NULL);
-                } else {
-                    /* Distinguish between odd and even rows */
-                    ap_rvputs(r, "   <tr class=\"", ( x & 0x1) ? "odd" : "even", "\">", NULL);
-                }
-            } else {
-                ap_rputs("<tr>", r);
-            }
-
+            ap_rputs("<tr>", r);
             if (!(autoindex_opts & SUPPRESS_ICON)) {
-                ap_rvputs(r, "<td", (d->style_sheet != NULL) ? " class=\"indexcolicon\">" : " valign=\"top\">", NULL);
+                ap_rputs("<td valign=\"top\">", r);
                 if (autoindex_opts & ICONS_ARE_LINKS) {
                     ap_rvputs(r, "<a href=\"", anchor, "\">", NULL);
                 }
@@ -1730,7 +1704,7 @@ static void output_directories(struct ent **ar, int n,
                 }
             }
             if (d->name_adjust == K_ADJUST) {
-                ap_rvputs(r, "<td", (d->style_sheet != NULL) ? " class=\"indexcolname\">" : ">", "<a href=\"", anchor, "\">",
+                ap_rvputs(r, "<td><a href=\"", anchor, "\">",
                           ap_escape_html(scratch, t2), "</a>", NULL);
             }
             else {
@@ -1744,7 +1718,7 @@ static void output_directories(struct ent **ar, int n,
                   t2 = name_scratch;
                   nwidth = name_width;
                 }
-                ap_rvputs(r, "<td", (d->style_sheet != NULL) ? " class=\"indexcolname\">" : ">", "<a href=\"", anchor, "\">",
+                ap_rvputs(r, "<td><a href=\"", anchor, "\">",
                           ap_escape_html(scratch, t2),
                           "</a>", pad_scratch + nwidth, NULL);
             }
@@ -1754,34 +1728,34 @@ static void output_directories(struct ent **ar, int n,
                     apr_time_exp_t ts;
                     apr_time_exp_lt(&ts, ar[x]->lm);
                     apr_strftime(time_str, &rv, MAX_STRING_LEN,
-                                 "%Y-%m-%d %H:%M  ",
+                                 "</td><td align=\"right\">%d-%b-%Y %H:%M  ",
                                  &ts);
-                    ap_rvputs(r, "</td><td", (d->style_sheet != NULL) ? " class=\"indexcollastmod\">" : " align=\"right\">",time_str, NULL);
+                    ap_rputs(time_str, r);
                 }
                 else {
-                    ap_rvputs(r, "</td><td", (d->style_sheet != NULL) ? " class=\"indexcollastmod\">&nbsp;" : ">&nbsp;", NULL);
+                    ap_rputs("</td><td>&nbsp;", r);
                 }
             }
             if (!(autoindex_opts & SUPPRESS_SIZE)) {
                 char buf[5];
-                ap_rvputs(r, "</td><td", (d->style_sheet != NULL) ? " class=\"indexcolsize\">" : " align=\"right\">",
+                ap_rvputs(r, "</td><td align=\"right\">",
                           apr_strfsize(ar[x]->size, buf), NULL);
             }
             if (!(autoindex_opts & SUPPRESS_DESC)) {
                 if (ar[x]->desc) {
                     if (d->desc_adjust == K_ADJUST) {
-                        ap_rvputs(r, "</td><td", (d->style_sheet != NULL) ? " class=\"indexcoldesc\">" : ">", ar[x]->desc, NULL);
+                        ap_rvputs(r, "</td><td>", ar[x]->desc, NULL);
                     }
                     else {
-                        ap_rvputs(r, "</td><td", (d->style_sheet != NULL) ? " class=\"indexcoldesc\">" : ">",
+                        ap_rvputs(r, "</td><td>",
                                   terminate_description(d, ar[x]->desc,
                                                         autoindex_opts,
                                                         desc_width), NULL);
                     }
                 }
-                else {
-                    ap_rputs("</td><td>&nbsp;", r);
-                }
+            }
+            else {
+                ap_rputs("</td><td>&nbsp;", r);
             }
             ap_rputs("</td></tr>\n", r);
         }
@@ -1842,11 +1816,11 @@ static void output_directories(struct ent **ar, int n,
                     apr_time_exp_t ts;
                     apr_time_exp_lt(&ts, ar[x]->lm);
                     apr_strftime(time_str, &rv, MAX_STRING_LEN,
-                                "%Y-%m-%d %H:%M  ", &ts);
+                                "%d-%b-%Y %H:%M  ", &ts);
                     ap_rputs(time_str, r);
                 }
                 else {
-                    /*Length="1975-04-07 01:23  " (see 4 lines above) */
+                    /*Length="22-Feb-1998 23:42  " (see 4 lines above) */
                     ap_rputs("                   ", r);
                 }
             }
@@ -2187,7 +2161,7 @@ static int index_directory(request_rec *r,
         *title_endp-- = '\0';
     }
 
-    emit_head(r, autoindex_conf->header,
+    emit_head(r, find_header(autoindex_conf, r),
               autoindex_opts & SUPPRESS_PREAMBLE,
               autoindex_opts & EMIT_XHTML, title_name);
 
@@ -2259,7 +2233,7 @@ static int index_directory(request_rec *r,
                        keyid, direction, colargs);
     apr_dir_close(thedir);
 
-    emit_tail(r, autoindex_conf->readme,
+    emit_tail(r, find_readme(autoindex_conf, r),
               autoindex_opts & SUPPRESS_PREAMBLE);
 
     return 0;

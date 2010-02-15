@@ -248,15 +248,15 @@ AP_DECLARE(ap_filter_rec_t *) ap_register_input_filter(const char *name,
                            &registered_input_filters);
 }
 
+/* Prepare to make this a #define in 2.2 */
 AP_DECLARE(ap_filter_rec_t *) ap_register_output_filter(const char *name,
                                            ap_out_filter_func filter_func,
                                            ap_init_filter_func filter_init,
                                            ap_filter_type ftype)
 {
     return ap_register_output_filter_protocol(name, filter_func,
-                                              filter_init, ftype, 0);
+                                              filter_init, ftype, 0) ;
 }
-
 AP_DECLARE(ap_filter_rec_t *) ap_register_output_filter_protocol(
                                            const char *name,
                                            ap_out_filter_func filter_func,
@@ -279,7 +279,7 @@ static ap_filter_t *add_any_filter_handle(ap_filter_rec_t *frec, void *ctx,
                                           ap_filter_t **p_filters,
                                           ap_filter_t **c_filters)
 {
-    apr_pool_t *p = frec->ftype < AP_FTYPE_CONNECTION && r ? r->pool : c->pool;
+    apr_pool_t* p = r ? r->pool : c->pool;
     ap_filter_t *f = apr_palloc(p, sizeof(*f));
     ap_filter_t **outf;
 
@@ -309,8 +309,7 @@ static ap_filter_t *add_any_filter_handle(ap_filter_rec_t *frec, void *ctx,
 
     f->frec = frec;
     f->ctx = ctx;
-    /* f->r must always be NULL for connection filters */
-    f->r = frec->ftype < AP_FTYPE_CONNECTION ? r : NULL;
+    f->r = r;
     f->c = c;
     f->next = NULL;
 
@@ -579,18 +578,8 @@ AP_DECLARE_NONSTD(apr_status_t) ap_filter_flush(apr_bucket_brigade *bb,
                                                 void *ctx)
 {
     ap_filter_t *f = ctx;
-    apr_status_t rv;
 
-    rv = ap_pass_brigade(f, bb);
-
-    /* Before invocation of the flush callback, apr_brigade_write et
-     * al may place transient buckets in the brigade, which will fall
-     * out of scope after returning.  Empty the brigade here, to avoid
-     * issues with leaving such buckets in the brigade if some filter
-     * fails and leaves a non-empty brigade. */
-    apr_brigade_cleanup(bb);
-
-    return rv;
+    return ap_pass_brigade(f, bb);
 }
 
 AP_DECLARE(apr_status_t) ap_fflush(ap_filter_t *f, apr_bucket_brigade *bb)

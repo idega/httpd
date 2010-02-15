@@ -257,7 +257,7 @@ static int fsmagic(request_rec *r, const char *fn);
 #define L_MAIL    8   /* Electronic mail */
 #define L_NEWS    9   /* Usenet Netnews */
 
-static const char *types[] =
+static char *types[] =
 {
     "text/html",             /* HTML */
     "text/plain",            /* "c program text", */
@@ -273,8 +273,8 @@ static const char *types[] =
     0
 };
 
-static const struct names {
-    const char *name;
+static struct names {
+    char *name;
     short type;
 } names[] = {
 
@@ -443,7 +443,7 @@ static const struct names {
  */
 
 typedef struct magic_rsl_s {
-    const char *str;                  /* string, possibly a fragment */
+    char *str;                  /* string, possibly a fragment */
     struct magic_rsl_s *next;   /* pointer to next fragment */
 } magic_rsl;
 
@@ -540,7 +540,7 @@ static magic_req_rec *magic_set_config(request_rec *r)
 
 /* add a string to the result string list for this request */
 /* it is the responsibility of the caller to allocate "str" */
-static int magic_rsl_add(request_rec *r, const char *str)
+static int magic_rsl_add(request_rec *r, char *str)
 {
     magic_req_rec *req_dat = (magic_req_rec *)
                     ap_get_module_config(r->request_config, &mime_magic_module);
@@ -577,7 +577,7 @@ static int magic_rsl_add(request_rec *r, const char *str)
 }
 
 /* RSL hook for puts-type functions */
-static int magic_rsl_puts(request_rec *r, const char *str)
+static int magic_rsl_puts(request_rec *r, char *str)
 {
     return magic_rsl_add(r, str);
 }
@@ -885,10 +885,10 @@ static int tryit(request_rec *r, unsigned char *buf, apr_size_t nb,
     /*
      * Try compression stuff
      */
-    if (checkzmagic == 1) {
-        if (zmagic(r, buf, nb) == 1)
-            return OK;
-    }
+        if (checkzmagic == 1) {
+                        if (zmagic(r, buf, nb) == 1)
+                        return OK;
+        }
 
     /*
      * try tests in /etc/magic (or surrogate magic file)
@@ -1979,7 +1979,7 @@ static int ascmagic(request_rec *r, unsigned char *buf, apr_size_t nbytes)
     unsigned char *s;
     char nbuf[HOWMANY + 1];  /* one extra for terminating '\0' */
     char *token;
-    const struct names *p;
+    register struct names *p;
     int small_nbytes;
     char *strtok_state;
 
@@ -2099,15 +2099,13 @@ static int zmagic(request_rec *r, unsigned char *buf, apr_size_t nbytes)
     if (i == ncompr)
         return 0;
 
-    if ((newsize = uncompress(r, i, &newbuf, HOWMANY)) > 0) {
-        /* set encoding type in the request record */
-        r->content_encoding = compr[i].encoding;
-
-        newbuf[newsize-1] = '\0';  /* null-terminate uncompressed data */
-        /* Try to detect the content type of the uncompressed data */
+    if ((newsize = uncompress(r, i, &newbuf, nbytes)) > 0) {
         if (tryit(r, newbuf, newsize, 0) != OK) {
             return 0;
         }
+
+        /* set encoding type in the request record */
+        r->content_encoding = compr[i].encoding;
     }
     return 1;
 }
@@ -2123,6 +2121,7 @@ static int create_uncompress_child(struct uncompress_parms *parm, apr_pool_t *cn
 {
     int rc = 1;
     const char *new_argv[4];
+    const char *const *env;
     request_rec *r = parm->r;
     apr_pool_t *child_context = cntxt;
     apr_procattr_t *procattr;
@@ -2134,12 +2133,13 @@ static int create_uncompress_child(struct uncompress_parms *parm, apr_pool_t *cn
      * Should we create the err pipe, read it, and copy to the log?
      */
 
+    env = (const char *const *)ap_create_environment(child_context, r->subprocess_env);
+
     if ((apr_procattr_create(&procattr, child_context) != APR_SUCCESS) ||
         (apr_procattr_io_set(procattr, APR_FULL_BLOCK,
                            APR_FULL_BLOCK, APR_NO_PIPE)   != APR_SUCCESS) ||
-        (apr_procattr_dir_set(procattr,
-                              ap_make_dirstr_parent(r->pool, r->filename)) != APR_SUCCESS) ||
-        (apr_procattr_cmdtype_set(procattr, APR_PROGRAM_PATH) != APR_SUCCESS)) {
+        (apr_procattr_dir_set(procattr, r->filename)        != APR_SUCCESS) ||
+        (apr_procattr_cmdtype_set(procattr, APR_PROGRAM)    != APR_SUCCESS)) {
         /* Something bad happened, tell the world. */
         ap_log_rerror(APLOG_MARK, APLOG_ERR, APR_ENOPROC, r,
                "couldn't setup child process: %s", r->filename);
@@ -2152,7 +2152,7 @@ static int create_uncompress_child(struct uncompress_parms *parm, apr_pool_t *cn
 
         procnew = apr_pcalloc(child_context, sizeof(*procnew));
         rc = apr_proc_create(procnew, compr[parm->method].argv[0],
-                               new_argv, NULL, procattr, child_context);
+                               new_argv, env, procattr, child_context);
 
         if (rc != APR_SUCCESS) {
             /* Bad things happened. Everyone should have cleaned up. */
@@ -2473,3 +2473,5 @@ module AP_MODULE_DECLARE_DATA mime_magic_module =
     mime_magic_cmds,           /* command apr_table_t */
     register_hooks              /* register hooks */
 };
+
+

@@ -1,3 +1,5 @@
-APACHE_MPM_MODULE(mpmt_os2, $enable_mpm_mpmt_os2, mpmt_os2.lo mpmt_os2_child.lo,[
+if test "$MPM_NAME" = "mpmt_os2" ; then
+    AC_CACHE_SAVE
+    APACHE_FAST_OUTPUT(server/mpm/$MPM_NAME/Makefile)
     APR_ADDTO(CFLAGS,-Zmt)
-])
+fi

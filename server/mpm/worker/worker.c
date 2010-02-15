@@ -50,6 +50,8 @@
 #error The Worker MPM requires APR threads, but they are unavailable.
 #endif
 
+#define CORE_PRIVATE
+
 #include "ap_config.h"
 #include "httpd.h"
 #include "http_main.h"
@@ -64,8 +66,6 @@
 #include "scoreboard.h"
 #include "fdqueue.h"
 #include "mpm_default.h"
-#include "util_mutex.h"
-#include "unixd.h"
 
 #include <signal.h>
 #include <limits.h>             /* for INT_MAX */
@@ -114,14 +114,16 @@
  * Actual definitions of config globals
  */
 
-static int threads_per_child = 0;     /* Worker threads per child */
+int ap_threads_per_child = 0;         /* Worker threads per child */
 static int ap_daemons_to_start = 0;
 static int min_spare_threads = 0;
 static int max_spare_threads = 0;
 static int ap_daemons_limit = 0;
-static int max_clients = 0;
-static int server_limit = 0;
-static int thread_limit = 0;
+static int server_limit = DEFAULT_SERVER_LIMIT;
+static int first_server_limit = 0;
+static int thread_limit = DEFAULT_THREAD_LIMIT;
+static int first_thread_limit = 0;
+static int changed_limit_at_restart;
 static int dying = 0;
 static int workers_may_exit = 0;
 static int start_thread_may_exit = 0;
@@ -133,20 +135,6 @@ static fd_queue_t *worker_queue;
 static fd_queue_info_t *worker_queue_info;
 static int mpm_state = AP_MPMQ_STARTING;
 static int sick_child_detected;
-static ap_generation_t volatile my_generation = 0;
-
-/* data retained by worker across load/unload of the module
- * allocated on first call to pre-config hook; located on
- * subsequent calls to pre-config hook
- */
-typedef struct worker_retained_data {
-    int first_server_limit;
-    int first_thread_limit;
-    int module_loads;
-} worker_retained_data;
-static worker_retained_data *retained;
-
-#define MPM_CHILD_PID(i) (ap_scoreboard_image->parent[i].pid)
 
 /* The structure used to pass unique initialization info to each thread */
 typedef struct {
@@ -173,9 +161,13 @@ typedef struct {
  * use this value to optimize routines that have to scan the entire
  * scoreboard.
  */
-static int max_daemons_limit = -1;
+int ap_max_daemons_limit = -1;
 
-static ap_worker_pod_t *pod;
+static ap_pod_t *pod;
+
+/* *Non*-shared http_main globals... */
+
+server_rec *ap_server_conf;
 
 /* The worker MPM respects a couple of runtime flags that can aid
  * in debugging. Setting the -DNO_DETACH flag will prevent the root process
@@ -241,7 +233,7 @@ static apr_socket_t **worker_sockets;
 static void close_worker_sockets(void)
 {
     int i;
-    for (i = 0; i < threads_per_child; i++) {
+    for (i = 0; i < ap_threads_per_child; i++) {
         if (worker_sockets[i]) {
             apr_socket_close(worker_sockets[i]);
             worker_sockets[i] = NULL;
@@ -260,10 +252,6 @@ static void wakeup_listener(void)
          */
         return;
     }
-
-    /* unblock the listener if it's waiting for a worker */
-    ap_queue_info_term(worker_queue_info); 
-
     /*
      * we should just be able to "kill(ap_my_pid, LISTENER_SIGNAL)" on all
      * platforms and wake up the listener thread since it is the only thread
@@ -302,72 +290,55 @@ static void signal_threads(int mode)
     if (mode == ST_UNGRACEFUL) {
         workers_may_exit = 1;
         ap_queue_interrupt_all(worker_queue);
+        ap_queue_info_term(worker_queue_info);
         close_worker_sockets(); /* forcefully kill all current connections */
     }
 }
 
-static int worker_query(int query_code, int *result, apr_status_t *rv)
+AP_DECLARE(apr_status_t) ap_mpm_query(int query_code, int *result)
 {
-    *rv = APR_SUCCESS;
-    switch (query_code) {
+    switch(query_code){
         case AP_MPMQ_MAX_DAEMON_USED:
-            *result = max_daemons_limit;
-            break;
+            *result = ap_max_daemons_limit;
+            return APR_SUCCESS;
         case AP_MPMQ_IS_THREADED:
             *result = AP_MPMQ_STATIC;
-            break;
+            return APR_SUCCESS;
         case AP_MPMQ_IS_FORKED:
             *result = AP_MPMQ_DYNAMIC;
-            break;
+            return APR_SUCCESS;
         case AP_MPMQ_HARD_LIMIT_DAEMONS:
             *result = server_limit;
-            break;
+            return APR_SUCCESS;
         case AP_MPMQ_HARD_LIMIT_THREADS:
             *result = thread_limit;
-            break;
+            return APR_SUCCESS;
         case AP_MPMQ_MAX_THREADS:
-            *result = threads_per_child;
-            break;
+            *result = ap_threads_per_child;
+            return APR_SUCCESS;
         case AP_MPMQ_MIN_SPARE_DAEMONS:
             *result = 0;
-            break;
+            return APR_SUCCESS;
         case AP_MPMQ_MIN_SPARE_THREADS:
             *result = min_spare_threads;
-            break;
+            return APR_SUCCESS;
         case AP_MPMQ_MAX_SPARE_DAEMONS:
             *result = 0;
-            break;
+            return APR_SUCCESS;
         case AP_MPMQ_MAX_SPARE_THREADS:
             *result = max_spare_threads;
-            break;
+            return APR_SUCCESS;
         case AP_MPMQ_MAX_REQUESTS_DAEMON:
             *result = ap_max_requests_per_child;
-            break;
+            return APR_SUCCESS;
         case AP_MPMQ_MAX_DAEMONS:
             *result = ap_daemons_limit;
-            break;
+            return APR_SUCCESS;
         case AP_MPMQ_MPM_STATE:
             *result = mpm_state;
-            break;
-        case AP_MPMQ_GENERATION:
-            *result = my_generation;
-            break;
-        default:
-            *rv = APR_ENOTIMPL;
-            break;
+            return APR_SUCCESS;
     }
-    return OK;
-}
-
-static apr_status_t worker_note_child_killed(int childnum)
-{
-    ap_scoreboard_image->parent[childnum].pid = 0;
-    return APR_SUCCESS;
-}
-
-static const char *worker_get_name(void)
-{
-    return "worker";
+    return APR_ENOTIMPL;
 }
 
 /* a clean exit from a child with proper cleanup */
@@ -395,6 +366,7 @@ static int volatile shutdown_pending;
 static int volatile restart_pending;
 static int volatile is_graceful;
 static volatile int child_fatal;
+ap_generation_t volatile ap_my_generation;
 
 /*
  * ap_start_shutdown() and ap_start_restart(), below, are a first stab at
@@ -540,24 +512,35 @@ static void set_signals(void)
  * Here follows a long bunch of generic server bookkeeping stuff...
  */
 
+int ap_graceful_stop_signalled(void)
+    /* XXX this is really a bad confusing obsolete name
+     * maybe it should be ap_mpm_process_exiting?
+     */
+{
+    /* note: for a graceful termination, listener_may_exit will be set before
+     *       workers_may_exit, so check listener_may_exit
+     */
+    return listener_may_exit;
+}
+
 /*****************************************************************
  * Child process main loop.
  */
 
-static void process_socket(apr_thread_t *thd, apr_pool_t *p, apr_socket_t *sock,
-                           int my_child_num,
+static void process_socket(apr_pool_t *p, apr_socket_t *sock, int my_child_num,
                            int my_thread_num, apr_bucket_alloc_t *bucket_alloc)
 {
     conn_rec *current_conn;
     long conn_id = ID_FROM_CHILD_THREAD(my_child_num, my_thread_num);
+    int csd;
     ap_sb_handle_t *sbh;
 
     ap_create_sb_handle(&sbh, p, my_child_num, my_thread_num);
+    apr_os_sock_get(&csd, sock);
 
     current_conn = ap_run_create_connection(p, ap_server_conf, sock,
                                             conn_id, sbh, bucket_alloc);
     if (current_conn) {
-        current_conn->current_thread = thd;
         ap_process_connection(current_conn, sock);
         ap_lingering_close(current_conn);
     }
@@ -572,6 +555,17 @@ static void check_infinite_requests(void)
         signal_threads(ST_GRACEFUL);
     }
     else {
+        /* wow! if you're executing this code, you may have set a record.
+         * either this child process has served over 2 billion requests, or
+         * you're running a threaded 2.0 on a 16 bit machine.
+         *
+         * I'll buy pizza and beers at Apachecon for the first person to do
+         * the former without cheating (dorking with INT_MAX, or running with
+         * uncommitted performance patches, for example).
+         *
+         * for the latter case, you probably deserve a beer too.   Greg Ames
+         */
+
         requests_this_child = INT_MAX;      /* keep going */
     }
 }
@@ -596,30 +590,7 @@ static void dummy_signal_handler(int sig)
      */
 }
 
-static void accept_mutex_error(const char *func, apr_status_t rv, int process_slot)
-{
-    int level = APLOG_EMERG;
-
-    if (ap_scoreboard_image->parent[process_slot].generation !=
-        ap_scoreboard_image->global->running_generation) {
-        level = APLOG_DEBUG; /* common to get these at restart time */
-    } 
-    else if (requests_this_child == INT_MAX  
-        || ((requests_this_child == ap_max_requests_per_child)
-            && ap_max_requests_per_child)) { 
-        ap_log_error(APLOG_MARK, level, rv, ap_server_conf,
-                     "apr_proc_mutex_%s failed "
-                     "before this child process served any requests.",
-                     func);
-        clean_child_exit(APEXIT_CHILDSICK); 
-    }
-    ap_log_error(APLOG_MARK, level, rv, ap_server_conf,
-                 "apr_proc_mutex_%s failed. Attempting to "
-                 "shutdown process gracefully.", func);
-    signal_threads(ST_GRACEFUL);
-}
-
-static void * APR_THREAD_FUNC listener_thread(apr_thread_t *thd, void * dummy)
+static void *listener_thread(apr_thread_t *thd, void * dummy)
 {
     proc_info * ti = dummy;
     int process_slot = ti->pid;
@@ -634,14 +605,8 @@ static void * APR_THREAD_FUNC listener_thread(apr_thread_t *thd, void * dummy)
 
     free(ti);
 
-    rv = apr_pollset_create(&pollset, num_listensocks, tpool, 0);
-    if (rv != APR_SUCCESS) {
-        ap_log_error(APLOG_MARK, APLOG_EMERG, rv, ap_server_conf,
-                     "Couldn't create pollset in thread;"
-                     " check system or user limits");
-        /* let the parent decide how bad this really is */
-        clean_child_exit(APEXIT_CHILDSICK);
-    }
+    /* ### check the status */
+    (void) apr_pollset_create(&pollset, num_listensocks, tpool, 0);
 
     for (lr = ap_listeners; lr != NULL; lr = lr->next) {
         apr_pollfd_t pfd = { 0 };
@@ -651,16 +616,8 @@ static void * APR_THREAD_FUNC listener_thread(apr_thread_t *thd, void * dummy)
         pfd.reqevents = APR_POLLIN;
         pfd.client_data = lr;
 
-        rv = apr_pollset_add(pollset, &pfd);
-        if (rv != APR_SUCCESS) {
-            ap_log_error(APLOG_MARK, APLOG_EMERG, rv, ap_server_conf,
-                         "Couldn't create add listener to pollset;"
-                         " check system or user limits");
-            /* let the parent decide how bad this really is */
-            clean_child_exit(APEXIT_CHILDSICK);
-        }
-
-        lr->accept_func = ap_unixd_accept;
+        /* ### check the status */
+        (void) apr_pollset_add(pollset, &pfd);
     }
 
     /* Unblock the signal used to wake this thread up, and set a handler for
@@ -702,10 +659,19 @@ static void * APR_THREAD_FUNC listener_thread(apr_thread_t *thd, void * dummy)
 
         if ((rv = SAFE_ACCEPT(apr_proc_mutex_lock(accept_mutex)))
             != APR_SUCCESS) {
+            int level = APLOG_EMERG;
 
-            if (!listener_may_exit) {
-                accept_mutex_error("lock", rv, process_slot);
+            if (listener_may_exit) {
+                break;
             }
+            if (ap_scoreboard_image->parent[process_slot].generation !=
+                ap_scoreboard_image->global->running_generation) {
+                level = APLOG_DEBUG; /* common to get these at restart time */
+            }
+            ap_log_error(APLOG_MARK, level, rv, ap_server_conf,
+                         "apr_proc_mutex_lock failed. Attempting to shutdown "
+                         "process gracefully.");
+            signal_threads(ST_GRACEFUL);
             break;                    /* skip the lock release */
         }
 
@@ -784,11 +750,19 @@ static void * APR_THREAD_FUNC listener_thread(apr_thread_t *thd, void * dummy)
             }
             if ((rv = SAFE_ACCEPT(apr_proc_mutex_unlock(accept_mutex)))
                 != APR_SUCCESS) {
+                int level = APLOG_EMERG;
 
                 if (listener_may_exit) {
                     break;
                 }
-                accept_mutex_error("unlock", rv, process_slot);
+                if (ap_scoreboard_image->parent[process_slot].generation !=
+                    ap_scoreboard_image->global->running_generation) {
+                    level = APLOG_DEBUG; /* common to get these at restart time */
+                }
+                ap_log_error(APLOG_MARK, level, rv, ap_server_conf,
+                             "apr_proc_mutex_unlock failed. Attempting to "
+                             "shutdown process gracefully.");
+                signal_threads(ST_GRACEFUL);
             }
             if (csd != NULL) {
                 rv = ap_queue_push(worker_queue, csd, ptrans);
@@ -857,8 +831,7 @@ static void * APR_THREAD_FUNC worker_thread(apr_thread_t *thd, void * dummy)
     free(ti);
 
     ap_scoreboard_image->servers[process_slot][thread_slot].pid = ap_my_pid;
-    ap_scoreboard_image->servers[process_slot][thread_slot].tid = apr_os_thread_current();
-    ap_scoreboard_image->servers[process_slot][thread_slot].generation = my_generation;
+    ap_scoreboard_image->servers[process_slot][thread_slot].generation = ap_my_generation;
     ap_update_child_status_from_indexes(process_slot, thread_slot, SERVER_STARTING, NULL);
 
 #ifdef HAVE_PTHREAD_KILL
@@ -918,9 +891,9 @@ worker_pop:
         is_idle = 0;
         worker_sockets[thread_slot] = csd;
         bucket_alloc = apr_bucket_alloc_create(ptrans);
-        process_socket(thd, ptrans, csd, process_slot, thread_slot, bucket_alloc);
+        process_socket(ptrans, csd, process_slot, thread_slot, bucket_alloc);
         worker_sockets[thread_slot] = NULL;
-        requests_this_child--; 
+        requests_this_child--; /* FIXME: should be synchronized - aaron */
         apr_pool_clear(ptrans);
         last_ptrans = ptrans;
     }
@@ -987,7 +960,7 @@ static void * APR_THREAD_FUNC start_threads(apr_thread_t *thd, void *dummy)
     /* We must create the fd queues before we start up the listener
      * and worker threads. */
     worker_queue = apr_pcalloc(pchild, sizeof(*worker_queue));
-    rv = ap_queue_init(worker_queue, threads_per_child, pchild);
+    rv = ap_queue_init(worker_queue, ap_threads_per_child, pchild);
     if (rv != APR_SUCCESS) {
         ap_log_error(APLOG_MARK, APLOG_ALERT, rv, ap_server_conf,
                      "ap_queue_init() failed");
@@ -995,20 +968,20 @@ static void * APR_THREAD_FUNC start_threads(apr_thread_t *thd, void *dummy)
     }
 
     rv = ap_queue_info_create(&worker_queue_info, pchild,
-                              threads_per_child);
+                              ap_threads_per_child);
     if (rv != APR_SUCCESS) {
         ap_log_error(APLOG_MARK, APLOG_ALERT, rv, ap_server_conf,
                      "ap_queue_info_create() failed");
         clean_child_exit(APEXIT_CHILDFATAL);
     }
 
-    worker_sockets = apr_pcalloc(pchild, threads_per_child
+    worker_sockets = apr_pcalloc(pchild, ap_threads_per_child
                                         * sizeof(apr_socket_t *));
 
     loops = prev_threads_created = 0;
     while (1) {
-        /* threads_per_child does not include the listener thread */
-        for (i = 0; i < threads_per_child; i++) {
+        /* ap_threads_per_child does not include the listener thread */
+        for (i = 0; i < ap_threads_per_child; i++) {
             int status = ap_scoreboard_image->servers[child_num_arg][i].status;
 
             if (status != SERVER_GRACEFUL && status != SERVER_DEAD) {
@@ -1046,7 +1019,7 @@ static void * APR_THREAD_FUNC start_threads(apr_thread_t *thd, void *dummy)
             create_listener_thread(ts);
             listener_started = 1;
         }
-        if (start_thread_may_exit || threads_created == threads_per_child) {
+        if (start_thread_may_exit || threads_created == ap_threads_per_child) {
             break;
         }
         /* wait for previous generation to clean up an entry */
@@ -1057,7 +1030,7 @@ static void * APR_THREAD_FUNC start_threads(apr_thread_t *thd, void *dummy)
                 ap_log_error(APLOG_MARK, APLOG_DEBUG, 0, ap_server_conf,
                              "child %" APR_PID_T_FMT " isn't taking over "
                              "slots very quickly (%d of %d)",
-                             ap_my_pid, threads_created, threads_per_child);
+                             ap_my_pid, threads_created, ap_threads_per_child);
             }
             prev_threads_created = threads_created;
         }
@@ -1119,7 +1092,7 @@ static void join_workers(apr_thread_t *listener, apr_thread_t **threads)
         }
     }
 
-    for (i = 0; i < threads_per_child; i++) {
+    for (i = 0; i < ap_threads_per_child; i++) {
         if (threads[i]) { /* if we ever created this thread */
 #ifdef HAVE_PTHREAD_KILL
             apr_os_thread_t *worker_os_thread;
@@ -1173,8 +1146,7 @@ static void child_main(int child_num_arg)
     /*stuff to do before we switch id's, so we have permissions.*/
     ap_reopen_scoreboard(pchild, NULL, 0);
 
-    rv = SAFE_ACCEPT(apr_proc_mutex_child_init(&accept_mutex,
-                                               apr_proc_mutex_lockfile(accept_mutex),
+    rv = SAFE_ACCEPT(apr_proc_mutex_child_init(&accept_mutex, ap_lock_fname,
                                                pchild));
     if (rv != APR_SUCCESS) {
         ap_log_error(APLOG_MARK, APLOG_EMERG, rv, ap_server_conf,
@@ -1182,7 +1154,7 @@ static void child_main(int child_num_arg)
         clean_child_exit(APEXIT_CHILDFATAL);
     }
 
-    if (ap_run_drop_privileges(pchild, ap_server_conf)) {
+    if (unixd_setup_child()) {
         clean_child_exit(APEXIT_CHILDFATAL);
     }
 
@@ -1215,7 +1187,7 @@ static void child_main(int child_num_arg)
      * and we want a 0 entry to indicate a thread which was not created
      */
     threads = (apr_thread_t **)calloc(1,
-                                sizeof(apr_thread_t *) * threads_per_child);
+                                sizeof(apr_thread_t *) * ap_threads_per_child);
     if (threads == NULL) {
         ap_log_error(APLOG_MARK, APLOG_ALERT, errno, ap_server_conf,
                      "malloc: out of memory");
@@ -1283,7 +1255,7 @@ static void child_main(int child_num_arg)
         apr_signal(SIGTERM, dummy_signal_handler);
         /* Watch for any messages from the parent over the POD */
         while (1) {
-            rv = ap_worker_pod_check(pod);
+            rv = ap_mpm_pod_check(pod);
             if (rv == AP_NORESTART) {
                 /* see if termination was triggered while we slept */
                 switch(terminate_mode) {
@@ -1324,8 +1296,8 @@ static int make_child(server_rec *s, int slot)
 {
     int pid;
 
-    if (slot + 1 > max_daemons_limit) {
-        max_daemons_limit = slot + 1;
+    if (slot + 1 > ap_max_daemons_limit) {
+        ap_max_daemons_limit = slot + 1;
     }
 
     if (one_process) {
@@ -1337,12 +1309,11 @@ static int make_child(server_rec *s, int slot)
     if ((pid = fork()) == -1) {
         ap_log_error(APLOG_MARK, APLOG_ERR, errno, s,
                      "fork: Unable to fork new process");
-        /* fork didn't succeed.  There's no need to touch the scoreboard;
-         * if we were trying to replace a failed child process, then
-         * server_main_loop() marked its workers SERVER_DEAD, and if
-         * we were trying to replace a child process that exited normally,
-         * its worker_thread()s left SERVER_DEAD or SERVER_GRACEFUL behind.
+
+        /* fork didn't succeed. Fix the scoreboard or else
+         * it will say SERVER_STARTING forever and ever
          */
+        ap_update_child_status_from_indexes(slot, 0, SERVER_DEAD, NULL);
 
         /* In case system resources are maxxed out, we don't want
            Apache running away with the CPU trying to fork over and
@@ -1443,19 +1414,16 @@ static void perform_idle_server_maintenance(void)
 
     for (i = 0; i < ap_daemons_limit; ++i) {
         /* Initialization to satisfy the compiler. It doesn't know
-         * that threads_per_child is always > 0 */
+         * that ap_threads_per_child is always > 0 */
         int status = SERVER_DEAD;
         int any_dying_threads = 0;
         int any_dead_threads = 0;
         int all_dead_threads = 1;
 
-        if (i >= max_daemons_limit && totally_free_length == idle_spawn_rate)
-            /* short cut if all active processes have been examined and
-             * enough empty scoreboard slots have been found
-             */
+        if (i >= ap_max_daemons_limit && totally_free_length == idle_spawn_rate)
             break;
         ps = &ap_scoreboard_image->parent[i];
-        for (j = 0; j < threads_per_child; j++) {
+        for (j = 0; j < ap_threads_per_child; j++) {
             ws = &ap_scoreboard_image->servers[i][j];
             status = ws->status;
 
@@ -1477,7 +1445,7 @@ static void perform_idle_server_maintenance(void)
                                    loop if no pid?  not much else matters */
                 if (status <= SERVER_READY && 
                         !ps->quiescing &&
-                        ps->generation == my_generation) {
+                        ps->generation == ap_my_generation) {
                     ++idle_thread_count;
                 }
                 if (status >= SERVER_READY && status < SERVER_GRACEFUL) {
@@ -1535,45 +1503,25 @@ static void perform_idle_server_maintenance(void)
         }
     }
 
-    max_daemons_limit = last_non_dead + 1;
+    ap_max_daemons_limit = last_non_dead + 1;
 
     if (idle_thread_count > max_spare_threads) {
         /* Kill off one child */
-        ap_worker_pod_signal(pod, TRUE);
+        ap_mpm_pod_signal(pod, TRUE);
         idle_spawn_rate = 1;
     }
     else if (idle_thread_count < min_spare_threads) {
         /* terminate the free list */
-        if (free_length == 0) { /* scoreboard is full, can't fork */
+        if (free_length == 0) {
+            /* only report this condition once */
+            static int reported = 0;
 
-            if (active_thread_count >= ap_daemons_limit * threads_per_child) { 
-                /* no threads are "inactive" - starting, stopping, etc. */
-                /* have we reached MaxClients, or just getting close? */
-                if (0 == idle_thread_count) {
-                    static int reported = 0;
-                    if (!reported) {
-                        /* only report this condition once */
-                        ap_log_error(APLOG_MARK, APLOG_ERR, 0,
-                                     ap_server_conf,
-                                     "server reached MaxClients setting, consider"
-                                     " raising the MaxClients setting");
-                        reported = 1;
-                    }
-                } else {
-                    static int reported = 0;
-                    if (!reported) {
-                        ap_log_error(APLOG_MARK, APLOG_ERR, 0,
-                                     ap_server_conf,
-                                     "server is within MinSpareThreads of MaxClients, "
-                                     "consider raising the MaxClients setting");
-                        reported = 1;
-                    }
-                }
-            }
-            else {
+            if (!reported) {
                 ap_log_error(APLOG_MARK, APLOG_ERR, 0,
                              ap_server_conf,
-                             "scoreboard is full, not at MaxClients");
+                             "server reached MaxClients setting, consider"
+                             " raising the MaxClients setting");
+                reported = 1;
             }
             idle_spawn_rate = 1;
         }
@@ -1619,7 +1567,7 @@ static void server_main_loop(int remaining_children_to_start)
     int i;
 
     while (!restart_pending && !shutdown_pending) {
-        ap_wait_or_timeout(&exitwhy, &status, &pid, pconf, ap_server_conf);
+        ap_wait_or_timeout(&exitwhy, &status, &pid, pconf);
 
         if (pid.pid != -1) {
             processed_status = ap_process_child_status(&pid, exitwhy, status);
@@ -1635,9 +1583,9 @@ static void server_main_loop(int remaining_children_to_start)
                 sick_child_detected = 1;
             }
             /* non-fatal death... note that it's gone in the scoreboard. */
-            child_slot = ap_find_child_by_pid(&pid);
+            child_slot = find_child_by_pid(&pid);
             if (child_slot >= 0) {
-                for (i = 0; i < threads_per_child; i++)
+                for (i = 0; i < ap_threads_per_child; i++)
                     ap_update_child_status_from_indexes(child_slot, i, SERVER_DEAD,
                                                         (request_rec *) NULL);
 
@@ -1699,44 +1647,74 @@ static void server_main_loop(int remaining_children_to_start)
     }
 }
 
-static int worker_run(apr_pool_t *_pconf, apr_pool_t *plog, server_rec *s)
+int ap_mpm_run(apr_pool_t *_pconf, apr_pool_t *plog, server_rec *s)
 {
     int remaining_children_to_start;
     apr_status_t rv;
 
     ap_log_pid(pconf, ap_pid_fname);
 
+    first_server_limit = server_limit;
+    first_thread_limit = thread_limit;
+    if (changed_limit_at_restart) {
+        ap_log_error(APLOG_MARK, APLOG_WARNING, 0, s,
+                     "WARNING: Attempt to change ServerLimit or ThreadLimit "
+                     "ignored during restart");
+        changed_limit_at_restart = 0;
+    }
+
     /* Initialize cross-process accept lock */
-    rv = ap_proc_mutex_create(&accept_mutex, AP_ACCEPT_MUTEX_TYPE, NULL, s,
-                              _pconf, 0);
+    ap_lock_fname = apr_psprintf(_pconf, "%s.%" APR_PID_T_FMT,
+                                 ap_server_root_relative(_pconf, ap_lock_fname),
+                                 ap_my_pid);
+
+    rv = apr_proc_mutex_create(&accept_mutex, ap_lock_fname,
+                               ap_accept_lock_mech, _pconf);
     if (rv != APR_SUCCESS) {
+        ap_log_error(APLOG_MARK, APLOG_EMERG, rv, s,
+                     "Couldn't create accept lock");
         mpm_state = AP_MPMQ_STOPPING;
-        return DONE;
+        return 1;
+    }
+
+#if APR_USE_SYSVSEM_SERIALIZE
+    if (ap_accept_lock_mech == APR_LOCK_DEFAULT ||
+        ap_accept_lock_mech == APR_LOCK_SYSVSEM) {
+#else
+    if (ap_accept_lock_mech == APR_LOCK_SYSVSEM) {
+#endif
+        rv = unixd_set_proc_mutex_perms(accept_mutex);
+        if (rv != APR_SUCCESS) {
+            ap_log_error(APLOG_MARK, APLOG_EMERG, rv, s,
+                         "Couldn't set permissions on cross-process lock; "
+                         "check User and Group directives");
+            mpm_state = AP_MPMQ_STOPPING;
+            return 1;
+        }
     }
 
     if (!is_graceful) {
         if (ap_run_pre_mpm(s->process->pool, SB_SHARED) != OK) {
             mpm_state = AP_MPMQ_STOPPING;
-            return DONE;
+            return 1;
         }
         /* fix the generation number in the global score; we just got a new,
          * cleared scoreboard
          */
-        ap_scoreboard_image->global->running_generation = my_generation;
+        ap_scoreboard_image->global->running_generation = ap_my_generation;
     }
 
     set_signals();
     /* Don't thrash... */
-    if (max_spare_threads < min_spare_threads + threads_per_child)
-        max_spare_threads = min_spare_threads + threads_per_child;
+    if (max_spare_threads < min_spare_threads + ap_threads_per_child)
+        max_spare_threads = min_spare_threads + ap_threads_per_child;
 
     /* If we're doing a graceful_restart then we're going to see a lot
      * of children exiting immediately when we get into the main loop
      * below (because we just sent them AP_SIG_GRACEFUL).  This happens pretty
-     * rapidly... and for each one that exits we may start a new one, until
-     * there are at least min_spare_threads idle threads, counting across
-     * all children.  But we may be permitted to start more children than
-     * that, so we'll just keep track of how many we're
+     * rapidly... and for each one that exits we'll start a new one until
+     * we reach at least daemons_min_free.  But we may be permitted to
+     * start more than that, so we'll just keep track of how many we're
      * supposed to start up without the 1 second penalty between each fork.
      */
     remaining_children_to_start = ap_daemons_to_start;
@@ -1758,10 +1736,12 @@ static int worker_run(apr_pool_t *_pconf, apr_pool_t *plog, server_rec *s)
                 ap_get_server_description());
     ap_log_error(APLOG_MARK, APLOG_INFO, 0, ap_server_conf,
                 "Server built: %s", ap_get_server_built());
+#ifdef AP_MPM_WANT_SET_ACCEPT_LOCK_MECH
     ap_log_error(APLOG_MARK, APLOG_DEBUG, 0, ap_server_conf,
-                "Accept mutex: %s (default: %s)",
+                "AcceptMutex: %s (default: %s)",
                 apr_proc_mutex_name(accept_mutex),
                 apr_proc_mutex_defname());
+#endif
     restart_pending = shutdown_pending = 0;
     mpm_state = AP_MPMQ_RUNNING;
 
@@ -1772,7 +1752,7 @@ static int worker_run(apr_pool_t *_pconf, apr_pool_t *plog, server_rec *s)
         /* Time to shut down:
          * Kill child processes, tell them to call child_exit, etc...
          */
-        ap_worker_pod_killpg(pod, ap_daemons_limit, FALSE);
+        ap_mpm_pod_killpg(pod, ap_daemons_limit, FALSE);
         ap_reclaim_child_processes(1);                /* Start with SIGTERM */
 
         if (!child_fatal) {
@@ -1788,7 +1768,7 @@ static int worker_run(apr_pool_t *_pconf, apr_pool_t *plog, server_rec *s)
             ap_log_error(APLOG_MARK, APLOG_NOTICE, 0,
                          ap_server_conf, "caught SIGTERM, shutting down");
         }
-        return DONE;
+        return 1;
     } else if (shutdown_pending) {
         /* Time to gracefully shut down:
          * Kill child processes, tell them to call child_exit, etc...
@@ -1799,7 +1779,7 @@ static int worker_run(apr_pool_t *_pconf, apr_pool_t *plog, server_rec *s)
 
         /* Close our listeners, and then ask our children to do same */
         ap_close_listeners();
-        ap_worker_pod_killpg(pod, ap_daemons_limit, TRUE);
+        ap_mpm_pod_killpg(pod, ap_daemons_limit, TRUE);
         ap_relieve_child_processes();
 
         if (!child_fatal) {
@@ -1846,10 +1826,10 @@ static int worker_run(apr_pool_t *_pconf, apr_pool_t *plog, server_rec *s)
          * way, try and make sure that all of our processes are
          * really dead.
          */
-        ap_worker_pod_killpg(pod, ap_daemons_limit, FALSE);
+        ap_mpm_pod_killpg(pod, ap_daemons_limit, FALSE);
         ap_reclaim_child_processes(1);
 
-        return DONE;
+        return 1;
     }
 
     /* we've been told to restart */
@@ -1857,21 +1837,21 @@ static int worker_run(apr_pool_t *_pconf, apr_pool_t *plog, server_rec *s)
 
     if (one_process) {
         /* not worth thinking about */
-        return DONE;
+        return 1;
     }
 
     /* advance to the next generation */
     /* XXX: we really need to make sure this new generation number isn't in
      * use by any of the children.
      */
-    ++my_generation;
-    ap_scoreboard_image->global->running_generation = my_generation;
+    ++ap_my_generation;
+    ap_scoreboard_image->global->running_generation = ap_my_generation;
 
     if (is_graceful) {
         ap_log_error(APLOG_MARK, APLOG_NOTICE, 0, ap_server_conf,
                      AP_SIG_GRACEFUL_STRING " received.  Doing graceful restart");
         /* wake up the children...time to die.  But we'll have more soon */
-        ap_worker_pod_killpg(pod, ap_daemons_limit, TRUE);
+        ap_mpm_pod_killpg(pod, ap_daemons_limit, TRUE);
 
 
         /* This is mostly for debugging... so that we know what is still
@@ -1884,14 +1864,14 @@ static int worker_run(apr_pool_t *_pconf, apr_pool_t *plog, server_rec *s)
          * and a SIGHUP, we may as well use the same signal, because some user
          * pthreads are stealing signals from us left and right.
          */
-        ap_worker_pod_killpg(pod, ap_daemons_limit, FALSE);
+        ap_mpm_pod_killpg(pod, ap_daemons_limit, FALSE);
 
         ap_reclaim_child_processes(1);                /* Start with SIGTERM */
         ap_log_error(APLOG_MARK, APLOG_NOTICE, 0, ap_server_conf,
                     "SIGHUP received.  Attempting to restart");
     }
 
-    return OK;
+    return 0;
 }
 
 /* This really should be a post_config hook, but the error log is already
@@ -1899,30 +1879,21 @@ static int worker_run(apr_pool_t *_pconf, apr_pool_t *plog, server_rec *s)
  */
 static int worker_open_logs(apr_pool_t *p, apr_pool_t *plog, apr_pool_t *ptemp, server_rec *s)
 {
-    int startup = 0;
-    int level_flags = 0;
     apr_status_t rv;
 
     pconf = p;
-
-    /* the reverse of pre_config, we want this only the first time around */
-    if (retained->module_loads == 1) {
-        startup = 1;
-        level_flags |= APLOG_STARTUP;
-    }
+    ap_server_conf = s;
 
     if ((num_listensocks = ap_setup_listeners(ap_server_conf)) < 1) {
-        ap_log_error(APLOG_MARK, APLOG_ALERT | level_flags, 0,
-                     (startup ? NULL : s),
-                     "no listening sockets available, shutting down");
+        ap_log_error(APLOG_MARK, APLOG_ALERT|APLOG_STARTUP, 0,
+                     NULL, "no listening sockets available, shutting down");
         return DONE;
     }
 
     if (!one_process) {
-        if ((rv = ap_worker_pod_open(pconf, &pod))) {
-            ap_log_error(APLOG_MARK, APLOG_CRIT | level_flags, rv,
-                         (startup ? NULL : s),
-                         "could not open pipe-of-death");
+        if ((rv = ap_mpm_pod_open(pconf, &pod))) {
+            ap_log_error(APLOG_MARK, APLOG_CRIT|APLOG_STARTUP, rv, NULL,
+                    "Could not open pipe-of-death.");
             return DONE;
         }
     }
@@ -1932,11 +1903,49 @@ static int worker_open_logs(apr_pool_t *p, apr_pool_t *plog, apr_pool_t *ptemp, 
 static int worker_pre_config(apr_pool_t *pconf, apr_pool_t *plog,
                              apr_pool_t *ptemp)
 {
+    static int restart_num = 0;
     int no_detach, debug, foreground;
+    ap_directive_t *pdir;
+    ap_directive_t *max_clients = NULL;
     apr_status_t rv;
-    const char *userdata_key = "mpm_worker_module";
 
     mpm_state = AP_MPMQ_STARTING;
+
+    /* make sure that "ThreadsPerChild" gets set before "MaxClients" */
+    for (pdir = ap_conftree; pdir != NULL; pdir = pdir->next) {
+        if (strncasecmp(pdir->directive, "ThreadsPerChild", 15) == 0) {
+            if (!max_clients) {
+                break; /* we're in the clear, got ThreadsPerChild first */
+            }
+            else {
+                /* now to swap the data */
+                ap_directive_t temp;
+
+                temp.directive = pdir->directive;
+                temp.args = pdir->args;
+                /* Make sure you don't change 'next', or you may get loops! */
+                /* XXX: first_child, parent, and data can never be set
+                 * for these directives, right? -aaron */
+                temp.filename = pdir->filename;
+                temp.line_num = pdir->line_num;
+
+                pdir->directive = max_clients->directive;
+                pdir->args = max_clients->args;
+                pdir->filename = max_clients->filename;
+                pdir->line_num = max_clients->line_num;
+
+                max_clients->directive = temp.directive;
+                max_clients->args = temp.args;
+                max_clients->filename = temp.filename;
+                max_clients->line_num = temp.line_num;
+                break;
+            }
+        }
+        else if (!max_clients
+                 && strncasecmp(pdir->directive, "MaxClients", 10) == 0) {
+            max_clients = pdir;
+        }
+    }
 
     debug = ap_exists_config_define("DEBUG");
 
@@ -1950,15 +1959,8 @@ static int worker_pre_config(apr_pool_t *pconf, apr_pool_t *plog,
         foreground = ap_exists_config_define("FOREGROUND");
     }
 
-    ap_mutex_register(pconf, AP_ACCEPT_MUTEX_TYPE, NULL, APR_LOCK_DEFAULT, 0);
-
     /* sigh, want this only the second time around */
-    retained = ap_retained_data_get(userdata_key);
-    if (!retained) {
-        retained = ap_retained_data_create(userdata_key, sizeof(*retained));
-    }
-    ++retained->module_loads;
-    if (retained->module_loads == 2) {
+    if (restart_num++ == 1) {
         is_graceful = 0;
 
         if (!one_process && !foreground) {
@@ -1973,280 +1975,40 @@ static int worker_pre_config(apr_pool_t *pconf, apr_pool_t *plog,
         parent_pid = ap_my_pid = getpid();
     }
 
+    unixd_pre_config(ptemp);
     ap_listen_pre_config();
     ap_daemons_to_start = DEFAULT_START_DAEMON;
     min_spare_threads = DEFAULT_MIN_FREE_DAEMON * DEFAULT_THREADS_PER_CHILD;
     max_spare_threads = DEFAULT_MAX_FREE_DAEMON * DEFAULT_THREADS_PER_CHILD;
-    server_limit = DEFAULT_SERVER_LIMIT;
-    thread_limit = DEFAULT_THREAD_LIMIT;
     ap_daemons_limit = server_limit;
-    threads_per_child = DEFAULT_THREADS_PER_CHILD;
-    max_clients = ap_daemons_limit * threads_per_child;
+    ap_threads_per_child = DEFAULT_THREADS_PER_CHILD;
     ap_pid_fname = DEFAULT_PIDLOG;
+    ap_lock_fname = DEFAULT_LOCKFILE;
     ap_max_requests_per_child = DEFAULT_MAX_REQUESTS_PER_CHILD;
     ap_extended_status = 0;
-    ap_max_mem_free = APR_ALLOCATOR_MAX_FREE_UNLIMITED;
+#ifdef AP_MPM_WANT_SET_MAX_MEM_FREE
+        ap_max_mem_free = APR_ALLOCATOR_MAX_FREE_UNLIMITED;
+#endif
 
     apr_cpystrn(ap_coredump_dir, ap_server_root, sizeof(ap_coredump_dir));
 
     return OK;
 }
 
-static int worker_check_config(apr_pool_t *p, apr_pool_t *plog,
-                               apr_pool_t *ptemp, server_rec *s)
-{
-    static int restart_num = 0;
-    int startup = 0;
-
-    /* the reverse of pre_config, we want this only the first time around */
-    if (restart_num++ == 0) {
-        startup = 1;
-    }
-
-    if (server_limit > MAX_SERVER_LIMIT) {
-        if (startup) {
-            ap_log_error(APLOG_MARK, APLOG_WARNING | APLOG_STARTUP, 0, NULL,
-                         "WARNING: ServerLimit of %d exceeds compile-time "
-                         "limit of", server_limit);
-            ap_log_error(APLOG_MARK, APLOG_WARNING | APLOG_STARTUP, 0, NULL,
-                         " %d servers, decreasing to %d.",
-                         MAX_SERVER_LIMIT, MAX_SERVER_LIMIT);
-        } else {
-            ap_log_error(APLOG_MARK, APLOG_WARNING, 0, s,
-                         "ServerLimit of %d exceeds compile-time limit "
-                         "of %d, decreasing to match",
-                         server_limit, MAX_SERVER_LIMIT);
-        }
-        server_limit = MAX_SERVER_LIMIT;
-    }
-    else if (server_limit < 1) {
-        if (startup) {
-            ap_log_error(APLOG_MARK, APLOG_WARNING | APLOG_STARTUP, 0, NULL,
-                         "WARNING: ServerLimit of %d not allowed, "
-                         "increasing to 1.", server_limit);
-        } else {
-            ap_log_error(APLOG_MARK, APLOG_WARNING, 0, s,
-                         "ServerLimit of %d not allowed, increasing to 1",
-                         server_limit);
-        }
-        server_limit = 1;
-    }
-
-    /* you cannot change ServerLimit across a restart; ignore
-     * any such attempts
-     */
-    if (!retained->first_server_limit) {
-        retained->first_server_limit = server_limit;
-    }
-    else if (server_limit != retained->first_server_limit) {
-        /* don't need a startup console version here */
-        ap_log_error(APLOG_MARK, APLOG_WARNING, 0, s,
-                     "changing ServerLimit to %d from original value of %d "
-                     "not allowed during restart",
-                     server_limit, retained->first_server_limit);
-        server_limit = retained->first_server_limit;
-    }
-
-    if (thread_limit > MAX_THREAD_LIMIT) {
-        if (startup) {
-            ap_log_error(APLOG_MARK, APLOG_WARNING | APLOG_STARTUP, 0, NULL,
-                         "WARNING: ThreadLimit of %d exceeds compile-time "
-                         "limit of", thread_limit);
-            ap_log_error(APLOG_MARK, APLOG_WARNING | APLOG_STARTUP, 0, NULL,
-                         " %d threads, decreasing to %d.",
-                         MAX_THREAD_LIMIT, MAX_THREAD_LIMIT);
-        } else {
-            ap_log_error(APLOG_MARK, APLOG_WARNING, 0, s,
-                         "ThreadLimit of %d exceeds compile-time limit "
-                         "of %d, decreasing to match",
-                         thread_limit, MAX_THREAD_LIMIT);
-        }
-        thread_limit = MAX_THREAD_LIMIT;
-    }
-    else if (thread_limit < 1) {
-        if (startup) {
-            ap_log_error(APLOG_MARK, APLOG_WARNING | APLOG_STARTUP, 0, NULL,
-                         "WARNING: ThreadLimit of %d not allowed, "
-                         "increasing to 1.", thread_limit);
-        } else {
-            ap_log_error(APLOG_MARK, APLOG_WARNING, 0, s,
-                         "ThreadLimit of %d not allowed, increasing to 1",
-                         thread_limit);
-        }
-        thread_limit = 1;
-    }
-
-    /* you cannot change ThreadLimit across a restart; ignore
-     * any such attempts
-     */
-    if (!retained->first_thread_limit) {
-        retained->first_thread_limit = thread_limit;
-    }
-    else if (thread_limit != retained->first_thread_limit) {
-        /* don't need a startup console version here */
-        ap_log_error(APLOG_MARK, APLOG_WARNING, 0, s,
-                     "changing ThreadLimit to %d from original value of %d "
-                     "not allowed during restart",
-                     thread_limit, retained->first_thread_limit);
-        thread_limit = retained->first_thread_limit;
-    }
-
-    if (threads_per_child > thread_limit) {
-        if (startup) {
-            ap_log_error(APLOG_MARK, APLOG_WARNING | APLOG_STARTUP, 0, NULL,
-                         "WARNING: ThreadsPerChild of %d exceeds ThreadLimit "
-                         "of", threads_per_child);
-            ap_log_error(APLOG_MARK, APLOG_WARNING | APLOG_STARTUP, 0, NULL,
-                         " %d threads, decreasing to %d.",
-                         thread_limit, thread_limit);
-            ap_log_error(APLOG_MARK, APLOG_WARNING | APLOG_STARTUP, 0, NULL,
-                         " To increase, please see the ThreadLimit "
-                         "directive.");
-        } else {
-            ap_log_error(APLOG_MARK, APLOG_WARNING, 0, s,
-                         "ThreadsPerChild of %d exceeds ThreadLimit "
-                         "of %d, decreasing to match",
-                         threads_per_child, thread_limit);
-        }
-        threads_per_child = thread_limit;
-    }
-    else if (threads_per_child < 1) {
-        if (startup) {
-            ap_log_error(APLOG_MARK, APLOG_WARNING | APLOG_STARTUP, 0, NULL,
-                         "WARNING: ThreadsPerChild of %d not allowed, "
-                         "increasing to 1.", threads_per_child);
-        } else {
-            ap_log_error(APLOG_MARK, APLOG_WARNING, 0, s,
-                         "ThreadsPerChild of %d not allowed, increasing to 1",
-                         threads_per_child);
-        }
-        threads_per_child = 1;
-    }
-
-    if (max_clients < threads_per_child) {
-        if (startup) {
-            ap_log_error(APLOG_MARK, APLOG_WARNING | APLOG_STARTUP, 0, NULL,
-                         "WARNING: MaxClients of %d is less than "
-                         "ThreadsPerChild of", max_clients);
-            ap_log_error(APLOG_MARK, APLOG_WARNING | APLOG_STARTUP, 0, NULL,
-                         " %d, increasing to %d.  MaxClients must be at "
-                         "least as large",
-                         threads_per_child, threads_per_child);
-            ap_log_error(APLOG_MARK, APLOG_WARNING | APLOG_STARTUP, 0, NULL,
-                         " as the number of threads in a single server.");
-        } else {
-            ap_log_error(APLOG_MARK, APLOG_WARNING, 0, s,
-                         "MaxClients of %d is less than ThreadsPerChild "
-                         "of %d, increasing to match",
-                         max_clients, threads_per_child);
-        }
-        max_clients = threads_per_child;
-    }
-
-    ap_daemons_limit = max_clients / threads_per_child;
-
-    if (max_clients % threads_per_child) {
-        int tmp_max_clients = ap_daemons_limit * threads_per_child;
-
-        if (startup) {
-            ap_log_error(APLOG_MARK, APLOG_WARNING | APLOG_STARTUP, 0, NULL,
-                         "WARNING: MaxClients of %d is not an integer "
-                         "multiple of", max_clients);
-            ap_log_error(APLOG_MARK, APLOG_WARNING | APLOG_STARTUP, 0, NULL,
-                         " ThreadsPerChild of %d, decreasing to nearest "
-                         "multiple %d,", threads_per_child,
-                         tmp_max_clients);
-            ap_log_error(APLOG_MARK, APLOG_WARNING | APLOG_STARTUP, 0, NULL,
-                         " for a maximum of %d servers.",
-                         ap_daemons_limit);
-        } else {
-            ap_log_error(APLOG_MARK, APLOG_WARNING, 0, s,
-                         "MaxClients of %d is not an integer multiple of "
-                         "ThreadsPerChild of %d, decreasing to nearest "
-                         "multiple %d", max_clients, threads_per_child,
-                         tmp_max_clients);
-        }
-        max_clients = tmp_max_clients;
-    }
-
-    if (ap_daemons_limit > server_limit) {
-        if (startup) {
-            ap_log_error(APLOG_MARK, APLOG_WARNING | APLOG_STARTUP, 0, NULL,
-                         "WARNING: MaxClients of %d would require %d "
-                         "servers and ", max_clients, ap_daemons_limit);
-            ap_log_error(APLOG_MARK, APLOG_WARNING | APLOG_STARTUP, 0, NULL,
-                         " would exceed ServerLimit of %d, decreasing to %d.",
-                         server_limit, server_limit * threads_per_child);
-            ap_log_error(APLOG_MARK, APLOG_WARNING | APLOG_STARTUP, 0, NULL,
-                         " To increase, please see the ServerLimit "
-                         "directive.");
-        } else {
-            ap_log_error(APLOG_MARK, APLOG_WARNING, 0, s,
-                         "MaxClients of %d would require %d servers and "
-                         "exceed ServerLimit of %d, decreasing to %d",
-                         max_clients, ap_daemons_limit, server_limit,
-                         server_limit * threads_per_child);
-        }
-        ap_daemons_limit = server_limit;
-    }
-
-    /* ap_daemons_to_start > ap_daemons_limit checked in worker_run() */
-    if (ap_daemons_to_start < 0) {
-        if (startup) {
-            ap_log_error(APLOG_MARK, APLOG_WARNING | APLOG_STARTUP, 0, NULL,
-                         "WARNING: StartServers of %d not allowed, "
-                         "increasing to 1.", ap_daemons_to_start);
-        } else {
-            ap_log_error(APLOG_MARK, APLOG_WARNING, 0, s,
-                         "StartServers of %d not allowed, increasing to 1",
-                         ap_daemons_to_start);
-        }
-        ap_daemons_to_start = 1;
-    }
-
-    if (min_spare_threads < 1) {
-        if (startup) {
-            ap_log_error(APLOG_MARK, APLOG_WARNING | APLOG_STARTUP, 0, NULL,
-                         "WARNING: MinSpareThreads of %d not allowed, "
-                         "increasing to 1", min_spare_threads);
-            ap_log_error(APLOG_MARK, APLOG_WARNING | APLOG_STARTUP, 0, NULL,
-                         " to avoid almost certain server failure.");
-            ap_log_error(APLOG_MARK, APLOG_WARNING | APLOG_STARTUP, 0, NULL,
-                         " Please read the documentation.");
-        } else {
-            ap_log_error(APLOG_MARK, APLOG_WARNING, 0, s,
-                         "MinSpareThreads of %d not allowed, increasing to 1",
-                         min_spare_threads);
-        }
-        min_spare_threads = 1;
-    }
-
-    /* max_spare_threads < min_spare_threads + threads_per_child
-     * checked in worker_run()
-     */
-
-    return OK;
-}
-
 static void worker_hooks(apr_pool_t *p)
 {
-    /* Our open_logs hook function must run before the core's, or stderr
+    /* The worker open_logs phase must run before the core's, or stderr
      * will be redirected to a file, and the messages won't print to the
      * console.
      */
     static const char *const aszSucc[] = {"core.c", NULL};
     one_process = 0;
 
-    ap_hook_open_logs(worker_open_logs, NULL, aszSucc, APR_HOOK_REALLY_FIRST);
+    ap_hook_open_logs(worker_open_logs, NULL, aszSucc, APR_HOOK_MIDDLE);
     /* we need to set the MPM state before other pre-config hooks use MPM query
      * to retrieve it, so register as REALLY_FIRST
      */
     ap_hook_pre_config(worker_pre_config, NULL, NULL, APR_HOOK_REALLY_FIRST);
-    ap_hook_check_config(worker_check_config, NULL, NULL, APR_HOOK_MIDDLE);
-    ap_hook_mpm(worker_run, NULL, NULL, APR_HOOK_MIDDLE);
-    ap_hook_mpm_query(worker_query, NULL, NULL, APR_HOOK_MIDDLE);
-    ap_hook_mpm_note_child_killed(worker_note_child_killed, NULL, NULL, APR_HOOK_MIDDLE);
-    ap_hook_mpm_get_name(worker_get_name, NULL, NULL, APR_HOOK_MIDDLE);
 }
 
 static const char *set_daemons_to_start(cmd_parms *cmd, void *dummy,
@@ -2270,6 +2032,16 @@ static const char *set_min_spare_threads(cmd_parms *cmd, void *dummy,
     }
 
     min_spare_threads = atoi(arg);
+    if (min_spare_threads <= 0) {
+       ap_log_error(APLOG_MARK, APLOG_STARTUP, 0, NULL,
+                    "WARNING: detected MinSpareThreads set to non-positive.");
+       ap_log_error(APLOG_MARK, APLOG_STARTUP, 0, NULL,
+                    "Resetting to 1 to avoid almost certain Apache failure.");
+       ap_log_error(APLOG_MARK, APLOG_STARTUP, 0, NULL,
+                    "Please read the documentation.");
+       min_spare_threads = 1;
+    }
+
     return NULL;
 }
 
@@ -2288,12 +2060,60 @@ static const char *set_max_spare_threads(cmd_parms *cmd, void *dummy,
 static const char *set_max_clients (cmd_parms *cmd, void *dummy,
                                      const char *arg)
 {
+    int max_clients;
     const char *err = ap_check_cmd_context(cmd, GLOBAL_ONLY);
     if (err != NULL) {
         return err;
     }
 
+    /* It is ok to use ap_threads_per_child here because we are
+     * sure that it gets set before MaxClients in the pre_config stage. */
     max_clients = atoi(arg);
+    if (max_clients < ap_threads_per_child) {
+       ap_log_error(APLOG_MARK, APLOG_STARTUP, 0, NULL,
+                    "WARNING: MaxClients (%d) must be at least as large",
+                    max_clients);
+       ap_log_error(APLOG_MARK, APLOG_STARTUP, 0, NULL,
+                    " as ThreadsPerChild (%d). Automatically",
+                    ap_threads_per_child);
+       ap_log_error(APLOG_MARK, APLOG_STARTUP, 0, NULL,
+                    " increasing MaxClients to %d.",
+                    ap_threads_per_child);
+       max_clients = ap_threads_per_child;
+    }
+    ap_daemons_limit = max_clients / ap_threads_per_child;
+    if ((max_clients > 0) && (max_clients % ap_threads_per_child)) {
+       ap_log_error(APLOG_MARK, APLOG_STARTUP, 0, NULL,
+                    "WARNING: MaxClients (%d) is not an integer multiple",
+                    max_clients);
+       ap_log_error(APLOG_MARK, APLOG_STARTUP, 0, NULL,
+                    " of ThreadsPerChild (%d), lowering MaxClients to %d",
+                    ap_threads_per_child,
+                    ap_daemons_limit * ap_threads_per_child);
+       ap_log_error(APLOG_MARK, APLOG_STARTUP, 0, NULL,
+                    " for a maximum of %d child processes,",
+                    ap_daemons_limit);
+       max_clients = ap_daemons_limit * ap_threads_per_child;
+    }
+    if (ap_daemons_limit > server_limit) {
+       ap_log_error(APLOG_MARK, APLOG_STARTUP, 0, NULL,
+                    "WARNING: MaxClients of %d would require %d servers,",
+                    max_clients, ap_daemons_limit);
+       ap_log_error(APLOG_MARK, APLOG_STARTUP, 0, NULL,
+                    " and would exceed the ServerLimit value of %d.",
+                    server_limit);
+       ap_log_error(APLOG_MARK, APLOG_STARTUP, 0, NULL,
+                    " Automatically lowering MaxClients to %d.  To increase,",
+                    server_limit * ap_threads_per_child);
+       ap_log_error(APLOG_MARK, APLOG_STARTUP, 0, NULL,
+                    " please see the ServerLimit directive.");
+       ap_daemons_limit = server_limit;
+    }
+    else if (ap_daemons_limit < 1) {
+        ap_log_error(APLOG_MARK, APLOG_STARTUP, 0, NULL,
+                     "WARNING: Require MaxClients > 0, setting to 1");
+        ap_daemons_limit = 1;
+    }
     return NULL;
 }
 
@@ -2305,33 +2125,109 @@ static const char *set_threads_per_child (cmd_parms *cmd, void *dummy,
         return err;
     }
 
-    threads_per_child = atoi(arg);
+    ap_threads_per_child = atoi(arg);
+    if (ap_threads_per_child > thread_limit) {
+        ap_log_error(APLOG_MARK, APLOG_STARTUP, 0, NULL,
+                     "WARNING: ThreadsPerChild of %d exceeds ThreadLimit "
+                     "value of %d", ap_threads_per_child,
+                     thread_limit);
+        ap_log_error(APLOG_MARK, APLOG_STARTUP, 0, NULL,
+                     "threads, lowering ThreadsPerChild to %d. To increase, please"
+                     " see the", thread_limit);
+        ap_log_error(APLOG_MARK, APLOG_STARTUP, 0, NULL,
+                     " ThreadLimit directive.");
+        ap_threads_per_child = thread_limit;
+    }
+    else if (ap_threads_per_child < 1) {
+        ap_log_error(APLOG_MARK, APLOG_STARTUP, 0, NULL,
+                     "WARNING: Require ThreadsPerChild > 0, setting to 1");
+        ap_threads_per_child = 1;
+    }
     return NULL;
 }
 
 static const char *set_server_limit (cmd_parms *cmd, void *dummy, const char *arg)
 {
+    int tmp_server_limit;
+
     const char *err = ap_check_cmd_context(cmd, GLOBAL_ONLY);
     if (err != NULL) {
         return err;
     }
 
-    server_limit = atoi(arg);
+    tmp_server_limit = atoi(arg);
+    /* you cannot change ServerLimit across a restart; ignore
+     * any such attempts
+     */
+    if (first_server_limit &&
+        tmp_server_limit != server_limit) {
+        /* how do we log a message?  the error log is a bit bucket at this
+         * point; we'll just have to set a flag so that ap_mpm_run()
+         * logs a warning later
+         */
+        changed_limit_at_restart = 1;
+        return NULL;
+    }
+    server_limit = tmp_server_limit;
+
+    if (server_limit > MAX_SERVER_LIMIT) {
+       ap_log_error(APLOG_MARK, APLOG_STARTUP, 0, NULL,
+                    "WARNING: ServerLimit of %d exceeds compile time limit "
+                    "of %d servers,", server_limit, MAX_SERVER_LIMIT);
+       ap_log_error(APLOG_MARK, APLOG_STARTUP, 0, NULL,
+                    " lowering ServerLimit to %d.", MAX_SERVER_LIMIT);
+       server_limit = MAX_SERVER_LIMIT;
+    }
+    else if (server_limit < 1) {
+        ap_log_error(APLOG_MARK, APLOG_STARTUP, 0, NULL,
+                     "WARNING: Require ServerLimit > 0, setting to 1");
+        server_limit = 1;
+    }
     return NULL;
 }
 
 static const char *set_thread_limit (cmd_parms *cmd, void *dummy, const char *arg)
 {
+    int tmp_thread_limit;
+
     const char *err = ap_check_cmd_context(cmd, GLOBAL_ONLY);
     if (err != NULL) {
         return err;
     }
 
-    thread_limit = atoi(arg);
+    tmp_thread_limit = atoi(arg);
+    /* you cannot change ThreadLimit across a restart; ignore
+     * any such attempts
+     */
+    if (first_thread_limit &&
+        tmp_thread_limit != thread_limit) {
+        /* how do we log a message?  the error log is a bit bucket at this
+         * point; we'll just have to set a flag so that ap_mpm_run()
+         * logs a warning later
+         */
+        changed_limit_at_restart = 1;
+        return NULL;
+    }
+    thread_limit = tmp_thread_limit;
+
+    if (thread_limit > MAX_THREAD_LIMIT) {
+       ap_log_error(APLOG_MARK, APLOG_STARTUP, 0, NULL,
+                    "WARNING: ThreadLimit of %d exceeds compile time limit "
+                    "of %d servers,", thread_limit, MAX_THREAD_LIMIT);
+       ap_log_error(APLOG_MARK, APLOG_STARTUP, 0, NULL,
+                    " lowering ThreadLimit to %d.", MAX_THREAD_LIMIT);
+       thread_limit = MAX_THREAD_LIMIT;
+    }
+    else if (thread_limit < 1) {
+        ap_log_error(APLOG_MARK, APLOG_STARTUP, 0, NULL,
+                     "WARNING: Require ThreadLimit > 0, setting to 1");
+        thread_limit = 1;
+    }
     return NULL;
 }
 
 static const command_rec worker_cmds[] = {
+UNIX_DAEMON_COMMANDS,
 LISTEN_COMMANDS,
 AP_INIT_TAKE1("StartServers", set_daemons_to_start, NULL, RSRC_CONF,
   "Number of child processes launched at server startup"),
@@ -2353,7 +2249,7 @@ AP_GRACEFUL_SHUTDOWN_TIMEOUT_COMMAND,
 
 module AP_MODULE_DECLARE_DATA mpm_worker_module = {
     MPM20_MODULE_STUFF,
-    NULL,                       /* hook to run before apache parses args */
+    ap_mpm_rewrite_args,        /* hook to run before apache parses args */
     NULL,                       /* create per-directory config structure */
     NULL,                       /* merge per-directory config structures */
     NULL,                       /* create per-server config structure */

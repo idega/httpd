@@ -14,6 +14,4 @@ fi
 
 APACHE_MODULE(logio, input and output logging, , , most)
 
-APR_ADDTO(INCLUDES, [-I\$(top_srcdir)/$modpath_current])
-
 APACHE_MODPATH_FINISH

@@ -4,18 +4,10 @@ dnl APACHE_MODULE(name, helptext[, objects[, structname[, default[, config]]]])
 
 APACHE_MODPATH_INIT(filters)
 
-APACHE_MODULE(buffer, Filter Buffering, , , yes)
-APACHE_MODULE(ratelimit, Output Bandwidth Limiting, , , yes)
-APACHE_MODULE(reqtimeout, Limit time waiting for request from client, , , yes)
 APACHE_MODULE(ext_filter, external filter module, , , most)
-APACHE_MODULE(request, Request Body Filtering, , , yes)
 APACHE_MODULE(include, Server Side Includes, , , yes)
 APACHE_MODULE(filter, Smart Filtering, , , yes)
-APACHE_MODULE(reflector, Reflect request through the output filter stack, , , yes)
 APACHE_MODULE(substitute, response content rewrite-like filtering, , , most)
-
-sed_obj="mod_sed.lo sed0.lo sed1.lo regexp.lo"
-APACHE_MODULE(sed, filter request and/or response bodies through sed, $sed_obj)
 
 if test "$ac_cv_ebcdic" = "yes"; then
 # mod_charset_lite can be very useful on an ebcdic system,
@@ -77,7 +69,5 @@ APACHE_MODULE(deflate, Deflate transfer encoding support, , , most, [
     CPPFLAGS=$ap_save_cppflags
   fi
 ])
-
-APR_ADDTO(INCLUDES, [-I\$(top_srcdir)/$modpath_current])
 
 APACHE_MODPATH_FINISH

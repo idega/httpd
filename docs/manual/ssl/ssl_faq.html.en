@@ -12,14 +12,13 @@
 <link href="../images/favicon.ico" rel="shortcut icon" /></head>
 <body id="manual-page"><div id="page-header">
 <p class="menu"><a href="../mod/">Modules</a> | <a href="../mod/directives.html">Directives</a> | <a href="../faq/">FAQ</a> | <a href="../glossary.html">Glossary</a> | <a href="../sitemap.html">Sitemap</a></p>
-<p class="apache">Apache HTTP Server Version 2.3</p>
+<p class="apache">Apache HTTP Server Version 2.2</p>
 <img alt="" src="../images/feather.gif" /></div>
 <div class="up"><a href="./"><img title="&lt;-" alt="&lt;-" src="../images/left.gif" /></a></div>
 <div id="path">
-<a href="http://www.apache.org/">Apache</a> &gt; <a href="http://httpd.apache.org/">HTTP Server</a> &gt; <a href="http://httpd.apache.org/docs/">Documentation</a> &gt; <a href="../">Version 2.3</a> &gt; <a href="./">SSL/TLS</a></div><div id="page-content"><div id="preamble"><h1>SSL/TLS Strong Encryption: FAQ</h1>
+<a href="http://www.apache.org/">Apache</a> &gt; <a href="http://httpd.apache.org/">HTTP Server</a> &gt; <a href="http://httpd.apache.org/docs/">Documentation</a> &gt; <a href="../">Version 2.2</a> &gt; <a href="./">SSL/TLS</a></div><div id="page-content"><div id="preamble"><h1>SSL/TLS Strong Encryption: FAQ</h1>
 <div class="toplang">
-<p><span>Available Languages: </span><a href="../en/ssl/ssl_faq.html" title="English">&nbsp;en&nbsp;</a> |
-<a href="../fr/ssl/ssl_faq.html" hreflang="fr" rel="alternate" title="Français">&nbsp;fr&nbsp;</a></p>
+<p><span>Available Languages: </span><a href="../en/ssl/ssl_faq.html" title="English">&nbsp;en&nbsp;</a></p>
 </div>
 
 <blockquote>
@@ -50,6 +49,7 @@ author.</p>
 <h2><a name="about" id="about">About The Module</a></h2>
 <ul>
 <li><a href="#history">What is the history of mod_ssl?</a></li>
+<li><a href="#y2k">mod_ssl and Year 2000?</a></li>
 <li><a href="#wassenaar">mod_ssl and Wassenaar Arrangement?</a></li>
 </ul>
 
@@ -104,11 +104,11 @@ author.</p>
 <li><a href="#mutex">Why do I get permission errors related to 
 SSLMutex when I start Apache?</a></li>
 <li><a href="#entropy">Why does mod_ssl stop with the error "Failed to 
-generate temporary 512 bit RSA private key" when I start Apache?</a></li>
+generate temporary 512 bit RSA private key", when I start Apache?</a></li>
 </ul>
 
 <h3><a name="mutex" id="mutex">Why do I get permission errors related to 
-        SSLMutex when I start Apache?</a></h3>
+	SSLMutex when I start Apache?</a></h3>
     <p>Errors such as ``<code>mod_ssl: Child could not open
     SSLMutex lockfile /opt/apache/logs/ssl_mutex.18332 (System error follows)
     [...] System: Permission denied (errno: 13)</code>'' are usually
@@ -120,8 +120,8 @@ generate temporary 512 bit RSA private key" when I start Apache?</a></li>
 
 
 <h3><a name="entropy" id="entropy">Why does mod_ssl stop with the error
-        "Failed to generate temporary 512 bit RSA private key" when I start 
-        Apache?</a></h3>
+	"Failed to generate temporary 512 bit RSA private key", when I start 
+	Apache?</a></h3>
     <p>Cryptographic software needs a source of unpredictable data
     to work correctly. Many open source operating systems provide
     a "randomness device" that serves this purpose (usually named
@@ -134,7 +134,7 @@ generate temporary 512 bit RSA private key" when I start Apache?</a></li>
     <p>To prevent this error, <code class="module"><a href="../mod/mod_ssl.html">mod_ssl</a></code> has to provide 
     enough entropy to the PRNG to allow it to work correctly. This can 
     be done via the <code class="directive"><a href="../mod/mod_ssl.html#sslrandomseed">SSLRandomSeed</a></code> 
-    directive.</p>
+    directives.</p>
 
 </div><div class="top"><a href="#page-header"><img alt="top" src="../images/up.gif" /></a></div>
 <div class="section">
@@ -146,7 +146,7 @@ the same server?</a></li>
 <li><a href="#httpstest">How do I speak HTTPS manually for testing 
 purposes?</a></li>
 <li><a href="#hang">Why does the connection hang when I connect to my 
-SSL-aware Apache server?</a></li>
+SSL-aware Apache server</a></li>
 <li><a href="#refused">Why do I get ``Connection Refused'' errors, when 
 trying to access my newly installed Apache+mod_ssl server via HTTPS?</a></li>
 <li><a href="#envvars">Why are the <code>SSL_XXX</code> variables not
@@ -156,22 +156,21 @@ relative hyperlinks?</a></li>
 </ul>
 
 <h3><a name="parallel" id="parallel">Is it possible to provide HTTP and HTTPS 
-        from the same server?</a></h3>
+	from the same server?</a></h3>
     <p>Yes. HTTP and HTTPS use different server ports (HTTP binds to 
     port 80, HTTPS to port 443), so there is no direct conflict between 
     them. You can either run two separate server instances bound to 
     these ports, or use Apache's elegant virtual hosting facility to 
-    create two virtual servers, both served by the same instance of Apache 
-    - one responding over HTTP to requests on port 80, and the other 
-    responding over HTTPS to requests on port 443.</p>
+    create two virtual servers over one instance of Apache - one 
+    responding to requests on port 80 and speaking HTTP and the other 
+    responding to requests on port 443 speaking HTTPS.</p>
 
 
 <h3><a name="ports" id="ports">Which port does HTTPS use?</a></h3>
 <p>You can run HTTPS on any port, but the standards specify port 443, which
     is where any HTTPS compliant browser will look by default. You can force
-    your browser to look on a different port by specifying it in the URL. For
-    example, if your server is set up to serve pages over HTTPS on port 8080,
-    you can access them at <code>https://example.com:8080/</code></p>
+    your browser to look on a different port by specifying it in the URL like
+    this (for port 666): <code>https://secure.server.dom:666/</code></p>
 
 
 <h3><a name="httpstest" id="httpstest">How do I speak HTTPS manually for testing purposes?</a></h3>
@@ -183,39 +182,41 @@ relative hyperlinks?</a></li>
     <p>for simple testing of Apache via HTTP, it's not so easy for
     HTTPS because of the SSL protocol between TCP and HTTP. With the
     help of OpenSSL's <code>s_client</code> command, however, you can 
-    do a similar check via HTTPS:</p>
+    do a similar check for HTTPS:</p>
     
     <div class="example"><p><code>$ openssl s_client -connect localhost:443 -state -debug<br />
     GET / HTTP/1.0</code></p></div>
-
-    <p>Before the actual HTTP response you will receive detailed
-    information about the SSL handshake. For a more general command
-    line client which directly understands both HTTP and HTTPS, can
-    perform GET and POST operations, can use a proxy, supports byte
-    ranges, etc. you should have a look at the nifty
-    <a href="http://curl.haxx.se/">cURL</a> tool. Using this, you can
-    check that Apache is responding correctly to requests via HTTP and
-    HTTPS as follows:</p>
-
+    
+    <p>Before the actual HTTP response you will receive detailed 
+    information about the SSL handshake. For a more general command 
+    line client which directly understands both HTTP and HTTPS, can 
+    perform GET and POST operations, can use a proxy, supports byte 
+    ranges, etc. you should have a look at the nifty 
+    <a href="http://curl.haxx.se/">cURL</a> tool. Using this, you can 
+    check that Apache is responding correctly on ports 80 and 443 as 
+    follows:</p>
+    
     <div class="example"><p><code>$ curl http://localhost/<br />
     $ curl https://localhost/</code></p></div>
 
 
 <h3><a name="hang" id="hang">Why does the connection hang when I connect 
     to my SSL-aware Apache server?</a></h3>
+<p>Because you connected with HTTP to the HTTPS port, i.e. you used an URL of
+    the form ``<code>http://</code>'' instead of ``<code>https://</code>''.
+    This also happens the other way round when you connect via HTTPS to a HTTP
+    port, i.e. when you try to use ``<code>https://</code>'' on a server that
+    doesn't support SSL (on this port). Make sure you are connecting to a
+    virtual server that supports SSL, which is probably the IP associated with
+    your hostname, not localhost (127.0.0.1).</p>
 
-<p>This can happen when you try to connect to a HTTPS server (or virtual
-    server) via HTTP (eg, using <code>http://example.com/</code> instead of
-    <code>https://example.com</code>). It can also happen when trying to
-    connect via HTTPS to a HTTP server (eg, using
-    <code>https://example.com/</code> on a server which doesn't support HTTPS,
-    or which supports it on a non-standard port). Make sure that you're
-    connecting to a (virtual) server that supports SSL.</p>
 
 <h3><a name="refused" id="refused">Why do I get ``Connection Refused'' messages, 
     when trying to access my newly installed Apache+mod_ssl server via HTTPS?</a></h3>
-<p>
-    This error can be caused by an incorrect configuration.
+<p>This can happen for various reasons. The most common mistakes 
+    include starting Apache with just <code>apachectl start</code> (or
+    <code class="program"><a href="../programs/httpd.html">httpd</a></code>) instead of <code>apachectl startssl</code> (or
+    <code>httpd -DSSL</code>). Your configuration may also be incorrect. 
     Please make sure that your <code class="directive"><a href="../mod/mpm_common.html#listen">Listen</a></code> directives match your 
     <code class="directive"><a href="../mod/core.html#virtualhost">&lt;VirtualHost&gt;</a></code>
     directives. If all else fails, please start afresh, using the default 
@@ -243,7 +244,7 @@ relative hyperlinks?</a></li>
 
     <p>This rewrite ruleset lets you use hyperlinks of the form
     <code>&lt;a href="document.html:SSL"&gt;</code>, to switch to HTTPS
-    in a relative link. (Replace SSL with NOSSL to switch to HTTP.)</p>
+    in a relative link.</p>
 
 </div><div class="top"><a href="#page-header"><img alt="top" src="../images/up.gif" /></a></div>
 <div class="section">
@@ -252,7 +253,7 @@ relative hyperlinks?</a></li>
 <li><a href="#keyscerts">What are RSA Private Keys, CSRs and 
 Certificates?</a></li>
 <li><a href="#startup">Is there a difference on startup between
-a non-SSL-aware Apache and an SSL-aware Apache?</a></li>
+the original Apache and an SSL-aware Apache?</a></li>
 <li><a href="#selfcert">How do I create a self-signed SSL 
 Certificate for testing purposes?</a></li>
 <li><a href="#realcert">How do I create a real SSL Certificate?</a></li>
@@ -298,7 +299,7 @@ verify my Verisign Global ID server certificate?</a></li>
 
 
 <h3><a name="startup" id="startup">Is there a difference on startup between 
-    a non-SSL-aware Apache and an SSL-aware Apache?</a></h3>
+    the original Apache and an SSL-aware Apache?</a></h3>
 <p>Yes. In general, starting Apache with 
     <code class="module"><a href="../mod/mod_ssl.html">mod_ssl</a></code> built-in is just like starting Apache 
     without it. However, if you have a passphrase on your SSL private 
@@ -309,8 +310,7 @@ verify my Verisign Global ID server certificate?</a></li>
     can be problematic - for example, when starting the server from the 
     system boot scripts. In this case, you can follow the steps
     <a href="#removepassphrase">below</a> to remove the passphrase from
-    your private key. Bear in mind that doing so brings additional security
-    risks - proceed with caution!</p>
+    your private key.</p>
 
 
 <h3><a name="selfcert" id="selfcert">How do I create a self-signed SSL 
@@ -321,24 +321,24 @@ Certificate for testing purposes?</a></h3>
     </li>
     <li>Run the following command, to create <code>server.key</code> and
         <code>server.crt</code> files:<br />
-        <code><strong>$ openssl req -new -x509 -nodes -out server.crt 
-                        -keyout server.key</strong></code><br />
-        These can be used as follows in your <code>httpd.conf</code> 
-        file:
+	<code><strong>$ openssl req -new -x509 -nodes -out server.crt 
+			-keyout server.key</strong></code><br />
+	These can be used as follows in your <code>httpd.conf</code> 
+	file:
         <pre>
              SSLCertificateFile    /path/to/this/server.crt
              SSLCertificateKeyFile /path/to/this/server.key
-        </pre>
+	</pre>
     </li>
     <li>It is important that you are aware that this 
-        <code>server.key</code> does <em>not</em> have any passphrase.
-        To add a passphrase to the key, you should run the following 
-        command, and enter &amp; verify the passphrase as requested.<br />
-        <p><code><strong>$ openssl rsa -des3 -in server.key -out 
-        server.key.new</strong></code><br />
-        <code><strong>$ mv server.key.new server.key</strong></code><br /></p>
-        Please backup the <code>server.key</code> file, and the passphrase 
-        you entered, in a secure location.
+	<code>server.key</code> does <em>not</em> have any passphrase.
+	To add a passphrase to the key, you should run the following 
+	command, and enter &amp; verify the passphrase as requested.<br />
+	<p><code><strong>$ openssl rsa -des3 -in server.key -out 
+	server.key.new</strong></code><br />
+	<code><strong>$ mv server.key.new server.key</strong></code><br /></p>
+	Please backup the <code>server.key</code> file, and the passphrase 
+	you entered, in a secure location.
     </li>
     </ol>
 
@@ -391,7 +391,39 @@ Certificate for testing purposes?</a></h3>
        create your own CA to sign it.<br />
        Commercial CAs usually ask you to post the CSR into a web form, 
        pay for the signing, and then send a signed Certificate, which 
-       you can store in a server.crt file.<br />
+       you can store in a server.crt file. For more information about 
+       commercial CAs see the following locations:<br />
+       <br />
+       <ol>
+       <li>  Verisign<br />
+             <a href="http://digitalid.verisign.com/server/apacheNotice.htm">
+             http://digitalid.verisign.com/server/apacheNotice.htm
+             </a>
+       </li>
+       <li>  Thawte<br />
+         <a href="http://www.thawte.com/">http://www.thawte.com/</a>
+       </li>
+       <li>  CertiSign Certificadora Digital Ltda.<br />
+             <a href="http://www.certisign.com.br">
+             http://www.certisign.com.br
+             </a>
+       </li>
+       <li>  IKS GmbH<br />
+             <a href="http://www.iks-jena.de/leistungen/ca/">
+             http://www.iks-jena.de/leistungen/ca/
+             </a>
+       </li>
+       <li>  Uptime Commerce Ltd.<br />
+             <a href="http://www.uptimecommerce.com">
+             http://www.uptimecommerce.com
+             </a>
+       </li>
+       <li>  BelSign NV/SA<br />
+             <a href="http://www.belsign.be">
+             http://www.belsign.be
+             </a>
+       </li>
+       </ol>
 
        For details on how to create your own CA, and use this to sign
        a CSR, see <a href="#ownca">below</a>.<br />
@@ -443,7 +475,7 @@ Certificate for testing purposes?</a></h3>
        with the RSA key you just created (output will be PEM formatted):<br />
        <br />
        <code><strong>$ openssl req -new -x509 -nodes -sha1 -days 365 
-                       -key server.key -out server.crt</strong></code><br />
+		       -key server.key -out server.crt</strong></code><br />
        <br />
        This signs the server CSR and results in a <code>server.crt</code> file.<br />
        You can see the details of this Certificate using:<br />
@@ -473,7 +505,7 @@ Certificate for testing purposes?</a></h3>
 <h3><a name="removepassphrase" id="removepassphrase">How can I get rid of the pass-phrase dialog at Apache startup time?</a></h3>
 <p>The reason this dialog pops up at startup and every re-start
     is that the RSA private key inside your server.key file is stored in
-    encrypted format for security reasons. The pass-phrase is needed to decrypt
+    encrypted format for security reasons. The pass-phrase is needed decrypt
     this file, so it can be read and parsed. Removing the pass-phrase 
     removes a layer of security from your server - proceed with caution!</p>
     <ol>
@@ -540,7 +572,7 @@ Certificate for testing purposes?</a></h3>
 bad certificate" error?</a></h3>
 <p>Errors such as <code>OpenSSL: error:14094412: SSL
     routines:SSL3_READ_BYTES:sslv3 alert bad certificate</code> in the SSL
-    logfile, are usually caused by a browser which is unable to handle the server
+    logfile, are usually caused a browser which is unable to handle the server
     certificate/private-key. For example, Netscape Navigator 3.x is 
     unable to handle RSA key lengths not equal to 1024 bits.</p>
 
@@ -583,7 +615,7 @@ Verisign, for installing my Verisign certificate?</a></h3>
     certificate to a file, and give the name of that file to the 
     <code class="directive"><a href="../mod/mod_ssl.html#sslcertificatefile">SSLCertificateFile</a></code> directive.
     You will also need to give it the key file. For more information, 
-    see the <code class="directive"><a href="../mod/mod_ssl.html#sslcertificatekeyfile">SSLCertificateKeyFile</a></code>
+    see the <code class="directive"><a href="../mod/mod_ssl.html#sslcertificatekeyfile">SSLCertificateKeyFile</a></code> 
     directive.</p> 
 
 
@@ -624,7 +656,7 @@ trying to use Anonymous Diffie-Hellman (ADH) ciphers?</a></li>
 error when connecting to my newly installed server?</a></li>
 <li><a href="#vhosts">Why can't I use SSL with name-based/non-IP-based 
 virtual hosts?</a></li>
-<li><a href="#vhosts2">Is it possible to use Name-Based Virtual
+<li><a href="#vhosts2">Why is it not possible to use Name-Based Virtual
 Hosting to identify different SSL virtual hosts?</a></li>
 <li><a href="#comp">How do I get SSL compression working?</a></li>
 <li><a href="#lockicon">When I use Basic Authentication over HTTPS
@@ -726,7 +758,7 @@ error when connecting to my newly installed server?</a></h3>
     complete the SSL handshake phase. Bingo!</p>
 
 
-<h3><a name="vhosts2" id="vhosts2">Is it possible to use Name-Based
+<h3><a name="vhosts2" id="vhosts2">Why is it not possible to use Name-Based
 Virtual Hosting to identify different SSL virtual hosts?</a></h3>
     <p>Name-Based Virtual Hosting is a very popular method of identifying
     different virtual hosts. It allows you to use the same IP address and
@@ -734,24 +766,16 @@ Virtual Hosting to identify different SSL virtual hosts?</a></h3>
     SSL, it seems natural to assume that the same method can be used to have
     lots of different SSL virtual hosts on the same server.</p>
 
-    <p>It is possible, but only if using a 2.2.12 or later web server,
-    built with 0.9.8j or later OpenSSL.  This is because it requires a
-    feature that only the most recent revisions of the SSL
-    specification added, called Server Name Indication (SNI).</p>
+    <p>It comes as rather a shock to learn that it is impossible.</p> 
 
     <p>The reason is that the SSL protocol is a separate layer which
     encapsulates the HTTP protocol. So the SSL session is a separate 
     transaction, that takes place before the HTTP session has begun. 
     The server receives an SSL request on IP address X and port Y 
-    (usually 443). Since the SSL request did not contain any Host: 
-    field, the server had no way to decide which SSL virtual host to use.
-    Usually, it just used the first one it found which matched the 
-    port and IP address specified.</p>
-
-    <p>If you are using a version of the web server and OpenSSL that
-    support SNI, though, and the client's browser also supports SNI,
-    then the hostname is included in the original SSL request, and the
-    web server can select the correct SSL virtual host.</p>
+    (usually 443). Since the SSL request does not contain any Host: 
+    field, the server has no way to decide which SSL virtual host to use.
+    Usually, it will just use the first one it finds, which matches the 
+    port and IP address specified.</p> 
 
     <p>You can, of course, use Name-Based Virtual Hosting to identify many
     non-SSL virtual hosts (all on port 80, for example) and then 
@@ -889,16 +913,16 @@ for my core dump?</a></li>
 
     <dl>
     <dt>Answers in the User Manual's F.A.Q. List (this)</dt>
-    <dd><a href="http://httpd.apache.org/docs/trunk/ssl/ssl_faq.html">
-        http://httpd.apache.org/docs/trunk/ssl/ssl_faq.html</a><br />
-        First check the F.A.Q. (this text). If your problem is a common
-        one, it may have been answered several times before, and been included
-        in this doc.
+    <dd><a href="http://httpd.apache.org/docs/2.2/ssl/ssl_faq.html">
+	http://httpd.apache.org/docs/2.2/ssl/ssl_faq.html</a><br />
+	First check the F.A.Q. (this text). If your problem is a common
+	one, it may have been answered several times before, and been included
+	in this doc.
     </dd>
     <dt>Postings from the modssl-users Support Mailing List
         <a href="http://www.modssl.org/support/">http://www.modssl.org/support/</a></dt>
     <dd>Search for your problem in the archives of the modssl-users mailing list. 
-        You're probably not the first person to have had this problem!
+	You're probably not the first person to have had this problem!
     </dd>
     </dl>
 
@@ -906,16 +930,16 @@ for my core dump?</a></li>
 <h3><a name="contact" id="contact">What support contacts are available in case 
 of mod_ssl problems?</a></h3>
  <p>The following lists all support possibilities for mod_ssl, in order of
-         preference. Please go through these possibilities 
-         <em>in this order</em> - don't just pick the one you like the look of. </p>
+	 preference. Please go through these possibilities 
+	 <em>in this order</em> - don't just pick the one you like the look of. </p>
     <ol>
     <li><em>Send a Problem Report to the modssl-users Support Mailing List</em><br />
         <a href="mailto:modssl-users@modssl.org">
         modssl-users@modssl.org</a><br />
         This is the preferred way of submitting your problem report, because this way,
-        others can see the problem, and learn from any answers. You must subscribe to 
+	others can see the problem, and learn from any answers. You must subscribe to 
         the list first, but you can then easily discuss your problem with both the 
-        author and the whole mod_ssl user community.
+	author and the whole mod_ssl user community.
         </li>
 
     <li><em>Send a Problem Report to the Apache httpd Users Support Mailing List</em><br />
@@ -927,11 +951,11 @@ of mod_ssl problems?</a></h3>
     </li>
 
     <li><em>Write a Problem Report in the Bug Database</em><br />
-        <a href="http://httpd.apache.org/bug_report.html">
-        http://httpd.apache.org/bug_report.html</a><br />
+	<a href="http://httpd.apache.org/bug_report.html">
+	http://httpd.apache.org/bug_report.html</a><br />
         This is the last way of submitting your problem report. You should only
-        do this if you've already posted to the mailing lists, and had no success.
-        Please follow the instructions on the above page <em>carefully</em>.
+	do this if you've already posted to the mailing lists, and had no success.
+	Please follow the instructions on the above page <em>carefully</em>.
     </li>
     </ol>
 
@@ -959,8 +983,8 @@ provide when writing a bug report?</a></h3>
     <dt>In case of core dumps please include a Backtrace</dt>
     <dd>If your Apache+mod_ssl+OpenSSL dumps its core, please attach
     a stack-frame ``backtrace'' (see <a href="#backtrace">below</a> 
-    for information on how to get this). This information is required
-    in order to find a reason for your core dump.
+    for information on how to get this). Without this information, the 
+    reason for your core dump cannot be found
     </dd>
     
     <dt>A detailed description of your problem</dt>
@@ -994,8 +1018,8 @@ the reason for my core dump?</a></h3>
 
     <li>Start the server and try to reproduce the core-dump. For this you may
         want to use a directive like ``<code>CoreDumpDirectory /tmp</code>'' to
-        make sure that the core-dump file can be written. This should result
-        in a <code>/tmp/core</code> or <code>/tmp/httpd.core</code> file. If you
+	make sure that the core-dump file can be written. This should result
+	in a <code>/tmp/core</code> or <code>/tmp/httpd.core</code> file. If you
         don't get one of these, try running your server under a non-root UID. 
         Many modern kernels do not allow a process to dump core after it has
         done a <code>setuid()</code> (unless it does an <code>exec()</code>) for
@@ -1006,16 +1030,15 @@ the reason for my core dump?</a></h3>
 
     <li>Analyze the core-dump. For this, run <code>gdb /path/to/httpd
         /tmp/httpd.core</code> or a similar command. In GDB, all you 
-        have to do then is to enter <code>bt</code>, and voila, you get the
+	have to do then is to enter <code>bt</code>, and voila, you get the
         backtrace. For other debuggers consult your local debugger manual. 
     </li>
     </ol>
 
 </div></div>
 <div class="bottomlang">
-<p><span>Available Languages: </span><a href="../en/ssl/ssl_faq.html" title="English">&nbsp;en&nbsp;</a> |
-<a href="../fr/ssl/ssl_faq.html" hreflang="fr" rel="alternate" title="Français">&nbsp;fr&nbsp;</a></p>
+<p><span>Available Languages: </span><a href="../en/ssl/ssl_faq.html" title="English">&nbsp;en&nbsp;</a></p>
 </div><div id="footer">
-<p class="apache">Copyright 2010 The Apache Software Foundation.<br />Licensed under the <a href="http://www.apache.org/licenses/LICENSE-2.0">Apache License, Version 2.0</a>.</p>
+<p class="apache">Copyright 2007 The Apache Software Foundation.<br />Licensed under the <a href="http://www.apache.org/licenses/LICENSE-2.0">Apache License, Version 2.0</a>.</p>
 <p class="menu"><a href="../mod/">Modules</a> | <a href="../mod/directives.html">Directives</a> | <a href="../faq/">FAQ</a> | <a href="../glossary.html">Glossary</a> | <a href="../sitemap.html">Sitemap</a></p></div>
 </body></html>

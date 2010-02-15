@@ -79,7 +79,7 @@ void util_ldap_url_node_free(util_ald_cache_t *cache, void *n)
 void util_ldap_url_node_display(request_rec *r, util_ald_cache_t *cache, void *n)
 {
     util_url_node_t *node = n;
-    char date_str[APR_CTIME_LEN];
+    char date_str[APR_CTIME_LEN+1];
     const char *type_str;
     util_ald_cache_t *cache_node;
     int x;
@@ -218,7 +218,7 @@ void util_ldap_search_node_free(util_ald_cache_t *cache, void *n)
 void util_ldap_search_node_display(request_rec *r, util_ald_cache_t *cache, void *n)
 {
     util_search_node_t *node = n;
-    char date_str[APR_CTIME_LEN];
+    char date_str[APR_CTIME_LEN+1];
 
     apr_ctime(date_str, node->lastbind);
 
@@ -259,14 +259,12 @@ void *util_ldap_compare_node_copy(util_ald_cache_t *cache, void *c)
     if (node) {
         if (!(node->dn = util_ald_strdup(cache, n->dn)) ||
             !(node->attrib = util_ald_strdup(cache, n->attrib)) ||
-            !(node->value = util_ald_strdup(cache, n->value)) ||
-            ((n->subgroupList) && !(node->subgroupList = util_ald_sgl_dup(cache, n->subgroupList)))) {
+            !(node->value = util_ald_strdup(cache, n->value))) {
             util_ldap_compare_node_free(cache, node);
             return NULL;
         }
         node->lastcompare = n->lastcompare;
         node->result = n->result;
-        node->sgl_processed = n->sgl_processed;
         return node;
     }
     else {
@@ -277,8 +275,6 @@ void *util_ldap_compare_node_copy(util_ald_cache_t *cache, void *c)
 void util_ldap_compare_node_free(util_ald_cache_t *cache, void *n)
 {
     util_compare_node_t *node = n;
-
-    util_ald_sgl_free(cache, &(node->subgroupList));
     util_ald_free(cache, node->dn);
     util_ald_free(cache, node->attrib);
     util_ald_free(cache, node->value);
@@ -288,10 +284,8 @@ void util_ldap_compare_node_free(util_ald_cache_t *cache, void *n)
 void util_ldap_compare_node_display(request_rec *r, util_ald_cache_t *cache, void *n)
 {
     util_compare_node_t *node = n;
-    char date_str[APR_CTIME_LEN];
+    char date_str[APR_CTIME_LEN+1];
     char *cmp_result;
-    char *sub_groups_val;
-    char *sub_groups_checked;
 
     apr_ctime(date_str, node->lastcompare);
 
@@ -305,24 +299,8 @@ void util_ldap_compare_node_display(request_rec *r, util_ald_cache_t *cache, voi
         cmp_result = apr_itoa(r->pool, node->result);
     }
 
-    if(node->subgroupList) {
-        sub_groups_val = "Yes";
-    }
-    else {
-        sub_groups_val = "No";
-    }
-
-    if(node->sgl_processed) {
-        sub_groups_checked = "Yes";
-    }
-    else {
-        sub_groups_checked = "No";
-    }
-
     ap_rprintf(r,
                "<tr valign='top'>"
-               "<td nowrap>%s</td>"
-               "<td nowrap>%s</td>"
                "<td nowrap>%s</td>"
                "<td nowrap>%s</td>"
                "<td nowrap>%s</td>"
@@ -333,9 +311,7 @@ void util_ldap_compare_node_display(request_rec *r, util_ald_cache_t *cache, voi
                node->attrib,
                node->value,
                date_str,
-               cmp_result,
-               sub_groups_val,
-               sub_groups_checked);
+               cmp_result);
 }
 
 /* ------------------------------------------------------------------ */

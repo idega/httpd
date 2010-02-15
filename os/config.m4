@@ -1,6 +1,10 @@
 AC_MSG_CHECKING(for target platform)
 
 case $host in
+*beos*)
+  OS="beos"
+  OS_DIR=$OS
+  ;;
 *pc-os2-emx*)
   OS="os2"
   OS_DIR=$OS
@@ -12,10 +16,6 @@ bs2000*)
 *cygwin*)
   OS="cygwin"
   OS_DIR="unix"
-  ;;
-*mingw32*)
-  OS="win32"
-  OS_DIR=$OS
   ;;
 *)
   OS="unix"

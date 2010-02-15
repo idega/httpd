@@ -69,7 +69,7 @@
 #define ALG_APMD5 1
 #define ALG_APSHA 2
 
-#if (!(defined(WIN32) || defined(NETWARE)))
+#if (!(defined(WIN32) || defined(TPF) || defined(NETWARE)))
 #define ALG_CRYPT 3
 #endif
 
@@ -219,7 +219,7 @@ static apr_status_t htdbm_del(htdbm_t *htdbm)
 static apr_status_t htdbm_verify(htdbm_t *htdbm)
 {
     apr_datum_t key, val;
-    char *pwd;
+    char pwd[MAX_STRING_LEN] = {0};
     char *rec, *cmnt;
 
     key.dptr = htdbm->username;
@@ -231,9 +231,9 @@ static apr_status_t htdbm_verify(htdbm_t *htdbm)
     rec = apr_pstrndup(htdbm->pool, val.dptr, val.dsize);
     cmnt = strchr(rec, ':');
     if (cmnt)
-        pwd = apr_pstrndup(htdbm->pool, rec, cmnt - rec);
+        strncpy(pwd, rec, cmnt - rec);
     else
-        pwd = apr_pstrdup(htdbm->pool, rec);
+        strcpy(pwd, rec);
     return apr_password_validate(htdbm->userpass, pwd);
 }
 
@@ -241,7 +241,8 @@ static apr_status_t htdbm_list(htdbm_t *htdbm)
 {
     apr_status_t rv;
     apr_datum_t key, val;
-    char *cmnt;
+    char *rec, *cmnt;
+    char kb[MAX_STRING_LEN];
     int i = 0;
 
     rv = apr_dbm_firstkey(htdbm->dbm, &key);
@@ -249,19 +250,24 @@ static apr_status_t htdbm_list(htdbm_t *htdbm)
         fprintf(stderr, "Empty database -- %s\n", htdbm->filename);
         return APR_ENOENT;
     }
+    rec = apr_pcalloc(htdbm->pool, HUGE_STRING_LEN);
+
     fprintf(stderr, "Dumping records from database -- %s\n", htdbm->filename);
-    fprintf(stderr, "    %-32s Comment\n", "Username");
+    fprintf(stderr, "    %-32sComment\n", "Username");
     while (key.dptr != NULL) {
         rv = apr_dbm_fetch(htdbm->dbm, key, &val);
         if (rv != APR_SUCCESS) {
             fprintf(stderr, "Failed getting data from %s\n", htdbm->filename);
             return APR_EGENERAL;
         }
-        /* Note: we don't store \0-terminators on our dbm data */
-        fprintf(stderr, "    %-32.*s", (int)key.dsize, key.dptr);
-        cmnt = memchr(val.dptr, ':', val.dsize);
+        strncpy(kb, key.dptr, key.dsize);
+        kb[key.dsize] = '\0';
+        fprintf(stderr, "    %-32s", kb);
+        strncpy(rec, val.dptr, val.dsize);
+        rec[val.dsize] = '\0';
+        cmnt = strchr(rec, ':');
         if (cmnt)
-            fprintf(stderr, " %.*s", (int)(val.dptr+val.dsize - (cmnt+1)), cmnt + 1);
+            fprintf(stderr, "%s", cmnt + 1);
         fprintf(stderr, "\n");
         rv = apr_dbm_nextkey(htdbm->dbm, &key);
         if (rv != APR_SUCCESS)
@@ -305,17 +311,17 @@ static apr_status_t htdbm_make(htdbm_t *htdbm)
         case ALG_PLAIN:
             /* XXX this len limitation is not in sync with any HTTPd len. */
             apr_cpystrn(cpw,htdbm->userpass,sizeof(cpw));
-#if (!(defined(WIN32) || defined(NETWARE)))
+#if (!(defined(WIN32) || defined(TPF) || defined(NETWARE)))
             fprintf(stderr, "Warning: Plain text passwords aren't supported by the "
                     "server on this platform!\n");
 #endif
         break;
-#if (!(defined(WIN32) || defined(NETWARE)))
+#if (!(defined(WIN32) || defined(TPF) || defined(NETWARE)))
         case ALG_CRYPT:
             (void) srand((int) time((time_t *) NULL));
             to64(&salt[0], rand(), 8);
             salt[8] = '\0';
-            apr_cpystrn(cpw, crypt(htdbm->userpass, salt), sizeof(cpw) - 1);
+            apr_cpystrn(cpw, (char *)crypt(htdbm->userpass, salt), sizeof(cpw) - 1);
             fprintf(stderr, "CRYPT is now deprecated, use MD5 instead!\n");
 #endif
         default:
@@ -341,7 +347,7 @@ static apr_status_t htdbm_valid_username(htdbm_t *htdbm)
 static void htdbm_usage(void)
 {
 
-#if (!(defined(WIN32) || defined(NETWARE)))
+#if (!(defined(WIN32) || defined(TPF) || defined(NETWARE)))
 #define CRYPT_OPTION "d"
 #else
 #define CRYPT_OPTION ""
@@ -361,7 +367,7 @@ static void htdbm_usage(void)
     fprintf(stderr, "   -c   Create a new database.\n");
     fprintf(stderr, "   -n   Don't update database; display results on stdout.\n");
     fprintf(stderr, "   -m   Force MD5 encryption of the password (default).\n");
-#if (!(defined(WIN32) || defined(NETWARE)))
+#if (!(defined(WIN32) || defined(TPF) || defined(NETWARE)))
     fprintf(stderr, "   -d   Force CRYPT encryption of the password (now deprecated).\n");
 #endif
     fprintf(stderr, "   -p   Do not encrypt the password (plaintext).\n");
@@ -468,7 +474,7 @@ int main(int argc, const char * const argv[])
             case 's':
                 h->alg = ALG_APSHA;
                 break;
-#if (!(defined(WIN32) || defined(NETWARE)))
+#if (!(defined(WIN32) || defined(TPF) || defined(NETWARE)))
             case 'd':
                 h->alg = ALG_CRYPT;
                 break;

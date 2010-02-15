@@ -13,16 +13,15 @@
 <body>
 <div id="page-header">
 <p class="menu"><a href="../mod/">Modules</a> | <a href="../mod/directives.html">Directives</a> | <a href="../faq/">FAQ</a> | <a href="../glossary.html">Glossary</a> | <a href="../sitemap.html">Sitemap</a></p>
-<p class="apache">Apache HTTP Server Version 2.3</p>
+<p class="apache">Apache HTTP Server Version 2.2</p>
 <img alt="" src="../images/feather.gif" /></div>
 <div class="up"><a href="./"><img title="&lt;-" alt="&lt;-" src="../images/left.gif" /></a></div>
 <div id="path">
-<a href="http://www.apache.org/">Apache</a> &gt; <a href="http://httpd.apache.org/">HTTP Server</a> &gt; <a href="http://httpd.apache.org/docs/">Documentation</a> &gt; <a href="../">Version 2.3</a> &gt; <a href="./">Modules</a></div>
+<a href="http://www.apache.org/">Apache</a> &gt; <a href="http://httpd.apache.org/">HTTP Server</a> &gt; <a href="http://httpd.apache.org/docs/">Documentation</a> &gt; <a href="../">Version 2.2</a> &gt; <a href="./">Modules</a></div>
 <div id="page-content">
 <div id="preamble"><h1>Apache Module mod_headers</h1>
 <div class="toplang">
 <p><span>Available Languages: </span><a href="../en/mod/mod_headers.html" title="English">&nbsp;en&nbsp;</a> |
-<a href="../fr/mod/mod_headers.html" hreflang="fr" rel="alternate" title="Français">&nbsp;fr&nbsp;</a> |
 <a href="../ja/mod/mod_headers.html" hreflang="ja" rel="alternate" title="Japanese">&nbsp;ja&nbsp;</a> |
 <a href="../ko/mod/mod_headers.html" hreflang="ko" rel="alternate" title="Korean">&nbsp;ko&nbsp;</a></p>
 </div>
@@ -30,7 +29,9 @@
 headers</td></tr>
 <tr><th><a href="module-dict.html#Status">Status:</a></th><td>Extension</td></tr>
 <tr><th><a href="module-dict.html#ModuleIdentifier">Module Identifier:</a></th><td>headers_module</td></tr>
-<tr><th><a href="module-dict.html#SourceFile">Source File:</a></th><td>mod_headers.c</td></tr></table>
+<tr><th><a href="module-dict.html#SourceFile">Source File:</a></th><td>mod_headers.c</td></tr>
+<tr><th><a href="module-dict.html#Compatibility">Compatibility:</a></th><td><code class="directive"><a href="#requestheader">RequestHeader</a></code>
+is available only in Apache 2.0</td></tr></table>
 <h3>Summary</h3>
 
     <p>This module provides directives to control and modify HTTP
@@ -58,7 +59,7 @@ headers</td></tr>
 
     <p>Order of processing is important and is affected both by the
     order in the configuration file and by placement in <a href="../sections.html#mergin">configuration sections</a>. These
-    two directives have a different effect if reversed:</p>
+    two headers have a different effect if reversed:</p>
 
     <div class="example"><p><code>
       RequestHeader append MirrorID "mirror 12"<br />
@@ -166,47 +167,13 @@ headers</td></tr>
           RequestHeader edit Destination ^https: http: early
         </code></p></div>
       </li>
-
-      <li>
-        Set the same header value under multiple non-exclusive conditions,
-        but do not duplicate the value in the final header.
-        If all of the following conditions applied to a request (i.e.,
-        if the <code>CGI</code>, <code>NO_CACHE</code> and
-        <code>NO_STORE</code> environment variables all existed for the
-        request):
-
-        <div class="example"><p><code>
-          Header merge Cache-Control no-cache env=CGI<br />
-          Header merge Cache-Control no-cache env=NO_CACHE<br />
-          Header merge Cache-Control no-store env=NO_STORE
-        </code></p></div>
-
-        <p>then the response would contain the following header:</p>
-
-        <div class="example"><p><code>
-          Cache-Control: no-cache, no-store
-        </code></p></div>
-
-        <p>If <code>append</code> was used instead of <code>merge</code>,
-        then the response would contain the following header:</p>
-
-        <div class="example"><p><code>
-          Cache-Control: no-cache, no-cache, no-store
-        </code></p></div>
-      </li>
-      <li>
-        Set a test cookie if and only if the client didn't send us a cookie
-        <div class="example"><p><code>
-          Header set Set-Cookie testcookie !$req{Cookie}
-        </code></p></div>
-      </li>
     </ol>
 </div>
 <div class="top"><a href="#page-header"><img alt="top" src="../images/up.gif" /></a></div>
 <div class="directive-section"><h2><a name="Header" id="Header">Header</a> <a name="header" id="header">Directive</a></h2>
 <table class="directive">
 <tr><th><a href="directive-dict.html#Description">Description:</a></th><td>Configure HTTP response headers</td></tr>
-<tr><th><a href="directive-dict.html#Syntax">Syntax:</a></th><td><code>Header [<var>condition</var>] add|append|echo|edit|merge|set|unset
+<tr><th><a href="directive-dict.html#Syntax">Syntax:</a></th><td><code>Header [<var>condition</var>] set|append|add|unset|echo|edit
 <var>header</var> [<var>value</var>] [early|env=[!]<var>variable</var>]</code></td></tr>
 <tr><th><a href="directive-dict.html#Context">Context:</a></th><td>server config, virtual host, directory, .htaccess</td></tr>
 <tr><th><a href="directive-dict.html#Override">Override:</a></th><td>FileInfo</td></tr>
@@ -218,31 +185,38 @@ headers</td></tr>
     and output filters are run, allowing outgoing headers to be
     modified.</p>
 
-    <p>By default, this directive only affects successful responses (responses
-    in the <code>2<var>xx</var></code> range).  The optional <var>condition</var>
-    can be either <code>onsuccess</code> (default) or <code>always</code> (all
-    status codes, including successful responses).  A value of <code>always</code>
-    may be needed to influence headers set by some internal modules even for
-    successful responses, and is always needed to affect non-<code>2<var>xx</var></code> 
-    responses such as redirects or client errors.</p>
+    <p>The optional <var>condition</var> can be either <code>onsuccess</code>
+    or <code>always</code>. It determines, which internal header table should be
+    operated on. <code>onsuccess</code> stands for <code>2<var>xx</var></code>
+    status codes and <code>always</code> for all status codes (including
+    <code>2<var>xx</var></code>). Especially if you want to unset headers
+    set by certain modules, you should try out, which table is affected.</p>
 
-    <p>The action it performs is determined by the first
-    argument (second argument if a <var>condition</var> is specified).
-    This can be one of the following values:</p>
+    <p>The action it performs is determined by the second
+    argument. This can be one of the following values:</p>
 
     <dl>
-    <dt><code>add</code></dt>
-    <dd>The response header is added to the existing set of headers,
-    even if this header already exists. This can result in two
-    (or more) headers having the same name. This can lead to
-    unforeseen consequences, and in general <code>set</code>,
-    <code>append</code> or <code>merge</code> should be used instead.</dd>
+    <dt><code>set</code></dt>
+    <dd>The response header is set, replacing any previous header
+    with this name. The <var>value</var> may be a format string.</dd>
 
     <dt><code>append</code></dt>
     <dd>The response header is appended to any existing header of
     the same name. When a new value is merged onto an existing
     header it is separated from the existing header with a comma.
     This is the HTTP standard way of giving a header multiple values.</dd>
+
+    <dt><code>add</code></dt>
+    <dd>The response header is added to the existing set of headers,
+    even if this header already exists. This can result in two
+    (or more) headers having the same name. This can lead to
+    unforeseen consequences, and in general <code>set</code> or
+    <code>append</code> should be used instead.</dd>
+
+    <dt><code>unset</code></dt>
+    <dd>The response header of this name is removed, if it exists.
+    If there are multiple headers of the same name, all will be
+    removed. <var>value</var> must be omitted.</dd>
 
     <dt><code>echo</code></dt>
     <dd>Request headers with this name are echoed back in the
@@ -255,38 +229,18 @@ headers</td></tr>
     to a <a class="glossarylink" href="../glossary.html#regex" title="see glossary">regular expression</a>
     search-and-replace.  The <var>value</var> argument is a <a class="glossarylink" href="../glossary.html#regex" title="see glossary">regular expression</a>, and the <var>replacement</var>
     is a replacement string, which may contain backreferences.</dd>
-
-    <dt><code>merge</code></dt>
-    <dd>The response header is appended to any existing header of
-    the same name, unless the value to be appended already appears in the
-    header's comma-delimited list of values.  When a new value is merged onto
-    an existing header it is separated from the existing header with a comma.
-    This is the HTTP standard way of giving a header multiple values.
-    Values are compared in a case sensitive manner, and after
-    all format specifiers have been processed.  Values in double quotes
-    are considered different from otherwise identical unquoted values.</dd>
-
-    <dt><code>set</code></dt>
-    <dd>The response header is set, replacing any previous header
-    with this name. The <var>value</var> may be a format string.</dd>
-
-    <dt><code>unset</code></dt>
-    <dd>The response header of this name is removed, if it exists.
-    If there are multiple headers of the same name, all will be
-    removed. <var>value</var> must be omitted.</dd>
     </dl>
 
     <p>This argument is followed by a <var>header</var> name, which
     can include the final colon, but it is not required. Case is
-    ignored for <code>set</code>, <code>append</code>, <code>merge</code>,
-    <code>add</code>, <code>unset</code> and <code>edit</code>.
+    ignored for <code>set</code>, <code>append</code>, <code>add</code>,
+    <code>unset</code>, and <code>edit</code>.
     The <var>header</var> name for <code>echo</code>
     is case sensitive and may be a <a class="glossarylink" href="../glossary.html#regex" title="see glossary">regular
     expression</a>.</p>
 
-    <p>For <code>set</code>, <code>append</code>, <code>merge</code> and
-    <code>add</code> a <var>value</var> is specified as the next argument.
-    If <var>value</var>
+    <p>For <code>set</code>, <code>append</code> and <code>add</code> a
+    <var>value</var> is specified as the third argument. If <var>value</var>
     contains spaces, it should be surrounded by double quotes.
     <var>value</var> may be a character string, a string containing format
     specifiers or a combination of both. The following format specifiers
@@ -302,14 +256,13 @@ headers</td></tr>
 <tr><td><code>%D</code></td>
         <td>The time from when the request was received to the time the
         headers are sent on the wire. This is a measure of the duration
-        of the request. The value is preceded by <code>D=</code>.
-        The value is measured in microseconds.</td></tr>
-<tr class="odd"><td><code>%{VARNAME}e</code></td>
+        of the request. The value is preceded by <code>D=</code>.</td></tr>
+<tr class="odd"><td><code>%{FOOBAR}e</code></td>
         <td>The contents of the <a href="../env.html">environment
-        variable</a> <code>VARNAME</code>.</td></tr>
-<tr><td><code>%{VARNAME}s</code></td>
+        variable</a> <code>FOOBAR</code>.</td></tr>
+<tr><td><code>%{FOOBAR}s</code></td>
         <td>The contents of the <a href="mod_ssl.html#envvars">SSL environment
-        variable</a> <code>VARNAME</code>, if <code class="module"><a href="../mod/mod_ssl.html">mod_ssl</a></code> is enabled.</td></tr>
+        variable</a> <code>FOOBAR</code>, if <code class="module"><a href="../mod/mod_ssl.html">mod_ssl</a></code> is enabled.</td></tr>
 </table>
 
     <div class="note"><h3>Note</h3>
@@ -325,20 +278,16 @@ headers</td></tr>
     which is a <a class="glossarylink" href="../glossary.html#regex" title="see glossary">regular expression</a>,
     and an additional <var>replacement</var> string.</p>
 
-    <p>The <code class="directive">Header</code> directive may be followed by
-    an additional argument, which may be any of:</p>
-    <dl>
-    <dt><code>early</code></dt>
-    <dd>Specifies <a href="#early">early processing</a>.</dd>
-    <dt><code>env=[!]varname</code></dt>
-    <dd>The directive is applied if and only if the <a href="../env.html">environment variable</a> <code>varname</code> exists.
-        A <code>!</code> in front of <code>varname</code> reverses the test,
-        so the directive applies only if <code>varname</code> is unset.</dd>
-    <dt><code>expr</code></dt>
-    <dd>An string that matches neither of the above is parsed as an
-        expression.  Details of expression syntax and evaluation are
-        currently best documented on the <code class="module"><a href="../mod/mod_filter.html">mod_filter</a></code> page.</dd>
-    </dl>
+    <p>The <code class="directive">Header</code> directive may be followed by an
+    an additional argument, which may be used to specify conditions under
+    which the action will be taken, or may be the keyword <code>early</code>
+    to specify <a href="#early">early processing</a>. If the
+    <a href="../env.html">environment variable</a> specified in the
+    <code>env=<var>...</var></code> argument exists (or if the environment
+    variable does not exist and <code>env=!<var>...</var></code> is specified)
+    then the action specified by the <code class="directive">Header</code> directive
+    will take effect. Otherwise, the directive will have no effect
+    on the request.</p>
 
     <p>Except in <a href="#early">early</a> mode, the
     <code class="directive">Header</code> directives are processed just
@@ -351,7 +300,7 @@ headers</td></tr>
 <div class="directive-section"><h2><a name="RequestHeader" id="RequestHeader">RequestHeader</a> <a name="requestheader" id="requestheader">Directive</a></h2>
 <table class="directive">
 <tr><th><a href="directive-dict.html#Description">Description:</a></th><td>Configure HTTP request headers</td></tr>
-<tr><th><a href="directive-dict.html#Syntax">Syntax:</a></th><td><code>RequestHeader add|append|edit|edit*|merge|set|unset <var>header</var>
+<tr><th><a href="directive-dict.html#Syntax">Syntax:</a></th><td><code>RequestHeader set|append|add|unset|edit <var>header</var>
 [<var>value</var>] [<var>replacement</var>] [early|env=[!]<var>variable</var>]</code></td></tr>
 <tr><th><a href="directive-dict.html#Context">Context:</a></th><td>server config, virtual host, directory, .htaccess</td></tr>
 <tr><th><a href="directive-dict.html#Override">Override:</a></th><td>FileInfo</td></tr>
@@ -365,13 +314,9 @@ headers</td></tr>
     of the following values:</p>
 
     <dl>
-
-    <dt><code>add</code></dt>
-    <dd>The request header is added to the existing set of headers,
-    even if this header already exists. This can result in two
-    (or more) headers having the same name. This can lead to
-    unforeseen consequences, and in general <code>set</code>,
-    <code>append</code> or <code>merge</code> should be used instead.</dd>
+    <dt><code>set</code></dt>
+    <dd>The request header is set, replacing any previous header
+    with this name</dd>
 
     <dt><code>append</code></dt>
     <dd>The request header is appended to any existing header of the
@@ -380,40 +325,28 @@ headers</td></tr>
     is the HTTP standard way of giving a header multiple
     values.</dd>
 
-    <dt><code>edit</code></dt>
-    <dt><code>edit*</code></dt>
-    <dd>If this request header exists, its value is transformed according
-    to a <a class="glossarylink" href="../glossary.html#regex" title="see glossary">regular expression</a>
-    search-and-replace.  The <var>value</var> argument is a <a class="glossarylink" href="../glossary.html#regex" title="see glossary">regular expression</a>, and the <var>replacement</var>
-    is a replacement string, which may contain backreferences.
-    The <code>edit</code> form will match and replace exactly once
-    in a header value, whereas the <code>edit*</code> form will replace
-    <em>every</em> instance of the search pattern if it appears more
-    than once.</dd>
-
-    <dt><code>merge</code></dt>
-    <dd>The response header is appended to any existing header of
-    the same name, unless the value to be appended already appears in the
-    existing header's comma-delimited list of values.  When a new value is
-    merged onto an existing header it is separated from the existing header
-    with a comma.  This is the HTTP standard way of giving a header multiple
-    values.  Values are compared in a case sensitive manner, and after
-    all format specifiers have been processed.  Values in double quotes
-    are considered different from otherwise identical unquoted values.</dd>
-
-    <dt><code>set</code></dt>
-    <dd>The request header is set, replacing any previous header
-    with this name</dd>
+    <dt><code>add</code></dt>
+    <dd>The request header is added to the existing set of headers,
+    even if this header already exists. This can result in two
+    (or more) headers having the same name. This can lead to
+    unforeseen consequences, and in general <code>set</code> or
+    <code>append</code> should be used instead.</dd>
 
     <dt><code>unset</code></dt>
     <dd>The request header of this name is removed, if it exists. If
     there are multiple headers of the same name, all will be removed.
     <var>value</var> must be omitted.</dd>
+
+    <dt><code>edit</code></dt>
+    <dd>If this request header exists, its value is transformed according
+    to a <a class="glossarylink" href="../glossary.html#regex" title="see glossary">regular expression</a>
+    search-and-replace.  The <var>value</var> argument is a <a class="glossarylink" href="../glossary.html#regex" title="see glossary">regular expression</a>, and the <var>replacement</var>
+    is a replacement string, which may contain backreferences.</dd>
     </dl>
 
     <p>This argument is followed by a header name, which can
     include the final colon, but it is not required. Case is
-    ignored. For <code>set</code>, <code>append</code>, <code>merge</code> and
+    ignored. For <code>set</code>, <code>append</code> and
     <code>add</code> a <var>value</var> is given as the third argument. If a
     <var>value</var> contains spaces, it should be surrounded by double
     quotes. For <code>unset</code>, no <var>value</var> should be given.
@@ -426,19 +359,15 @@ headers</td></tr>
     replacement string respectively.</p>
 
     <p>The <code class="directive">RequestHeader</code> directive may be followed by
-    an additional argument, which may be any of:</p>
-    <dl>
-    <dt><code>early</code></dt>
-    <dd>Specifies <a href="#early">early processing</a>.</dd>
-    <dt><code>env=[!]varname</code></dt>
-    <dd>The directive is applied if and only if the <a href="../env.html">environment variable</a> <code>varname</code> exists.
-        A <code>!</code> in front of <code>varname</code> reverses the test,
-        so the directive applies only if <code>varname</code> is unset.</dd>
-    <dt><code>expr</code></dt>
-    <dd>An string that matches neither of the above is parsed as an
-        expression.  Details of expression syntax and evaluation are
-        currently best documented on the <code class="module"><a href="../mod/mod_filter.html">mod_filter</a></code> page.</dd>
-    </dl>
+    an additional argument, which may be used to specify conditions under
+    which the action will be taken, or may be the keyword <code>early</code>
+    to specify <a href="#early">early processing</a>. If the
+    <a href="../env.html">environment
+    variable</a> specified in the <code>env=<var>...</var></code> argument
+    exists (or if the environment variable does not exist and
+    <code>env=!<var>...</var></code> is specified) then the action specified
+    by the <code class="directive">RequestHeader</code> directive will take effect.
+    Otherwise, the directive will have no effect on the request.</p>
 
     <p>Except in <a href="#early">early</a> mode, the
     <code class="directive">RequestHeader</code> directive is processed
@@ -450,10 +379,9 @@ headers</td></tr>
 </div>
 <div class="bottomlang">
 <p><span>Available Languages: </span><a href="../en/mod/mod_headers.html" title="English">&nbsp;en&nbsp;</a> |
-<a href="../fr/mod/mod_headers.html" hreflang="fr" rel="alternate" title="Français">&nbsp;fr&nbsp;</a> |
 <a href="../ja/mod/mod_headers.html" hreflang="ja" rel="alternate" title="Japanese">&nbsp;ja&nbsp;</a> |
 <a href="../ko/mod/mod_headers.html" hreflang="ko" rel="alternate" title="Korean">&nbsp;ko&nbsp;</a></p>
 </div><div id="footer">
-<p class="apache">Copyright 2010 The Apache Software Foundation.<br />Licensed under the <a href="http://www.apache.org/licenses/LICENSE-2.0">Apache License, Version 2.0</a>.</p>
+<p class="apache">Copyright 2007 The Apache Software Foundation.<br />Licensed under the <a href="http://www.apache.org/licenses/LICENSE-2.0">Apache License, Version 2.0</a>.</p>
 <p class="menu"><a href="../mod/">Modules</a> | <a href="../mod/directives.html">Directives</a> | <a href="../faq/">FAQ</a> | <a href="../glossary.html">Glossary</a> | <a href="../sitemap.html">Sitemap</a></p></div>
 </body></html>

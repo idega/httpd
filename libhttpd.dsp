@@ -43,7 +43,7 @@ RSC=rc.exe
 # PROP Ignore_Export_Lib 0
 # PROP Target_Dir ""
 # ADD BASE CPP /nologo /MD /W3 /O2 /D "NDEBUG" /D "WIN32" /D "_WINDOWS" /D "AP_DECLARE_EXPORT" /FD /c
-# ADD CPP /nologo /MD /W3 /O2 /Oy- /Zi /I "./include" /I "./srclib/apr/include" /I "./srclib/apr-util/include" /I "./srclib/pcre" /D "NDEBUG" /D "WIN32" /D "_WINDOWS" /D "AP_DECLARE_EXPORT" /Fd"Release\libhttpd_cl" /FD /c
+# ADD CPP /nologo /MD /W3 /O2 /Oy- /Zi /I "./include" /I "./srclib/apr/include" /I "./srclib/apr-util/include" /I "./srclib/pcre" /D "NDEBUG" /D "WIN32" /D "_WINDOWS" /D "PCRE_STATIC" /D "AP_DECLARE_EXPORT" /Fd"Release\libhttpd_cl" /FD /c
 # ADD BASE MTL /nologo /D "NDEBUG" /win32
 # ADD MTL /nologo /D "NDEBUG" /mktyplib203 /win32
 # ADD BASE RSC /l 0x409 /d "NDEBUG"
@@ -53,12 +53,12 @@ BSC32=bscmake.exe
 # ADD BSC32 /nologo
 LINK32=link.exe
 # ADD BASE LINK32 kernel32.lib user32.lib advapi32.lib ws2_32.lib mswsock.lib /nologo /subsystem:windows /dll
-# ADD LINK32 pcre.lib kernel32.lib user32.lib advapi32.lib ws2_32.lib mswsock.lib "Release\buildmark.obj" /nologo /subsystem:windows /dll /debug /libpath:"./srclib/pcre" /base:@"os\win32\BaseAddr.ref",libhttpd.dll /opt:ref
+# ADD LINK32 kernel32.lib user32.lib advapi32.lib ws2_32.lib mswsock.lib "Release\buildmark.obj" /nologo /subsystem:windows /dll /debug /base:@"os\win32\BaseAddr.ref",libhttpd.dll /opt:ref
 # Begin Special Build Tool
 TargetPath=.\Release\libhttpd.dll
 SOURCE="$(InputPath)"
 PreLink_Desc=Compiling buildmark
-PreLink_Cmds=cl.exe /nologo /MD /W3 /O2 /Oy- /Zi /I "./include" /I "./srclib/apr/include" /I "./srclib/apr-util/include" /I "./srclib/pcre" /D "NDEBUG" /D "WIN32" /D "_WINDOWS" /D "AP_DECLARE_EXPORT" /Fd"Release\libhttpd" /FD /c server\buildmark.c /Fo"Release\buildmark.obj"
+PreLink_Cmds=cl.exe /nologo /MD /W3 /O2 /Oy- /Zi /I "./include" /I "./srclib/apr/include" /I "./srclib/apr-util/include" /I "./srclib/pcre" /D "NDEBUG" /D "WIN32" /D "_WINDOWS" /D "PCRE_STATIC" /D "AP_DECLARE_EXPORT" /Fd"Release\libhttpd" /FD /c server\buildmark.c /Fo"Release\buildmark.obj"
 PostBuild_Desc=Embed .manifest
 PostBuild_Cmds=if exist $(TargetPath).manifest mt.exe -manifest $(TargetPath).manifest -outputresource:$(TargetPath);2
 # End Special Build Tool
@@ -77,7 +77,7 @@ PostBuild_Cmds=if exist $(TargetPath).manifest mt.exe -manifest $(TargetPath).ma
 # PROP Ignore_Export_Lib 0
 # PROP Target_Dir ""
 # ADD BASE CPP /nologo /MDd /W3 /EHsc /Zi /Od /D "_DEBUG" /D "WIN32" /D "_WINDOWS" /D "AP_DECLARE_EXPORT" /FD /c
-# ADD CPP /nologo /MDd /W3 /EHsc /Zi /Od /I "./include" /I "./srclib/apr/include" /I "./srclib/apr-util/include" /I "./srclib/pcre" /D "_DEBUG" /D "WIN32" /D "_WINDOWS" /D "AP_DECLARE_EXPORT" /Fd"Debug\libhttpd_cl" /FD /c
+# ADD CPP /nologo /MDd /W3 /EHsc /Zi /Od /I "./include" /I "./srclib/apr/include" /I "./srclib/apr-util/include" /I "./srclib/pcre" /D "_DEBUG" /D "WIN32" /D "_WINDOWS" /D "PCRE_STATIC" /D "AP_DECLARE_EXPORT" /Fd"Debug\libhttpd_cl" /FD /c
 # ADD BASE MTL /nologo /D "_DEBUG" /win32
 # ADD MTL /nologo /D "_DEBUG" /mktyplib203 /win32
 # ADD BASE RSC /l 0x409 /d "_DEBUG"
@@ -87,12 +87,12 @@ BSC32=bscmake.exe
 # ADD BSC32 /nologo
 LINK32=link.exe
 # ADD BASE LINK32 kernel32.lib user32.lib advapi32.lib ws2_32.lib mswsock.lib /nologo /subsystem:windows /dll /incremental:no /debug
-# ADD LINK32 pcred.lib kernel32.lib user32.lib advapi32.lib ws2_32.lib mswsock.lib "Debug\buildmark.obj" /nologo /subsystem:windows /dll /incremental:no /debug /libpath:"./srclib/pcre" /base:@"os\win32\BaseAddr.ref",libhttpd.dll
+# ADD LINK32 kernel32.lib user32.lib advapi32.lib ws2_32.lib mswsock.lib "Debug\buildmark.obj" /nologo /subsystem:windows /dll /incremental:no /debug /base:@"os\win32\BaseAddr.ref",libhttpd.dll
 # Begin Special Build Tool
 TargetPath=.\Debug\libhttpd.dll
 SOURCE="$(InputPath)"
 PreLink_Desc=Compiling buildmark
-PreLink_Cmds=cl.exe /nologo /MDd /W3 /EHsc /Zi /Od /I "./include" /I "./srclib/apr/include" /I "./srclib/apr-util/include" /I "./srclib/pcre" /D "_DEBUG" /D "WIN32" /D "_WINDOWS" /D "AP_DECLARE_EXPORT" /Fd"Debug\libhttpd" /FD /c server\buildmark.c /Fo"Debug\buildmark.obj"
+PreLink_Cmds=cl.exe /nologo /MDd /W3 /EHsc /Zi /Od /I "./include" /I "./srclib/apr/include" /I "./srclib/apr-util/include" /I "./srclib/pcre" /D "_DEBUG" /D "WIN32" /D "_WINDOWS" /D "PCRE_STATIC" /D "AP_DECLARE_EXPORT" /Fd"Debug\libhttpd" /FD /c server\buildmark.c /Fo"Debug\buildmark.obj"
 PostBuild_Desc=Embed .manifest
 PostBuild_Cmds=if exist $(TargetPath).manifest mt.exe -manifest $(TargetPath).manifest -outputresource:$(TargetPath);2
 # End Special Build Tool
@@ -113,10 +113,6 @@ SOURCE=.\include\ap_compat.h
 # Begin Source File
 
 SOURCE=.\include\ap_config.h
-# End Source File
-# Begin Source File
-
-SOURCE=.\include\ap_expr.h
 # End Source File
 # Begin Source File
 
@@ -193,7 +189,32 @@ InputPath=.\modules\generators\mod_cgi.h
 # End Source File
 # Begin Source File
 
-SOURCE=.\include\mod_core.h
+SOURCE=.\modules\http\mod_core.h
+
+!IF  "$(CFG)" == "libhttpd - Win32 Release"
+
+# PROP Ignore_Default_Tool 1
+# Begin Custom Build - Creating include/mod_core.h
+InputPath=.\modules\http\mod_core.h
+
+".\include\mod_core.h" : $(SOURCE) "$(INTDIR)" "$(OUTDIR)"
+	type .\modules\http\mod_core.h > .\include\mod_core.h
+
+# End Custom Build
+
+!ELSEIF  "$(CFG)" == "libhttpd - Win32 Debug"
+
+# PROP Ignore_Default_Tool 1
+# Begin Custom Build - Creating include/mod_core.h
+InputPath=.\modules\http\mod_core.h
+
+".\include\mod_core.h" : $(SOURCE) "$(INTDIR)" "$(OUTDIR)"
+	type .\modules\http\mod_core.h > .\include\mod_core.h
+
+# End Custom Build
+
+!ENDIF 
+
 # End Source File
 # Begin Source File
 
@@ -284,16 +305,16 @@ InputPath=.\modules\proxy\mod_proxy.h
 # End Source File
 # Begin Source File
 
-SOURCE=.\modules\core\mod_so.h
+SOURCE=.\modules\mappers\mod_so.h
 
 !IF  "$(CFG)" == "libhttpd - Win32 Release"
 
 # PROP Ignore_Default_Tool 1
 # Begin Custom Build - Creating include/mod_so.h
-InputPath=.\modules\core\mod_so.h
+InputPath=.\modules\mappers\mod_so.h
 
 ".\include\mod_so.h" : $(SOURCE) "$(INTDIR)" "$(OUTDIR)"
-	type .\modules\core\mod_so.h > .\include\mod_so.h
+	type .\modules\mappers\mod_so.h > .\include\mod_so.h
 
 # End Custom Build
 
@@ -301,10 +322,10 @@ InputPath=.\modules\core\mod_so.h
 
 # PROP Ignore_Default_Tool 1
 # Begin Custom Build - Creating include/mod_so.h
-InputPath=.\modules\core\mod_so.h
+InputPath=.\modules\mappers\mod_so.h
 
 ".\include\mod_so.h" : $(SOURCE) "$(INTDIR)" "$(OUTDIR)"
-	type .\modules\core\mod_so.h > .\include\mod_so.h
+	type .\modules\mappers\mod_so.h > .\include\mod_so.h
 
 # End Custom Build
 
@@ -419,7 +440,7 @@ SOURCE=.\server\vhost.c
 # PROP Default_Filter ""
 # Begin Source File
 
-SOURCE=.\modules\core\mod_so.c
+SOURCE=.\modules\mappers\mod_so.c
 # End Source File
 # Begin Source File
 
@@ -443,10 +464,6 @@ SOURCE=.\server\eoc_bucket.c
 # End Source File
 # Begin Source File
 
-SOURCE=.\server\eor_bucket.c
-# End Source File
-# Begin Source File
-
 SOURCE=.\server\error_bucket.c
 # End Source File
 # Begin Source File
@@ -467,19 +484,7 @@ SOURCE=.\include\util_charset.h
 # End Source File
 # Begin Source File
 
-SOURCE=.\server\util_cookies.c
-# End Source File
-# Begin Source File
-
-SOURCE=.\server\util_cookies.h
-# End Source File
-# Begin Source File
-
 SOURCE=.\include\util_ebcdic.h
-# End Source File
-# Begin Source File
-
-SOURCE=.\server\util_expr.c
 # End Source File
 # Begin Source File
 
@@ -496,14 +501,6 @@ SOURCE=.\server\util_md5.c
 # Begin Source File
 
 SOURCE=.\include\util_md5.h
-# End Source File
-# Begin Source File
-
-SOURCE=.\server\util_mutex.c
-# End Source File
-# Begin Source File
-
-SOURCE=.\include\util_mutex.h
 # End Source File
 # Begin Source File
 
@@ -543,6 +540,10 @@ SOURCE=.\include\ap_listen.h
 # End Source File
 # Begin Source File
 
+SOURCE=.\include\ap_mpm.h
+# End Source File
+# Begin Source File
+
 SOURCE=.\os\win32\ap_regkey.c
 # End Source File
 # Begin Source File
@@ -556,6 +557,35 @@ SOURCE=.\server\mpm\winnt\child.c
 # Begin Source File
 
 SOURCE=.\server\listen.c
+# End Source File
+# Begin Source File
+
+SOURCE=.\server\mpm\winnt\mpm.h
+
+!IF  "$(CFG)" == "libhttpd - Win32 Release"
+
+# PROP Ignore_Default_Tool 1
+# Begin Custom Build - Creating include/mpm.h
+InputPath=.\server\mpm\winnt\mpm.h
+
+".\include\mpm.h" : $(SOURCE) "$(INTDIR)" "$(OUTDIR)"
+	type .\server\mpm\winnt\mpm.h > .\include\mpm.h
+
+# End Custom Build
+
+!ELSEIF  "$(CFG)" == "libhttpd - Win32 Debug"
+
+# PROP Ignore_Default_Tool 1
+# Begin Custom Build - Creating include/mpm.h
+InputPath=.\server\mpm\winnt\mpm.h
+
+".\include\mpm.h" : $(SOURCE) "$(INTDIR)" "$(OUTDIR)"
+	type .\server\mpm\winnt\mpm.h > .\include\mpm.h
+
+# End Custom Build
+
+!ENDIF 
+
 # End Source File
 # Begin Source File
 

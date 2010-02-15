@@ -39,6 +39,8 @@
 #define APR_WANT_MEMFUNC
 #include "apr_want.h"
 
+#define CORE_PRIVATE
+
 #include "util_filter.h"
 #include "ap_config.h"
 #include "httpd.h"
@@ -585,11 +587,7 @@ static apr_bucket *cgi_bucket_create(request_rec *r,
 
     /* Create the pollset */
     rv = apr_pollset_create(&data->pollset, 2, r->pool, 0);
-    if (rv != APR_SUCCESS) {
-        ap_log_rerror(APLOG_MARK, APLOG_ERR, rv, r,
-                     "cgi: apr_pollset_create(); check system or user limits");
-        return NULL;
-    }
+    AP_DEBUG_ASSERT(rv == APR_SUCCESS);
 
     fd.desc_type = APR_POLL_FILE;
     fd.reqevents = APR_POLLIN;
@@ -597,20 +595,12 @@ static apr_bucket *cgi_bucket_create(request_rec *r,
     fd.desc.f = out; /* script's stdout */
     fd.client_data = (void *)1;
     rv = apr_pollset_add(data->pollset, &fd);
-    if (rv != APR_SUCCESS) {
-        ap_log_rerror(APLOG_MARK, APLOG_ERR, rv, r,
-                     "cgi: apr_pollset_add(); check system or user limits");
-        return NULL;
-    }
+    AP_DEBUG_ASSERT(rv == APR_SUCCESS);
 
     fd.desc.f = err; /* script's stderr */
     fd.client_data = (void *)2;
     rv = apr_pollset_add(data->pollset, &fd);
-    if (rv != APR_SUCCESS) {
-        ap_log_rerror(APLOG_MARK, APLOG_ERR, rv, r,
-                     "cgi: apr_pollset_add(); check system or user limits");
-        return NULL;
-    }
+    AP_DEBUG_ASSERT(rv == APR_SUCCESS);
 
     data->r = r;
     b->data = data;
@@ -847,11 +837,6 @@ static int cgi_handler(request_rec *r)
                             APR_BLOCK_READ, HUGE_STRING_LEN);
 
         if (rv != APR_SUCCESS) {
-            if (APR_STATUS_IS_TIMEUP(rv)) {
-                ap_log_rerror(APLOG_MARK, APLOG_ERR, rv, r,
-                              "Timeout during reading request entity data");
-                return HTTP_REQUEST_TIME_OUT;
-            }
             ap_log_rerror(APLOG_MARK, APLOG_ERR, rv, r,
                           "Error reading request entity data");
             return HTTP_INTERNAL_SERVER_ERROR;
@@ -925,8 +910,6 @@ static int cgi_handler(request_rec *r)
     apr_file_pipe_timeout_set(script_err, 0);
 
     b = cgi_bucket_create(r, script_in, script_err, c->bucket_alloc);
-    if (b == NULL)
-	return HTTP_INTERNAL_SERVER_ERROR;
 #else
     b = apr_bucket_pipe_create(script_in, c->bucket_alloc);
 #endif

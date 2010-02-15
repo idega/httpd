@@ -40,8 +40,8 @@
 #include "mod_auth.h"
 
 typedef struct {
-    const char *pwfile;
-    const char *dbmtype;
+    char *pwfile;
+    char *dbmtype;
 } authn_dbm_config_rec;
 
 static void *create_authn_dbm_dir_config(apr_pool_t *p, char *d)
@@ -184,14 +184,13 @@ static authn_status get_dbm_realm_hash(request_rec *r, const char *user,
 static const authn_provider authn_dbm_provider =
 {
     &check_dbm_pw,
-    &get_dbm_realm_hash,
+    &get_dbm_realm_hash
 };
 
 static void register_hooks(apr_pool_t *p)
 {
-    ap_register_auth_provider(p, AUTHN_PROVIDER_GROUP, "dbm",
-                              AUTHN_PROVIDER_VERSION,
-                              &authn_dbm_provider, AP_AUTH_INTERNAL_PER_CONF);
+    ap_register_provider(p, AUTHN_PROVIDER_GROUP, "dbm", "0",
+                         &authn_dbm_provider);
 }
 
 module AP_MODULE_DECLARE_DATA authn_dbm_module =

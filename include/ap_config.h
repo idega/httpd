@@ -230,7 +230,7 @@
         APR_OPTIONAL_HOOK(ap,name,fn,pre,succ,order)
 
 #include "os.h"
-#if (!defined(WIN32) && !defined(NETWARE)) || defined(__MINGW32__)
+#if !defined(WIN32) && !defined(NETWARE)
 #include "ap_config_auto.h"
 #include "ap_config_layout.h"
 #endif
@@ -238,16 +238,13 @@
 #define AP_NONBLOCK_WHEN_MULTI_LISTEN 1
 #endif
 
-#if AP_ENABLE_DTRACE && HAVE_SYS_SDT_H
-#include <sys/sdt.h>
-#else
-#undef _DTRACE_VERSION
-#endif
+/* TODO - We need to put OS detection back to make all the following work */
 
-#ifdef _DTRACE_VERSION
-#include "apache_probes.h"
-#else
-#include "apache_noprobes.h"
+#if defined(SUNOS4) || defined(IRIX) || defined(NEXT) || defined(AUX3) \
+    || defined (UW) || defined(LYNXOS) || defined(TPF)
+/* These systems don't do well with any lingering close code; I don't know
+ * why -- manoj */
+#define NO_LINGCLOSE
 #endif
 
 /* If APR has OTHER_CHILD logic, use reliable piped logs. */

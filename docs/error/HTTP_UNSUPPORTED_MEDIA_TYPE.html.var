@@ -1,17 +1,18 @@
 Content-language: cs
-Content-type: text/html; charset=UTF-8
+Content-type: text/html; charset=ISO-8859-2
 Body:----------cs--
 <!--#set var="CONTENT_LANGUAGE" value="cs"
---><!--#set var="TITLE" value="NepodporovanÃ½ typ prostÅ™edku!"
+--><!--#set var="CHARACTER_ENCODING" value="ISO-8859-2"
+--><!--#set var="TITLE" value="Nepodporovanı typ prostøedku!"
 --><!--#include virtual="include/top.html" -->
 
-    Server nepodporuje typ prostÅ™edku (media) pÅ™enesenÃ©ho v&nbsp;poÅ¾adavku.
+    Server nepodporuje typ prostøedku (media) pøeneseného v&nbsp;po¾adavku.
 
 <!--#include virtual="include/bottom.html" -->
 ----------cs--
 
 Content-language: de
-Content-type: text/html; charset=UTF-8
+Content-type: text/html; charset=ISO-8859-1
 Body:----------de--
 <!--#set var="CONTENT_LANGUAGE" value="de"
 --><!--#set var="TITLE" value="Nicht unterst&uuml;tztes Format!"
@@ -24,7 +25,7 @@ Body:----------de--
 ----------de--
 
 Content-language: en
-Content-type: text/html; charset=UTF-8
+Content-type: text/html; charset=ISO-8859-1
 Body:----------en--
 <!--#set var="TITLE" value="Unsupported media type!"
 --><!--#include virtual="include/top.html" -->
@@ -35,7 +36,7 @@ Body:----------en--
 ----------en--
 
 Content-language: es
-Content-type: text/html; charset=UTF-8
+Content-type: text/html; charset=ISO-8859-1
 Body:----------es--
 <!--#set var="CONTENT_LANGUAGE" value="es"
 --><!--#set var="TITLE" value="&iexcl;Tipo de datos no soportados!"
@@ -48,7 +49,7 @@ Body:----------es--
 ----------es--
 
 Content-language: fr
-Content-type: text/html; charset=UTF-8
+Content-type: text/html; charset=ISO-8859-1
 Body:----------fr--
 <!--#set var="CONTENT_LANGUAGE" value="fr"
 --><!--#set var="TITLE" value="Type de m&eacute;dia invalide!"
@@ -61,7 +62,7 @@ Body:----------fr--
 ----------fr--
 
 Content-language: ga
-Content-type: text/html; charset=UTF-8
+Content-type: text/html; charset=ISO-8859-1
 Body:----------ga--
 <!--#set var="TITLE" value="Cine&aacute;il me&aacute;n gan tacha&iacute;ocht!"
 --><!--#include virtual="include/top.html" -->
@@ -73,7 +74,7 @@ Body:----------ga--
 ----------ga--
 
 Content-language: it
-Content-type: text/html; charset=UTF-8
+Content-type: text/html; charset=ISO-8859-1
 Body:----------it--
 <!--#set var="CONTENT_LANGUAGE" value="it"
 --><!--#set var="TITLE" value="Tipo di dato non supportato!"
@@ -86,31 +87,33 @@ Body:----------it--
 ----------it--
 
 Content-language: ja
-Content-type: text/html; charset=UTF-8
+Content-type: text/html; charset=ISO-2022-JP
 Body:----------ja--
 <!--#set var="CONTENT_LANGUAGE" value="ja"
+--><!--#set var="CHARACTER_ENCODING" value="iso-2022-jp"
 --><!--#set var="TITLE" value="Unsupported media type!"
 --><!--#include virtual="include/top.html" -->
 
-    ãƒªã‚¯ã‚¨ã‚¹ãƒˆã§æŒ‡å®šã•ã‚ŒãŸãƒ¡ãƒ‡ã‚£ã‚¢ã‚¿ã‚¤ãƒ—ã¯ã‚µãƒãƒ¼ãƒˆã•ã‚Œã¦ã„ã¾ã›ã‚“ã€‚
+    $B%j%/%(%9%H$G;XDj$5$l$?%a%G%#%"%?%$%W$O%5%]!<%H$5$l$F$$$^$;$s!#(B
 
 <!--#include virtual="include/bottom.html" -->
 ----------ja--
 
 Content-language: ko
-Content-type: text/html; charset=UTF-8
+Content-type: text/html; charset=EUC-KR
 Body:----------ko--
 <!--#set var="CONTENT_LANGUAGE" value="ko"
---><!--#set var="TITLE" value="ì§€ì›í•˜ì§€ ì•ŠëŠ” ë¯¸ë””ì–´ í˜•ì‹!"
+--><!--#set var="TITLE" value="Áö¿øÇÏÁö ¾Ê´Â ¹Ìµğ¾î Çü½Ä!"
+--><!--#set var="CHARACTER_ENCODING" value="EUC-KR"
 --><!--#include virtual="include/top.html" -->
 
-    ìš”ì²­ìœ¼ë¡œ ë³´ë‚´ì˜¨ ë¯¸ë””ì–´ í˜•ì‹ì„ ì´ ì„œë²„ê°€ ì§€ì›í•˜ì§€ ì•ŠìŠµë‹ˆë‹¤. 
+    ¿äÃ»À¸·Î º¸³»¿Â ¹Ìµğ¾î Çü½ÄÀ» ÀÌ ¼­¹ö°¡ Áö¿øÇÏÁö ¾Ê½À´Ï´Ù. 
 
 <!--#include virtual="include/bottom.html" -->
 ----------ko--
 
 Content-language: nl
-Content-type: text/html; charset=UTF-8
+Content-type: text/html; charset=ISO-8859-1
 Body:----------nl--
 <!--#set var="CONTENT_LANGUAGE" value="nl"
 --><!--#set var="TITLE" value="Niet ondersteund formaat!"
@@ -122,19 +125,20 @@ Body:----------nl--
 ----------nl--
 
 Content-language: pl
-Content-type: text/html; charset=UTF-8
+Content-type: text/html; charset=ISO-8859-2
 Body:----------pl--
 <!--#set var="CONTENT_LANGUAGE" value="pl"
---><!--#set var="TITLE" value="NieobsÅ‚ugiwany typ danych!"
+--><!--#set var="TITLE" value="Nieobs³ugiwany typ danych!"
+--><!--#set var="CHARACTER_ENCODING" value="ISO-8859-2"
 --><!--#include virtual="include/top.html" -->
 
-    Serwer nie zna typu danych przesÅ‚anych w Å¼Ä…daniu.
+    Serwer nie zna typu danych przes³anych w ¿±daniu.
 
 <!--#include virtual="include/bottom.html" -->
 ----------pl--
 
 Content-language: pt-br
-Content-type: text/html; charset=UTF-8
+Content-type: text/html; charset=ISO-8859-1
 Body:-------pt-br--
 <!--#set var="CONTENT_LANGUAGE" value="pt-br"
 --><!--#set var="TITLE" value="Tipo de media n&atilde;o suportado!"
@@ -147,7 +151,7 @@ Body:-------pt-br--
 -------pt-br--
 
 Content-language: ro
-Content-type: text/html; charset=UTF-8
+Content-type: text/html; charset=ISO-8859-1
 Body:----------ro--
 <!--#set var="CONTENT_LANGUAGE" value="ro"
 --><!--#set var="TITLE" value="Tip de date nesuportate!"
@@ -159,19 +163,20 @@ Body:----------ro--
 ----------ro--
 
 Content-language: sr
-Content-type: text/html; charset=UTF-8
+Content-type: text/html; charset=ISO-8859-5
 Body:----------sr--
 <!--#set var="CONTENT_LANGUAGE" value="sr"
---><!--#set var="TITLE" value="ĞĞµĞ¿Ğ¾Ğ´Ñ€Ğ¶Ğ°Ğ½Ğ° Ğ²Ñ€ÑÑ‚Ğ° Ğ¼ĞµĞ´Ğ¸Ñ˜Ğ°!"
+--><!--#set var="CHARACTER_ENCODING" value="ISO-8859-5"
+--><!--#set var="TITLE" value="½ÕßŞÔàÖĞİĞ ÒàáâĞ ÜÕÔØøĞ!"
 --><!--#include virtual="include/top.html" -->
 
-    Ğ¡ĞµÑ€Ğ²ĞµÑ€ Ğ½Ğµ Ğ¿Ğ¾Ğ´Ñ€Ğ¶Ğ°Ğ²Ğ° Ğ²Ñ€ÑÑ‚Ñƒ Ğ¼ĞµĞ´Ğ¸Ñ˜Ğ° Ğ¿Ñ€ĞµĞ½ĞµÑĞµĞ½Ñƒ Ñƒ Ğ·Ğ°Ñ…Ñ‚ĞµĞ²Ñƒ.
+    ÁÕàÒÕà İÕ ßŞÔàÖĞÒĞ Òàáâã ÜÕÔØøĞ ßàÕİÕáÕİã ã ×ĞåâÕÒã.
 
 <!--#include virtual="include/bottom.html" -->
 ----------sr--
 
 Content-language: sv
-Content-type: text/html; charset=UTF-8
+Content-type: text/html; charset=ISO-8859-1
 Body:----------sv--
 <!--#set var="CONTENT_LANGUAGE" value="sv"
 --><!--#set var="TITLE" value="Mediatypen st&ouml;ds ej!"
@@ -183,13 +188,14 @@ Body:----------sv--
 ----------sv--
 
 Content-language: tr
-Content-type: text/html; charset=UTF-8
+Content-type: text/html; charset=ISO-8859-9
 Body:----------tr--
 <!--#set var="CONTENT_LANGUAGE" value="tr"
---><!--#set var="TITLE" value="Desteklenmeyen ortam tÃ¼rÃ¼!"
+--><!--#set var="CHARACTER_ENCODING" value="ISO-8859-9"
+--><!--#set var="TITLE" value="Unsupported media type!"
 --><!--#include virtual="include/top.html" -->
 
-    Sunucu, istekte belirtilen ortam tÃ¼rÃ¼nÃ¼ desteklemiyor.
+    Sunucu, talep içinde iletilen ortam türünü desteklemiyor.
 
 <!--#include virtual="include/bottom.html" -->
 ----------tr--

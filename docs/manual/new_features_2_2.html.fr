@@ -12,17 +12,16 @@
 <link href="./images/favicon.ico" rel="shortcut icon" /></head>
 <body id="manual-page"><div id="page-header">
 <p class="menu"><a href="./mod/">Modules</a> | <a href="./mod/directives.html">Directives</a> | <a href="./faq/">FAQ</a> | <a href="./glossary.html">Glossaire</a> | <a href="./sitemap.html">Plan du site</a></p>
-<p class="apache">Serveur Apache HTTP Version 2.3</p>
+<p class="apache">Serveur Apache HTTP Version 2.2</p>
 <img alt="" src="./images/feather.gif" /></div>
 <div class="up"><a href="./"><img title="&lt;-" alt="&lt;-" src="./images/left.gif" /></a></div>
 <div id="path">
-<a href="http://www.apache.org/">Apache</a> &gt; <a href="http://httpd.apache.org/">Serveur HTTP</a> &gt; <a href="http://httpd.apache.org/docs/">Documentation</a> &gt; <a href="./">Version 2.3</a></div><div id="page-content"><div id="preamble"><h1>Aperçu des nouvelles fonctionnalités dans Apache 2.2</h1>
+<a href="http://www.apache.org/">Apache</a> &gt; <a href="http://httpd.apache.org/">Serveur HTTP</a> &gt; <a href="http://httpd.apache.org/docs/">Documentation</a> &gt; <a href="./">Version 2.2</a></div><div id="page-content"><div id="preamble"><h1>Aperçu des nouvelles fonctionnalités dans Apache 2.2</h1>
 <div class="toplang">
 <p><span>Langues Disponibles: </span><a href="./en/new_features_2_2.html" hreflang="en" rel="alternate" title="English">&nbsp;en&nbsp;</a> |
 <a href="./fr/new_features_2_2.html" title="Français">&nbsp;fr&nbsp;</a> |
 <a href="./ko/new_features_2_2.html" hreflang="ko" rel="alternate" title="Korean">&nbsp;ko&nbsp;</a> |
-<a href="./pt-br/new_features_2_2.html" hreflang="pt-br" rel="alternate" title="Português (Brasil)">&nbsp;pt-br&nbsp;</a> |
-<a href="./tr/new_features_2_2.html" hreflang="tr" rel="alternate" title="Türkçe">&nbsp;tr&nbsp;</a></p>
+<a href="./pt-br/new_features_2_2.html" hreflang="pt-br" rel="alternate" title="Português (Brasil)">&nbsp;pt-br&nbsp;</a></p>
 </div>
 
   <p>Ce document décrit quelques uns des changements principaux entre
@@ -45,7 +44,7 @@
       <dt>Authn/Authz</dt>
       <dd>Les modules d'authentification et d'autorisation intégrés
 	ont été refondus. Le nouveau module
-	mod_authn_alias (supprimé dans la version 2.3/2.4) permet de
+	<code class="module"><a href="./mod/mod_authn_alias.html">mod_authn_alias</a></code> permet de
 	simplifier considérablement certaines configurations d'authentification.
           Voir <a href="#module">modification des noms de modules</a>,
 	  et
@@ -56,7 +55,7 @@
 
       <dt>Mise en cache</dt>
       <dd><code class="module"><a href="./mod/mod_cache.html">mod_cache</a></code>, <code class="module"><a href="./mod/mod_disk_cache.html">mod_disk_cache</a></code>, et
-          mod_mem_cache (supprimès dans la version 2.3/2.4) ont subi de nombreuses
+          <code class="module"><a href="./mod/mod_mem_cache.html">mod_mem_cache</a></code> ont subi de nombreuses
 	  modifications, et l'on considère qu'ils ont maintenant atteint
 	  un degré de qualité suffisant pour leur mise en production. Le programme
 	  <code class="program"><a href="./programs/htcacheclean.html">htcacheclean</a></code> a été ajouté afin de rendre
@@ -107,7 +106,8 @@
 	  et d'ordonnancement rencontrés avec l'architecture 2.0.</dd>
 
       <dt>Support des gros fichiers</dt>
-      <dd><code class="program"><a href="./programs/httpd.html">httpd</a></code> supporte maintenant les fichiers d'une taille supérieure
+
+      <dd>httpd supporte maintenant les fichiers d'une taille supérieure
       à 2GB sur les systèmes 32 bits UNIX modernes.  Le support des
       corps de requête d'une taille supérieure à 2GB a aussi été
       ajouté.</dd>
@@ -121,10 +121,11 @@
           soit écoulé.</dd>
 
       <dt>Support des bases de données SQL</dt>
-      <dd>Le module <code class="module"><a href="./mod/mod_dbd.html">mod_dbd</a></code>, associé à l'environnement
-      	<code>apr_dbd</code>, fournit le support SQL direct aux modules
+      <dd>Le module <p><code class="module"><a href="./mod/mod_dbd.html">mod_dbd</a></code>, associé à l'environnement
+      	apr_dbd, fournit le support SQL direct aux modules
 	qui en ont besoin.  Supporte la mise en commun des connexions
-          dans les modules MPM threadés.</dd>
+          dans les modules MPM threadés.</p>
+	  </dd>
 
     </dl>
   </div><div class="top"><a href="#page-header"><img alt="top" src="./images/up.gif" /></a></div>
@@ -134,12 +135,12 @@
     <dl>
       <dt>Authn/Authz</dt>
       <dd>Les modules du répertoire aaa ont été renommés et fournissent
-          un support amélioré pour la méthode d'authentification <strong>digest</strong>.  Par exemple, <code>mod_auth</code>
+          un support amélioré pour la méthode d'authentification <strong>digest</strong>.  Par exemple, mod_auth
           est maintenant scindé en deux modules : <code class="module"><a href="./mod/mod_auth_basic.html">mod_auth_basic</a></code> et
-          <code class="module"><a href="./mod/mod_authn_file.html">mod_authn_file</a></code>; <code>mod_auth_dbm</code> s'appelle maintenant
-          <code class="module"><a href="./mod/mod_authn_dbm.html">mod_authn_dbm</a></code>; <code>mod_access</code> a été renommé en
+          <code class="module"><a href="./mod/mod_authn_file.html">mod_authn_file</a></code>; mod_auth_dbm s'appelle maintenant
+          <code class="module"><a href="./mod/mod_authn_dbm.html">mod_authn_dbm</a></code>; mod_access a été renommé en
           <code class="module"><a href="./mod/mod_authz_host.html">mod_authz_host</a></code>.  Est également apparu le nouveau module
-          mod_authn_alias (supprimé dans la version 2.3/2.4) qui simplifie
+          <code class="module"><a href="./mod/mod_authn_alias.html">mod_authn_alias</a></code> qui simplifie
           certaines configurations d'authentification.
       </dd>
 
@@ -149,17 +150,14 @@
 	  <code>Authn/Authz</code>.
 	  Les nouvelles fonctionnalités comprennent l'utilisation des valeurs
 	  d'attributs LDAP et des filtres de recherche avancés dans la
-          directive <code class="directive"><a href="./mod/mod_authz_core.html#require">Require</a></code>.</dd>
+          directive <code class="directive"><a href="./mod/core.html#require">Require</a></code>.</dd>
 
       <dt><code class="module"><a href="./mod/mod_authz_owner.html">mod_authz_owner</a></code></dt>
-	<dd>Un nouveau module qui autorise l'accès à un fichier
-	en fonction du propriétaire du fichier dans le système de
-	fichiers</dd>
+      <dd>Ce nouveau module propose une gestion des droits d'accès aux ressources web selon leur appartenance
+      à un utilisateur au niveau du système de fichiers.</dd>
 
-	<dt><code class="module"><a href="./mod/mod_version.html">mod_version</a></code></dt>
-	<dd>Un nouveau module qui permet d'activer des blocs de
-	configuration en fonction de la version du serveur en cours
-	d'exécution.</dd>
+      <dt><code class="module"><a href="./mod/mod_version.html">mod_version</a></code></dt>
+      <dd>Ce nouveau module permet de définir des blocs de configuration activables selon le numéro de version du serveur en fonctionnement.</dd>
 
       <dt><code class="module"><a href="./mod/mod_info.html">mod_info</a></code></dt>
       <dd>Un nouvel argument <code>?config</code> a été ajouté, qui permettra d'afficher
@@ -171,11 +169,11 @@
 
       <dt><code class="module"><a href="./mod/mod_ssl.html">mod_ssl</a></code></dt>
       
-      <dd>Le support de la <a href="http://www.ietf.org/rfc/rfc2817.txt">RFC 2817</a>, a été ajouté, ce qui permet de passer d'une
+      <dd>Le support de <a href="http://www.ietf.org/rfc/rfc2817.txt">RFC 2817</a>, a été ajouté, ce qui permet de passer d'une
 	connexion en clair au cryptage TLS.</dd>
 
       <dt><code class="module"><a href="./mod/mod_imagemap.html">mod_imagemap</a></code></dt>
-      <dd><code>mod_imap</code> a été renommé en <code class="module"><a href="./mod/mod_imagemap.html">mod_imagemap</a></code> afin
+      <dd>mod_imap a été renommé en <code class="module"><a href="./mod/mod_imagemap.html">mod_imagemap</a></code> afin
       d'éviter une confusion pour les utilisateurs.</dd>
     </dl>
 
@@ -193,7 +191,7 @@
      <code class="module"><a href="./mod/mod_so.html">mod_so</a></code>.</dd>
       <dt><code class="program"><a href="./programs/httxt2dbm.html">httxt2dbm</a></code></dt>
       <dd>Un nouveau programme servant à générer des fichiers dbm à partir
-      d'une source au format texte, à utiliser avec la directive
+      d'une source texte, à utiliser avec la directive
       <code class="directive"><a href="./mod/mod_rewrite.html#rewritemap">RewriteMap</a></code>
           et le type de mise en correspondance <code>dbm</code>.</dd>
     </dl>
@@ -202,23 +200,23 @@
 <h2><a name="developer" id="developer">Changements pour le développeur de module</a></h2>
     
     <dl>
-      <dt><a class="glossarylink" href="./glossary.html#apr" title="voir glossaire">APR</a> 1.0 API</dt>
+      <dt><a class="glossarylink" href="./glossary.html#apr" title="see glossary">APR</a> 1.0 API</dt>
 
       <dd>Apache 2.2 utilise l'API APR 1.0.  Toutes les fonctions et
       symboles obsolètes ont été supprimés du code de <code>APR</code> et
           <code>APR-Util</code>. Pour plus de détails, consultez le
-          <a href="http://apr.apache.org/">site web d'APR</a>.</dd>
+          <a href="http://apr.apache.org/">site web de APR</a>.</dd>
 
       <dt>Authn/Authz</dt>
       <dd>Les modules d'authentification et d'autorisation intégrés ont
           été renommés de la manière suivante:
           <ul>
-          <li><code>mod_auth_*</code>  -&gt; Modules qui implémentent un mécanisme
+          <li>mod_auth_*  -&gt; Modules qui implémentent un mécanisme
 	  	d'authentification HTTP</li>
-          <li><code>mod_authn_*</code> -&gt; Modules qui fournissent un dispositif
+          <li>mod_authn_* -&gt; Modules qui fournissent un dispositif
 	  	d'authentification en arrière-plan</li>
-          <li><code>mod_authz_*</code> -&gt; Modules qui implémentent l'autorisation (ou l'accès)</li>
-          <li><code>mod_authnz_*</code> -&gt; Modules qui implémentent à la fois
+          <li>mod_authz_* -&gt; Modules qui implémentent l'autorisation (ou l'accès)</li>
+          <li>mod_authnz_*-&gt; Module qui implémentent à la fois
 	  l'authentification &amp; l'autorisation</li>
           </ul>
 	  L'organisation des méthodes d'authentification a également été revue, ce qui va simplifier
@@ -239,7 +237,7 @@
 
       <dt>Définition de la taille de la pile pour les modules MPM en processus légers</dt>
 
-      <dd>Une nouvelle directive a été ajoutée, <code class="directive"><a href="./mod/mpm_common.html#threadstacksize">ThreadStackSize</a></code>
+      <dd>Une nouvelle directive a été ajoutée, <code>ThreadStackSize</code>
      afin de définir la taille de la pile pour tous les modules MPM en processus légers (modules threadés).
      Ceci s'avère nécessaire pour certains modules tiers sur des plateformes
      dont la taille de la pile des threads par défaut est
@@ -260,9 +258,9 @@
       des jobs réguliers/planifiés au niveau du processus père
       (root).</dd>
 
-      <dt>Modifications de l'API de traitement des expressions rationnelles</dt>
+      <dt>Modifications de l'API de traitement des expressions régulières</dt>
 
-      <dd>Le fichier d'en-tête <code>pcreposix.h</code> n'est plus disponible ;
+      <dd>Le fichier d'en-tête <code>pcreposix.h</code> n'est plus disponible;
       il a été remplacé par le nouveau fichier
       d'en-tête <code>ap_regex.h</code>.  L'implémentation
       POSIX.2 <code>regex.h</code> exposée dans l'ancien fichier d'en-tête
@@ -287,7 +285,7 @@
       <p>Les nouveaux modules DEVRAIENT désormais utiliser ces APIs pour
       toutes les opérations liées aux bases de données SQL.
       De même, les applications existantes DEVRAIENT être mises à jour
-      lorsque c'est possible, que ce soit de manière transparente ou sous forme
+      lorsque c'est possible, soit de manière transparente ou sous forme
       d'une option recommandée à leurs utilisateurs.</p></dd>
     </dl>
   </div></div>
@@ -295,9 +293,8 @@
 <p><span>Langues Disponibles: </span><a href="./en/new_features_2_2.html" hreflang="en" rel="alternate" title="English">&nbsp;en&nbsp;</a> |
 <a href="./fr/new_features_2_2.html" title="Français">&nbsp;fr&nbsp;</a> |
 <a href="./ko/new_features_2_2.html" hreflang="ko" rel="alternate" title="Korean">&nbsp;ko&nbsp;</a> |
-<a href="./pt-br/new_features_2_2.html" hreflang="pt-br" rel="alternate" title="Português (Brasil)">&nbsp;pt-br&nbsp;</a> |
-<a href="./tr/new_features_2_2.html" hreflang="tr" rel="alternate" title="Türkçe">&nbsp;tr&nbsp;</a></p>
+<a href="./pt-br/new_features_2_2.html" hreflang="pt-br" rel="alternate" title="Português (Brasil)">&nbsp;pt-br&nbsp;</a></p>
 </div><div id="footer">
-<p class="apache">Copyright 2010 The Apache Software Foundation.<br />Autorisé sous <a href="http://www.apache.org/licenses/LICENSE-2.0">Apache License, Version 2.0</a>.</p>
+<p class="apache">Copyright 2007 The Apache Software Foundation.<br />Authorisé sous <a href="http://www.apache.org/licenses/LICENSE-2.0">Apache License, Version 2.0</a>.</p>
 <p class="menu"><a href="./mod/">Modules</a> | <a href="./mod/directives.html">Directives</a> | <a href="./faq/">FAQ</a> | <a href="./glossary.html">Glossaire</a> | <a href="./sitemap.html">Plan du site</a></p></div>
 </body></html>

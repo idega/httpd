@@ -60,8 +60,7 @@ static const char *add_authn_provider(cmd_parms *cmd, void *config,
 
     /* lookup and cache the actual provider now */
     newp->provider = ap_lookup_provider(AUTHN_PROVIDER_GROUP,
-                                        newp->provider_name,
-                                        AUTHN_PROVIDER_VERSION);
+                                        newp->provider_name, "0");
 
     if (newp->provider == NULL) {
         /* by the time they use it, the provider should be loaded and
@@ -196,7 +195,7 @@ static int authenticate_basic_user(request_rec *r)
         return HTTP_INTERNAL_SERVER_ERROR;
     }
 
-    r->ap_auth_type = (char*)current_auth;
+    r->ap_auth_type = "Basic";
 
     res = get_basic_auth(r, &sent_user, &sent_pw);
     if (res) {
@@ -212,8 +211,7 @@ static int authenticate_basic_user(request_rec *r)
          */
         if (!current_provider) {
             provider = ap_lookup_provider(AUTHN_PROVIDER_GROUP,
-                                          AUTHN_DEFAULT_PROVIDER,
-                                          AUTHN_PROVIDER_VERSION);
+                                          AUTHN_DEFAULT_PROVIDER, "0");
 
             if (!provider || !provider->check_password) {
                 ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, r,
@@ -288,8 +286,7 @@ static int authenticate_basic_user(request_rec *r)
 
 static void register_hooks(apr_pool_t *p)
 {
-    ap_hook_check_authn(authenticate_basic_user, NULL, NULL, APR_HOOK_MIDDLE,
-                        AP_AUTH_INTERNAL_PER_CONF);
+    ap_hook_check_user_id(authenticate_basic_user,NULL,NULL,APR_HOOK_MIDDLE);
 }
 
 module AP_MODULE_DECLARE_DATA auth_basic_module =

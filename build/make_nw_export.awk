@@ -18,17 +18,30 @@
 # based on Ryan Bloom's make_export.pl
 
 BEGIN {
-    printf(" ("EXPPREFIX")\n")
+    printf(" (APACHE2)\n")
 }
 
 # List of functions that we don't support, yet??
 #/ap_some_name/{next}
-/ap_mpm_pod_/{next}
+
+function add_symbol (sym_name) {
+	if (count) {
+		found++
+	}
+    gsub (/ /, "", sym_name)
+	line = line sym_name ",\n"
+
+	if (count == 0) {
+		printf(" %s", line)
+		line = ""
+	}
+}
 
 /^[ \t]*AP([RU]|_CORE)?_DECLARE[^(]*[(][^)]*[)]([^ ]* )*[^(]+[(]/ {
     sub("[ \t]*AP([RU]|_CORE)?_DECLARE[^(]*[(][^)]*[)][ \t]*", "")
     sub("[(].*", "")
     sub("([^ ]* (^([ \t]*[(])))+", "")
+
     add_symbol($0)
     next
 }
@@ -38,17 +51,7 @@ BEGIN {
     symbol = args[2]
     sub("^[ \t]+", "", symbol)
     sub("[ \t]+$", "", symbol)
-    add_symbol("ap_hook_" symbol)
-    add_symbol("ap_hook_get_" symbol)
-    add_symbol("ap_run_" symbol)
-    next
-}
 
-/^[ \t]*AP[RU]?_DECLARE_EXTERNAL_HOOK[^(]*[(][^)]*/ {
-    split($0, args, ",")
-    symbol = args[4]
-    sub("^[ \t]+", "", symbol)
-    sub("[ \t]+$", "", symbol)
     add_symbol("ap_hook_" symbol)
     add_symbol("ap_hook_get_" symbol)
     add_symbol("ap_run_" symbol)
@@ -77,19 +80,12 @@ BEGIN {
 }
 
 /^[ \t]*(extern[ \t]+)?AP[RU]?_DECLARE_DATA .*;$/ {
-    gsub(/[*;]/, "", $NF)
-    gsub(/\[.*\]/, "", $NF)
-    add_symbol($NF)
+       varname = $NF;
+       gsub( /[*;]/, "", varname);
+       gsub( /\[.*\]/, "", varname);
+       add_symbol(varname);
 }
 
 #END {
-#    printf("\n\n#found: %d symbols.\n", found)
+#	printf(" %s", line)
 #}
-
-function add_symbol(sym_name) {
-    found++
-    sub (" ", "", sym_name)
-    printf(" %s,\n", sym_name)
-}
-
-

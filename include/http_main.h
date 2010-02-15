@@ -26,14 +26,13 @@
 #ifndef APACHE_HTTP_MAIN_H
 #define APACHE_HTTP_MAIN_H
 
-#include "httpd.h"
 #include "apr_optional.h"
 
 /** AP_SERVER_BASEARGS is the command argument list parsed by http_main.c
  * in apr_getopt() format.  Use this for default'ing args that the MPM
  * can safely ignore and pass on from its rewrite_args() handler.
  */
-#define AP_SERVER_BASEARGS "C:c:D:d:E:e:f:vVlLtTSMh?X"
+#define AP_SERVER_BASEARGS "C:c:D:d:E:e:f:vVlLtSMh?X"
 
 #ifdef __cplusplus
 extern "C" {
@@ -43,10 +42,6 @@ extern "C" {
 AP_DECLARE_DATA extern const char *ap_server_argv0;
 /** The global server's ServerRoot */
 AP_DECLARE_DATA extern const char *ap_server_root;
-/** The global server's server_rec */
-AP_DECLARE_DATA extern server_rec *ap_server_conf;
-/** global pool, for access prior to creation of server_rec */
-AP_DECLARE_DATA extern apr_pool_t *ap_pglobal;
 
 /* for -C, -c and -D switches */
 /** An array of all -C directives.  These are processed before the server's
@@ -58,16 +53,15 @@ AP_DECLARE_DATA extern apr_array_header_t *ap_server_post_read_config;
 /** An array of all -D defines on the command line.  This allows people to
  *  effect the server based on command line options */
 AP_DECLARE_DATA extern apr_array_header_t *ap_server_config_defines;
-/** Available integer for using the -T switch */
-AP_DECLARE_DATA extern int ap_document_root_check;
 
 /**
  * An optional function to send signal to server on presence of '-k'
  * command line argument.
+ * Called if MPM defines AP_MPM_WANT_SIGNAL_SERVER
  * @param status The exit status after sending signal
  * @param pool Memory pool to allocate from
  */
-APR_DECLARE_OPTIONAL_FN(int, ap_signal_server, (int *status, apr_pool_t *pool));
+APR_DECLARE_OPTIONAL_FN(int, ap_signal_server, (int *, apr_pool_t *));
 
 #ifdef __cplusplus
 }

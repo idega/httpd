@@ -1157,17 +1157,16 @@ static int read_types_multi(negotiation_state *neg)
         anymatch = 1;
 
         /* See if it's something which we have access to, and which
-         * has a known type and encoding.
+         * has a known type and encoding (as opposed to something
+         * which we'll be slapping default_type on later).
          */
         sub_req = ap_sub_req_lookup_dirent(&dirent, r, AP_SUBREQ_MERGE_ARGS,
                                            NULL);
 
         /* Double check, we still don't multi-resolve non-ordinary files
          */
-        if (sub_req->finfo.filetype != APR_REG) {
-            /* XXX sub req not destroyed -- may be a bug/unintentional ? */
+        if (sub_req->finfo.filetype != APR_REG)
             continue;
-        }
 
         /* If it has a handler, we'll pretend it's a CGI script,
          * since that's a good indication of the sort of thing it
@@ -1237,7 +1236,8 @@ static int read_types_multi(negotiation_state *neg)
         }
 
         /*
-         * If we failed the subrequest, or don't
+         * ###: be warned, the _default_ content type is already
+         * picked up here!  If we failed the subrequest, or don't
          * know what we are serving, then continue.
          */
         if (sub_req->status != HTTP_OK || (!sub_req->content_type)) {
@@ -2530,7 +2530,7 @@ static void set_neg_headers(request_rec *r, negotiation_state *neg,
         /* Generate the string components for this Alternates entry */
 
         *((const char **) apr_array_push(arr)) = "{\"";
-        *((const char **) apr_array_push(arr)) = ap_escape_path_segment(r->pool, variant->file_name);
+        *((const char **) apr_array_push(arr)) = variant->file_name;
         *((const char **) apr_array_push(arr)) = "\" ";
 
         qstr = (char *) apr_palloc(r->pool, 6);
@@ -2712,7 +2712,7 @@ static int setup_choice_response(request_rec *r, negotiation_state *neg,
     if (!variant->sub_req) {
         int status;
 
-        sub_req = ap_sub_req_lookup_file(variant->file_name, r, r->output_filters);
+        sub_req = ap_sub_req_lookup_file(variant->file_name, r, NULL);
         status = sub_req->status;
 
         if (status != HTTP_OK &&
@@ -2804,7 +2804,7 @@ static int setup_choice_response(request_rec *r, negotiation_state *neg,
     }
 
     apr_table_setn(r->err_headers_out, "Content-Location",
-                  ap_escape_path_segment(r->pool, variant->file_name));
+                  apr_pstrdup(r->pool, variant->file_name));
 
     set_neg_headers(r, neg, alg_choice);         /* add Alternates and Vary */
 
@@ -3044,9 +3044,10 @@ static int handle_map_file(request_rec *r)
             return res;
         }
         bb = apr_brigade_create(r->pool, c->bucket_alloc);
-
-        apr_brigade_insert_file(bb, map, best->body, best->bytes, r->pool);
-
+        e = apr_bucket_file_create(map, best->body,
+                                   (apr_size_t)best->bytes, r->pool,
+                                   c->bucket_alloc);
+        APR_BRIGADE_INSERT_TAIL(bb, e);
         e = apr_bucket_eos_create(c->bucket_alloc);
         APR_BRIGADE_INSERT_TAIL(bb, e);
 
@@ -3122,7 +3123,7 @@ static int handle_multi(request_rec *r)
          * a sub_req structure yet.  Get one now.
          */
 
-        sub_req = ap_sub_req_lookup_file(best->file_name, r, r->output_filters);
+        sub_req = ap_sub_req_lookup_file(best->file_name, r, NULL);
         if (sub_req->status != HTTP_OK) {
             res = sub_req->status;
             ap_destroy_sub_req(sub_req);

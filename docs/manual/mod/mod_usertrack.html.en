@@ -13,11 +13,11 @@
 <body>
 <div id="page-header">
 <p class="menu"><a href="../mod/">Modules</a> | <a href="../mod/directives.html">Directives</a> | <a href="../faq/">FAQ</a> | <a href="../glossary.html">Glossary</a> | <a href="../sitemap.html">Sitemap</a></p>
-<p class="apache">Apache HTTP Server Version 2.3</p>
+<p class="apache">Apache HTTP Server Version 2.2</p>
 <img alt="" src="../images/feather.gif" /></div>
 <div class="up"><a href="./"><img title="&lt;-" alt="&lt;-" src="../images/left.gif" /></a></div>
 <div id="path">
-<a href="http://www.apache.org/">Apache</a> &gt; <a href="http://httpd.apache.org/">HTTP Server</a> &gt; <a href="http://httpd.apache.org/docs/">Documentation</a> &gt; <a href="../">Version 2.3</a> &gt; <a href="./">Modules</a></div>
+<a href="http://www.apache.org/">Apache</a> &gt; <a href="http://httpd.apache.org/">HTTP Server</a> &gt; <a href="http://httpd.apache.org/docs/">Documentation</a> &gt; <a href="../">Version 2.2</a> &gt; <a href="./">Modules</a></div>
 <div id="page-content">
 <div id="preamble"><h1>Apache Module mod_usertrack</h1>
 <div class="toplang">
@@ -130,20 +130,21 @@ time late in the year "37".
 
     <p>The domain string <strong>must</strong> begin with a dot, and
     <strong>must</strong> include at least one embedded dot. That is,
-    <code>.example.com</code> is legal, but <code>foo.example.com</code> and 
+    <code>.foo.com</code> is legal, but <code>foo.bar.com</code> and
     <code>.com</code> are not.</p>
 
     <div class="note">Most browsers in use today will not allow cookies to be set
-    for a two-part top level domain, such as <code>.co.uk</code>, 
+    for a two-part top level domain, such as <code>.co.uk</code>,
     although such a domain ostensibly fulfills the requirements
-    above.<br /> 
-    
+    above.<br />
+
     These domains are equivalent to top level domains such as
     <code>.com</code>, and allowing such cookies may be a security
     risk. Thus, if you are under a two-part top level domain, you
     should still use your actual domain, as you would with any other top
-    level domain (for example <code>.foo.co.uk</code>).
-    </div> 
+    level domain (for example, use <code>.foo.co.uk</code>).
+    </div>
+
 
 </div>
 <div class="top"><a href="#page-header"><img alt="top" src="../images/up.gif" /></a></div>
@@ -215,7 +216,7 @@ time late in the year "37".
       current cookie syntax.</li>
     </ul>
 
-    <p>Not all clients can understand all of these formats, but you
+    <p>Not all clients can understand all of these formats. but you
     should use the newest one that is generally acceptable to your
     users' browsers. At the time of writing, most browsers only fully
     support <code>CookieStyle Netscape</code>.</p>
@@ -237,7 +238,7 @@ time late in the year "37".
     user-tracking cookie for all new requests. This directive can
     be used to turn this behavior on or off on a per-server or
     per-directory basis. By default, enabling
-    <code class="module"><a href="../mod/mod_usertrack.html">mod_usertrack</a></code> will <strong>not</strong> 
+    <code class="module"><a href="../mod/mod_usertrack.html">mod_usertrack</a></code> will <strong>not</strong>
     activate cookies. </p>
 
 
@@ -246,6 +247,6 @@ time late in the year "37".
 <div class="bottomlang">
 <p><span>Available Languages: </span><a href="../en/mod/mod_usertrack.html" title="English">&nbsp;en&nbsp;</a></p>
 </div><div id="footer">
-<p class="apache">Copyright 2010 The Apache Software Foundation.<br />Licensed under the <a href="http://www.apache.org/licenses/LICENSE-2.0">Apache License, Version 2.0</a>.</p>
+<p class="apache">Copyright 2007 The Apache Software Foundation.<br />Licensed under the <a href="http://www.apache.org/licenses/LICENSE-2.0">Apache License, Version 2.0</a>.</p>
 <p class="menu"><a href="../mod/">Modules</a> | <a href="../mod/directives.html">Directives</a> | <a href="../faq/">FAQ</a> | <a href="../glossary.html">Glossary</a> | <a href="../sitemap.html">Sitemap</a></p></div>
 </body></html>

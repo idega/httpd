@@ -13,19 +13,17 @@
 <body>
 <div id="page-header">
 <p class="menu"><a href="../mod/">Modules</a> | <a href="../mod/directives.html">Directives</a> | <a href="../faq/">FAQ</a> | <a href="../glossary.html">Glossary</a> | <a href="../sitemap.html">Sitemap</a></p>
-<p class="apache">Apache HTTP Server Version 2.3</p>
+<p class="apache">Apache HTTP Server Version 2.2</p>
 <img alt="" src="../images/feather.gif" /></div>
 <div class="up"><a href="./"><img title="&lt;-" alt="&lt;-" src="../images/left.gif" /></a></div>
 <div id="path">
-<a href="http://www.apache.org/">Apache</a> &gt; <a href="http://httpd.apache.org/">HTTP Server</a> &gt; <a href="http://httpd.apache.org/docs/">Documentation</a> &gt; <a href="../">Version 2.3</a> &gt; <a href="./">Modules</a></div>
+<a href="http://www.apache.org/">Apache</a> &gt; <a href="http://httpd.apache.org/">HTTP Server</a> &gt; <a href="http://httpd.apache.org/docs/">Documentation</a> &gt; <a href="../">Version 2.2</a> &gt; <a href="./">Modules</a></div>
 <div id="page-content">
 <div id="preamble"><h1>Apache Core Features</h1>
 <div class="toplang">
 <p><span>Available Languages: </span><a href="../de/mod/core.html" hreflang="de" rel="alternate" title="Deutsch">&nbsp;de&nbsp;</a> |
 <a href="../en/mod/core.html" title="English">&nbsp;en&nbsp;</a> |
-<a href="../fr/mod/core.html" hreflang="fr" rel="alternate" title="Français">&nbsp;fr&nbsp;</a> |
-<a href="../ja/mod/core.html" hreflang="ja" rel="alternate" title="Japanese">&nbsp;ja&nbsp;</a> |
-<a href="../tr/mod/core.html" hreflang="tr" rel="alternate" title="Türkçe">&nbsp;tr&nbsp;</a></p>
+<a href="../ja/mod/core.html" hreflang="ja" rel="alternate" title="Japanese">&nbsp;ja&nbsp;</a></p>
 </div>
 <table class="module"><tr><th><a href="module-dict.html#Description">Description:</a></th><td>Core Apache HTTP Server features that are always
 available</td></tr>
@@ -40,10 +38,11 @@ available</td></tr>
 <li><img alt="" src="../images/down.gif" /> <a href="#addoutputfilterbytype">AddOutputFilterByType</a></li>
 <li><img alt="" src="../images/down.gif" /> <a href="#allowencodedslashes">AllowEncodedSlashes</a></li>
 <li><img alt="" src="../images/down.gif" /> <a href="#allowoverride">AllowOverride</a></li>
+<li><img alt="" src="../images/down.gif" /> <a href="#authname">AuthName</a></li>
+<li><img alt="" src="../images/down.gif" /> <a href="#authtype">AuthType</a></li>
 <li><img alt="" src="../images/down.gif" /> <a href="#cgimapextension">CGIMapExtension</a></li>
 <li><img alt="" src="../images/down.gif" /> <a href="#contentdigest">ContentDigest</a></li>
 <li><img alt="" src="../images/down.gif" /> <a href="#defaulttype">DefaultType</a></li>
-<li><img alt="" src="../images/down.gif" /> <a href="#define">Define</a></li>
 <li><img alt="" src="../images/down.gif" /> <a href="#directory">&lt;Directory&gt;</a></li>
 <li><img alt="" src="../images/down.gif" /> <a href="#directorymatch">&lt;DirectoryMatch&gt;</a></li>
 <li><img alt="" src="../images/down.gif" /> <a href="#documentroot">DocumentRoot</a></li>
@@ -51,13 +50,11 @@ available</td></tr>
 <li><img alt="" src="../images/down.gif" /> <a href="#enablesendfile">EnableSendfile</a></li>
 <li><img alt="" src="../images/down.gif" /> <a href="#errordocument">ErrorDocument</a></li>
 <li><img alt="" src="../images/down.gif" /> <a href="#errorlog">ErrorLog</a></li>
-<li><img alt="" src="../images/down.gif" /> <a href="#extendedstatus">ExtendedStatus</a></li>
 <li><img alt="" src="../images/down.gif" /> <a href="#fileetag">FileETag</a></li>
 <li><img alt="" src="../images/down.gif" /> <a href="#files">&lt;Files&gt;</a></li>
 <li><img alt="" src="../images/down.gif" /> <a href="#filesmatch">&lt;FilesMatch&gt;</a></li>
 <li><img alt="" src="../images/down.gif" /> <a href="#forcetype">ForceType</a></li>
 <li><img alt="" src="../images/down.gif" /> <a href="#hostnamelookups">HostnameLookups</a></li>
-<li><img alt="" src="../images/down.gif" /> <a href="#if">&lt;If&gt;</a></li>
 <li><img alt="" src="../images/down.gif" /> <a href="#ifdefine">&lt;IfDefine&gt;</a></li>
 <li><img alt="" src="../images/down.gif" /> <a href="#ifmodule">&lt;IfModule&gt;</a></li>
 <li><img alt="" src="../images/down.gif" /> <a href="#include">Include</a></li>
@@ -75,14 +72,14 @@ available</td></tr>
 <li><img alt="" src="../images/down.gif" /> <a href="#locationmatch">&lt;LocationMatch&gt;</a></li>
 <li><img alt="" src="../images/down.gif" /> <a href="#loglevel">LogLevel</a></li>
 <li><img alt="" src="../images/down.gif" /> <a href="#maxkeepaliverequests">MaxKeepAliveRequests</a></li>
-<li><img alt="" src="../images/down.gif" /> <a href="#mutex">Mutex</a></li>
 <li><img alt="" src="../images/down.gif" /> <a href="#namevirtualhost">NameVirtualHost</a></li>
 <li><img alt="" src="../images/down.gif" /> <a href="#options">Options</a></li>
+<li><img alt="" src="../images/down.gif" /> <a href="#require">Require</a></li>
 <li><img alt="" src="../images/down.gif" /> <a href="#rlimitcpu">RLimitCPU</a></li>
 <li><img alt="" src="../images/down.gif" /> <a href="#rlimitmem">RLimitMEM</a></li>
 <li><img alt="" src="../images/down.gif" /> <a href="#rlimitnproc">RLimitNPROC</a></li>
+<li><img alt="" src="../images/down.gif" /> <a href="#satisfy">Satisfy</a></li>
 <li><img alt="" src="../images/down.gif" /> <a href="#scriptinterpretersource">ScriptInterpreterSource</a></li>
-<li><img alt="" src="../images/down.gif" /> <a href="#seerequesttail">SeeRequestTail</a></li>
 <li><img alt="" src="../images/down.gif" /> <a href="#serveradmin">ServerAdmin</a></li>
 <li><img alt="" src="../images/down.gif" /> <a href="#serveralias">ServerAlias</a></li>
 <li><img alt="" src="../images/down.gif" /> <a href="#servername">ServerName</a></li>
@@ -95,7 +92,6 @@ available</td></tr>
 <li><img alt="" src="../images/down.gif" /> <a href="#setoutputfilter">SetOutputFilter</a></li>
 <li><img alt="" src="../images/down.gif" /> <a href="#timeout">TimeOut</a></li>
 <li><img alt="" src="../images/down.gif" /> <a href="#traceenable">TraceEnable</a></li>
-<li><img alt="" src="../images/down.gif" /> <a href="#undefine">UnDefine</a></li>
 <li><img alt="" src="../images/down.gif" /> <a href="#usecanonicalname">UseCanonicalName</a></li>
 <li><img alt="" src="../images/down.gif" /> <a href="#usecanonicalphysicalport">UseCanonicalPhysicalPort</a></li>
 <li><img alt="" src="../images/down.gif" /> <a href="#virtualhost">&lt;VirtualHost&gt;</a></li>
@@ -110,22 +106,15 @@ available</td></tr>
 <tr><th><a href="directive-dict.html#Context">Context:</a></th><td>server config</td></tr>
 <tr><th><a href="directive-dict.html#Status">Status:</a></th><td>Core</td></tr>
 <tr><th><a href="directive-dict.html#Module">Module:</a></th><td>core</td></tr>
-<tr><th><a href="directive-dict.html#Compatibility">Compatibility:</a></th><td>Available in Apache 2.1.5 and later.
-On Windows from Apache 2.3.3 and later.</td></tr>
+<tr><th><a href="directive-dict.html#Compatibility">Compatibility:</a></th><td>Available in Apache 2.1.5 and later</td></tr>
 </table>
     <p>This directive enables operating system specific optimizations for a 
        listening socket by the Protocol type. The basic premise is for the 
        kernel to not send a socket to the server process until either data 
        is received or an entire HTTP Request is buffered. Only
        <a href="http://www.freebsd.org/cgi/man.cgi?query=accept_filter&amp;sektion=9">
-       FreeBSD's Accept Filters</a>, Linux's more primitive 
-       <code>TCP_DEFER_ACCEPT</code>, and Windows' optimized AcceptEx()
-       are currently supported.</p>
-
-    <p>Using <code>none</code> for an argument will disable any accept filters 
-       for that protocol.  This is useful for protocols that require a server
-       send data first, such as <code>ftp:</code> or <code>nntp</code>:</p>
-    <div class="example"><p><code>AcceptFilter nntp none</code></p></div>
+       FreeBSD's Accept Filters</a> and Linux's more primitive 
+       <code>TCP_DEFER_ACCEPT</code> are currently supported.</p>
 
     <p>The default values on FreeBSD are:</p>
     <div class="example"><p><code>
@@ -154,28 +143,10 @@ On Windows from Apache 2.3.3 and later.</td></tr>
        <a href="http://homepages.cwi.nl/~aeb/linux/man2html/man7/tcp.7.html">
        tcp(7)</a> man page.</p>
 
-    <p>The default values on Windows are:</p>
-    <div class="example"><p><code>
-        AcceptFilter http data <br />
-        AcceptFilter https data
-    </code></p></div>
-
-    <p>Window's mpm_winnt interprets the AcceptFilter to toggle the AcceptEx()
-       API, and does not support http protocol buffering.  There are two values
-       which utilize the Windows AcceptEx() API and will recycle network
-       sockets between connections.  <code>data</code> waits until data has
-       been transmitted as documented above, and the initial data buffer and
-       network endpoint addresses are all retrieved from the single AcceptEx()
-       invocation.  <code>connect</code> will use the AcceptEx() API, also
-       retrieve the network endpoint addresses, but like <code>none</code>
-       the <code>connect</code> option does not wait for the initial data
-       transmission.</p>
-
-    <p>On Windows, <code>none</code> uses accept() rather than than AcceptEx()
-       and will not recycle sockets between connections.  This is useful for
-       network adapters with broken driver support, as well as some virtual
-       network providers such as vpn drivers, or spam, virus or spyware
-       filters.</p>  
+    <p>Using <code>none</code> for an argument will disable any accept filters 
+       for that protocol.  This is useful for protocols that require a server
+       send data first, such as <code>nntp</code>:</p>
+    <div class="example"><p><code>AcceptFilter nntp none</code></p></div>
 
 
 </div>
@@ -312,7 +283,7 @@ content-type is <code>text/plain</code> or <code>text/html</code></td></tr>
     a default charset of <code>iso-8859-1</code>. Any other value is assumed
     to be the <var>charset</var> to be used, which should be one of the
     <a href="http://www.iana.org/assignments/character-sets">IANA registered
-    charset values</a> for use in Internet media types (MIME types).
+    charset values</a> for use in MIME media types.
     For example:</p>
 
     <div class="example"><p><code>
@@ -338,9 +309,9 @@ content-type is <code>text/plain</code> or <code>text/html</code></td></tr>
 <div class="top"><a href="#page-header"><img alt="top" src="../images/up.gif" /></a></div>
 <div class="directive-section"><h2><a name="AddOutputFilterByType" id="AddOutputFilterByType">AddOutputFilterByType</a> <a name="addoutputfilterbytype" id="addoutputfilterbytype">Directive</a></h2>
 <table class="directive">
-<tr><th><a href="directive-dict.html#Description">Description:</a></th><td>assigns an output filter to a particular media-type</td></tr>
+<tr><th><a href="directive-dict.html#Description">Description:</a></th><td>assigns an output filter to a particular MIME-type</td></tr>
 <tr><th><a href="directive-dict.html#Syntax">Syntax:</a></th><td><code>AddOutputFilterByType <var>filter</var>[;<var>filter</var>...]
-<var>media-type</var> [<var>media-type</var>] ...</code></td></tr>
+<var>MIME-type</var> [<var>MIME-type</var>] ...</code></td></tr>
 <tr><th><a href="directive-dict.html#Context">Context:</a></th><td>server config, virtual host, directory, .htaccess</td></tr>
 <tr><th><a href="directive-dict.html#Override">Override:</a></th><td>FileInfo</td></tr>
 <tr><th><a href="directive-dict.html#Status">Status:</a></th><td>Core</td></tr>
@@ -348,7 +319,7 @@ content-type is <code>text/plain</code> or <code>text/html</code></td></tr>
 <tr><th><a href="directive-dict.html#Compatibility">Compatibility:</a></th><td>Available in Apache 2.0.33 and later; deprecated in Apache 2.1 and later</td></tr>
 </table>
     <p>This directive activates a particular output <a href="../filter.html">filter</a> for a request depending on the
-    response <a class="glossarylink" href="../glossary.html#media-type" title="see glossary">media-type</a>.  Because of certain
+    response <a class="glossarylink" href="../glossary.html#mime-type" title="see glossary">MIME-type</a>.  Because of certain
     problems discussed below, this directive is deprecated.  The same
     functionality is available using <code class="module"><a href="../mod/mod_filter.html">mod_filter</a></code>.</p>
 
@@ -384,10 +355,14 @@ content-type is <code>text/plain</code> or <code>text/html</code></td></tr>
     <div class="warning"><h3>Note</h3>
       <p>Enabling filters with <code class="directive">AddOutputFilterByType</code>
       may fail partially or completely in some cases. For example, no
-      filters are applied if the <a class="glossarylink" href="../glossary.html#media-type" title="see glossary">media-type</a> could not
-      be determined.  If you want to make sure that the filters will be
-      applied, assign the content type to a resource explicitly; for
-      example, with <code class="directive"><a href="../mod/mod_mime.html#addtype">AddType</a></code> or
+      filters are applied if the <a class="glossarylink" href="../glossary.html#mime-type" title="see glossary">MIME-type</a> could not be determined  and falls
+      back to the <code class="directive"><a href="#defaulttype">DefaultType</a></code> setting,
+      even if the <code class="directive"><a href="#defaulttype">DefaultType</a></code> is the
+      same.</p>
+
+      <p>However, if you want to make sure, that the filters will be
+      applied, assign the content type to a resource explicitly, for
+      example with <code class="directive"><a href="../mod/mod_mime.html#addtype">AddType</a></code> or
       <code class="directive"><a href="#forcetype">ForceType</a></code>. Setting the
       content type within a (non-nph) CGI script is also safe.</p>
 
@@ -476,21 +451,16 @@ be passed through</td></tr>
       Allow use of the authorization directives (<code class="directive"><a href="../mod/mod_authn_dbm.html#authdbmgroupfile">AuthDBMGroupFile</a></code>,
       <code class="directive"><a href="../mod/mod_authn_dbm.html#authdbmuserfile">AuthDBMUserFile</a></code>,
       <code class="directive"><a href="../mod/mod_authz_groupfile.html#authgroupfile">AuthGroupFile</a></code>,
-      <code class="directive"><a href="../mod/mod_authn_core.html#authname">AuthName</a></code>,
-      <code class="directive"><a href="../mod/mod_authn_core.html#authtype">AuthType</a></code>, <code class="directive"><a href="../mod/mod_authn_file.html#authuserfile">AuthUserFile</a></code>, <code class="directive"><a href="../mod/mod_authz_core.html#require">Require</a></code>, <em>etc.</em>).</dd>
+      <code class="directive"><a href="#authname">AuthName</a></code>,
+      <code class="directive"><a href="#authtype">AuthType</a></code>, <code class="directive"><a href="../mod/mod_authn_file.html#authuserfile">AuthUserFile</a></code>, <code class="directive"><a href="#require">Require</a></code>, <em>etc.</em>).</dd>
 
       <dt>FileInfo</dt>
 
       <dd>
-      Allow use of the directives controlling document types
-     (<code class="directive"><a href="#errordocument">ErrorDocument</a></code>,
-      <code class="directive"><a href="#forcetype">ForceType</a></code>,
-      <code class="directive"><a href="../mod/mod_negotiation.html#languagepriority">LanguagePriority</a></code>,
-      <code class="directive"><a href="#sethandler">SetHandler</a></code>,
-      <code class="directive"><a href="#setinputfilter">SetInputFilter</a></code>,
-      <code class="directive"><a href="#setoutputfilter">SetOutputFilter</a></code>, and
-      <code class="module"><a href="../mod/mod_mime.html">mod_mime</a></code> Add* and Remove* directives),
-      document meta data (<code class="directive"><a href="../mod/mod_headers.html#header">Header</a></code>, <code class="directive"><a href="../mod/mod_headers.html#requestheader">RequestHeader</a></code>, <code class="directive"><a href="../mod/mod_setenvif.html#setenvif">SetEnvIf</a></code>, <code class="directive"><a href="../mod/mod_setenvif.html#setenvifnocase">SetEnvIfNoCase</a></code>, <code class="directive"><a href="../mod/mod_setenvif.html#browsermatch">BrowserMatch</a></code>, <code class="directive"><a href="../mod/mod_usertrack.html#cookieexpires">CookieExpires</a></code>, <code class="directive"><a href="../mod/mod_usertrack.html#cookiedomain">CookieDomain</a></code>, <code class="directive"><a href="../mod/mod_usertrack.html#cookiestyle">CookieStyle</a></code>, <code class="directive"><a href="../mod/mod_usertrack.html#cookietracking">CookieTracking</a></code>, <code class="directive"><a href="../mod/mod_usertrack.html#cookiename">CookieName</a></code>),
+      Allow use of the directives controlling document types (<code class="directive"><a href="#defaulttype">DefaultType</a></code>, <code class="directive"><a href="#errordocument">ErrorDocument</a></code>, <code class="directive"><a href="#forcetype">ForceType</a></code>, <code class="directive"><a href="../mod/mod_negotiation.html#languagepriority">LanguagePriority</a></code>,
+      <code class="directive"><a href="#sethandler">SetHandler</a></code>, <code class="directive"><a href="#setinputfilter">SetInputFilter</a></code>, <code class="directive"><a href="#setoutputfilter">SetOutputFilter</a></code>, and
+      <code class="module"><a href="../mod/mod_mime.html">mod_mime</a></code> Add* and Remove*
+      directives, <em>etc.</em>), document meta data (<code class="directive"><a href="../mod/mod_headers.html#header">Header</a></code>, <code class="directive"><a href="../mod/mod_headers.html#requestheader">RequestHeader</a></code>, <code class="directive"><a href="../mod/mod_setenvif.html#setenvif">SetEnvIf</a></code>, <code class="directive"><a href="../mod/mod_setenvif.html#setenvifnocase">SetEnvIfNoCase</a></code>, <code class="directive"><a href="../mod/mod_setenvif.html#browsermatch">BrowserMatch</a></code>, <code class="directive"><a href="../mod/mod_usertrack.html#cookieexpires">CookieExpires</a></code>, <code class="directive"><a href="../mod/mod_usertrack.html#cookiedomain">CookieDomain</a></code>, <code class="directive"><a href="../mod/mod_usertrack.html#cookiestyle">CookieStyle</a></code>, <code class="directive"><a href="../mod/mod_usertrack.html#cookietracking">CookieTracking</a></code>, <code class="directive"><a href="../mod/mod_usertrack.html#cookiename">CookieName</a></code>),
       <code class="module"><a href="../mod/mod_rewrite.html">mod_rewrite</a></code> directives <code class="directive"><a href="../mod/mod_rewrite.html#rewriteengine">RewriteEngine</a></code>, <code class="directive"><a href="../mod/mod_rewrite.html#rewriteoptions">RewriteOptions</a></code>, <code class="directive"><a href="../mod/mod_rewrite.html#rewritebase">RewriteBase</a></code>, <code class="directive"><a href="../mod/mod_rewrite.html#rewritecond">RewriteCond</a></code>, <code class="directive"><a href="../mod/mod_rewrite.html#rewriterule">RewriteRule</a></code>) and
       <code class="directive"><a href="../mod/mod_actions.html#action">Action</a></code> from
       <code class="module"><a href="../mod/mod_actions.html">mod_actions</a></code>.
@@ -531,19 +501,74 @@ be passed through</td></tr>
     <code>AuthConfig</code> nor <code>Indexes</code> cause an internal
     server error.</p>
 
-    <div class="note"><p>For security and performance reasons, do not set
-    <code>AllowOverride</code> to anything other than <code>None</code> 
-    in your <code>&lt;Directory /&gt;</code> block. Instead, find (or
-    create) the <code>&lt;Directory&gt;</code> block that refers to the
-    directory where you're actually planning to place a
-    <code>.htaccess</code> file.</p>
-    </div>
-
 <h3>See also</h3>
 <ul>
 <li><code class="directive"><a href="#accessfilename">AccessFileName</a></code></li>
 <li><a href="../configuring.html">Configuration Files</a></li>
 <li><a href="../howto/htaccess.html">.htaccess Files</a></li>
+</ul>
+</div>
+<div class="top"><a href="#page-header"><img alt="top" src="../images/up.gif" /></a></div>
+<div class="directive-section"><h2><a name="AuthName" id="AuthName">AuthName</a> <a name="authname" id="authname">Directive</a></h2>
+<table class="directive">
+<tr><th><a href="directive-dict.html#Description">Description:</a></th><td>Authorization realm for use in HTTP
+authentication</td></tr>
+<tr><th><a href="directive-dict.html#Syntax">Syntax:</a></th><td><code>AuthName <var>auth-domain</var></code></td></tr>
+<tr><th><a href="directive-dict.html#Context">Context:</a></th><td>directory, .htaccess</td></tr>
+<tr><th><a href="directive-dict.html#Override">Override:</a></th><td>AuthConfig</td></tr>
+<tr><th><a href="directive-dict.html#Status">Status:</a></th><td>Core</td></tr>
+<tr><th><a href="directive-dict.html#Module">Module:</a></th><td>core</td></tr>
+</table>
+    <p>This directive sets the name of the authorization realm for a
+    directory. This realm is given to the client so that the user
+    knows which username and password to send.
+    <code class="directive">AuthName</code> takes a single argument; if the
+    realm name contains spaces, it must be enclosed in quotation
+    marks.  It must be accompanied by <code class="directive"><a href="#authtype">AuthType</a></code> and <code class="directive"><a href="#require">Require</a></code> directives, and directives such
+    as <code class="directive"><a href="../mod/mod_authn_file.html#authuserfile">AuthUserFile</a></code> and
+    <code class="directive"><a href="../mod/mod_authz_groupfile.html#authgroupfile">AuthGroupFile</a></code> to
+    work.</p>
+
+   <p>For example:</p>
+
+   <div class="example"><p><code>
+     AuthName "Top Secret"
+   </code></p></div>
+
+    <p>The string provided for the <code>AuthName</code> is what will
+    appear in the password dialog provided by most browsers.</p>
+
+<h3>See also</h3>
+<ul>
+<li><a href="../howto/auth.html">Authentication, Authorization, and
+    Access Control</a></li>
+</ul>
+</div>
+<div class="top"><a href="#page-header"><img alt="top" src="../images/up.gif" /></a></div>
+<div class="directive-section"><h2><a name="AuthType" id="AuthType">AuthType</a> <a name="authtype" id="authtype">Directive</a></h2>
+<table class="directive">
+<tr><th><a href="directive-dict.html#Description">Description:</a></th><td>Type of user authentication</td></tr>
+<tr><th><a href="directive-dict.html#Syntax">Syntax:</a></th><td><code>AuthType Basic|Digest</code></td></tr>
+<tr><th><a href="directive-dict.html#Context">Context:</a></th><td>directory, .htaccess</td></tr>
+<tr><th><a href="directive-dict.html#Override">Override:</a></th><td>AuthConfig</td></tr>
+<tr><th><a href="directive-dict.html#Status">Status:</a></th><td>Core</td></tr>
+<tr><th><a href="directive-dict.html#Module">Module:</a></th><td>core</td></tr>
+</table>
+    <p>This directive selects the type of user authentication for a
+    directory. The authentication types available are
+    <code>Basic</code> (implemented by
+    <code class="module"><a href="../mod/mod_auth_basic.html">mod_auth_basic</a></code>) and <code>Digest</code>
+    (implemented by <code class="module"><a href="../mod/mod_auth_digest.html">mod_auth_digest</a></code>).</p>
+
+    <p>To implement authentication, you must also use the <code class="directive"><a href="#authname">AuthName</a></code> and <code class="directive"><a href="#require">Require</a></code> directives.  In addition, the
+    server must have an authentication-provider module such as
+    <code class="module"><a href="../mod/mod_authn_file.html">mod_authn_file</a></code> and an authorization module such
+    as <code class="module"><a href="../mod/mod_authz_user.html">mod_authz_user</a></code>.</p>
+
+<h3>See also</h3>
+<ul>
+<li><a href="../howto/auth.html">Authentication, Authorization,
+    and Access Control</a></li>
 </ul>
 </div>
 <div class="top"><a href="#page-header"><img alt="top" src="../images/up.gif" /></a></div>
@@ -579,7 +604,7 @@ headers</td></tr>
 </table>
     <p>This directive enables the generation of
     <code>Content-MD5</code> headers as defined in RFC1864
-    respectively RFC2616.</p>
+    respectively RFC2068.</p>
 
     <p>MD5 is an algorithm for computing a "message digest"
     (sometimes called "fingerprint") of arbitrary-length data, with
@@ -608,51 +633,43 @@ headers</td></tr>
 <div class="top"><a href="#page-header"><img alt="top" src="../images/up.gif" /></a></div>
 <div class="directive-section"><h2><a name="DefaultType" id="DefaultType">DefaultType</a> <a name="defaulttype" id="defaulttype">Directive</a></h2>
 <table class="directive">
-<tr><th><a href="directive-dict.html#Description">Description:</a></th><td>This directive has no effect other than to emit warnings
-if the value is not <code>none</code>. In prior versions, DefaultType
-would specify a default media type to assign to response content for
-which no other media type configuration could be found.
-</td></tr>
-<tr><th><a href="directive-dict.html#Syntax">Syntax:</a></th><td><code>DefaultType <var>media-type|none</var></code></td></tr>
-<tr><th><a href="directive-dict.html#Default">Default:</a></th><td><code>DefaultType none</code></td></tr>
+<tr><th><a href="directive-dict.html#Description">Description:</a></th><td>MIME content-type that will be sent if the
+server cannot determine a type in any other way</td></tr>
+<tr><th><a href="directive-dict.html#Syntax">Syntax:</a></th><td><code>DefaultType <var>MIME-type|none</var></code></td></tr>
+<tr><th><a href="directive-dict.html#Default">Default:</a></th><td><code>DefaultType text/plain</code></td></tr>
 <tr><th><a href="directive-dict.html#Context">Context:</a></th><td>server config, virtual host, directory, .htaccess</td></tr>
 <tr><th><a href="directive-dict.html#Override">Override:</a></th><td>FileInfo</td></tr>
 <tr><th><a href="directive-dict.html#Status">Status:</a></th><td>Core</td></tr>
 <tr><th><a href="directive-dict.html#Module">Module:</a></th><td>core</td></tr>
-<tr><th><a href="directive-dict.html#Compatibility">Compatibility:</a></th><td>The argument <code>none</code> is available in Apache 2.2.7 and later.  All other choices are DISABLED for 2.3.x and later.</td></tr>
 </table>
-    <p>This directive has been disabled.  For backwards compatibility
-    of configuration files, it may be specified with the value
-    <code>none</code>, meaning no default media type. For example:</p>
+    <p>There will be times when the server is asked to provide a
+    document whose type cannot be determined by its <a class="glossarylink" href="../glossary.html#mime-type" title="see glossary">MIME types</a> mappings.</p>
 
+    <p>The server SHOULD inform the client of the content-type of the
+    document.  If the server is unable to determine this by normal
+    means, it will set it to the configured
+    <code>DefaultType</code>. For example:</p>
+
+    <div class="example"><p><code>
+      DefaultType image/gif
+    </code></p></div>
+
+    <p>would be appropriate for a directory which contained many GIF
+    images with filenames missing the <code>.gif</code> extension.</p>
+
+    <p>In cases where it can neither be determined by the server nor
+    the administrator (e.g. a proxy), it is preferable to omit the MIME
+    type altogether rather than provide information that may be false.
+    This can be accomplished using</p>
     <div class="example"><p><code>
       DefaultType None
     </code></p></div>
+    <p>DefaultType None is only available in httpd-2.2.7 and later.</p>
 
-    <p><code>DefaultType None</code> is only available in
-    httpd-2.2.7 and later.</p>
-
-    <p>Use the mime.types configuration file and the
-    <code class="directive"><a href="../mod/mod_mime.html#addtype">AddType</a></code> to configure media
-    type assignments via file extensions, or the
-    <code class="directive"><a href="#forcetype">ForceType</a></code> directive to configure
-    the media type for specific resources. Otherwise, the server will
-    send the response without a Content-Type header field and the
-    recipient may attempt to guess the media type.</p>
-
-</div>
-<div class="top"><a href="#page-header"><img alt="top" src="../images/up.gif" /></a></div>
-<div class="directive-section"><h2><a name="Define" id="Define">Define</a> <a name="define" id="define">Directive</a></h2>
-<table class="directive">
-<tr><th><a href="directive-dict.html#Description">Description:</a></th><td>Define the existence of a variable</td></tr>
-<tr><th><a href="directive-dict.html#Syntax">Syntax:</a></th><td><code>Define <var>parameter-name</var></code></td></tr>
-<tr><th><a href="directive-dict.html#Context">Context:</a></th><td>server config</td></tr>
-<tr><th><a href="directive-dict.html#Status">Status:</a></th><td>Core</td></tr>
-<tr><th><a href="directive-dict.html#Module">Module:</a></th><td>core</td></tr>
-</table>
-    <p>Equivalent to passing the <code>-D</code> argument to <code class="program"><a href="../programs/httpd.html">httpd</a></code>.</p>
-    <p>This directive can be used to toggle the use of <code class="directive"><a href="#ifdefine">&lt;IfDefine&gt;</a></code> sections without needing to alter
-    <code>-D</code> arguments in any startup scripts.</p>
+    <p>Note that unlike <code class="directive"><a href="#forcetype">ForceType</a></code>, this directive only
+    provides the default mime-type. All other mime-type definitions,
+    including filename extensions, that might identify the media type
+    will override this default.</p>
 
 </div>
 <div class="top"><a href="#page-header"><img alt="top" src="../images/up.gif" /></a></div>
@@ -860,8 +877,8 @@ from the web</td></tr>
 
 <h3>See also</h3>
 <ul>
-<li><a href="../urlmapping.html#documentroot">Mapping URLs to Filesystem
-Locations</a></li>
+<li><a href="../urlmapping.html">Mapping URLs to Filesystem
+Location</a></li>
 </ul>
 </div>
 <div class="top"><a href="#page-header"><img alt="top" src="../images/up.gif" /></a></div>
@@ -889,10 +906,10 @@ Locations</a></li>
     <ul>
     <li>On some multiprocessor systems, memory-mapping can reduce the
     performance of the <code class="program"><a href="../programs/httpd.html">httpd</a></code>.</li>
-    <li>Deleting or truncating a file while <code class="program"><a href="../programs/httpd.html">httpd</a></code>
-      has it memory-mapped can cause <code class="program"><a href="../programs/httpd.html">httpd</a></code> to
-      crash with a segmentation fault.
-    </li>
+    <li>With an NFS-mounted <code class="directive"><a href="#documentroot">DocumentRoot</a></code>,
+    the <code class="program"><a href="../programs/httpd.html">httpd</a></code> may crash due to a segmentation fault if a file
+    is deleted or truncated while the <code class="program"><a href="../programs/httpd.html">httpd</a></code> has it
+    memory-mapped.</li>
     </ul>
 
     <p>For server configurations that are vulnerable to these problems,
@@ -969,12 +986,6 @@ Locations</a></li>
       </span>
       &lt;/Directory&gt;
     </code></p></div>
-    <p>Please note that the per-directory and .htaccess configuration
-       of <code class="directive">EnableSendfile</code> is not supported by
-       <code class="module"><a href="../mod/mod_disk_cache.html">mod_disk_cache</a></code>.
-       Only global definition of <code class="directive">EnableSendfile</code>
-       is taken into account by the module.
-    </p>
 
 </div>
 <div class="top"><a href="#page-header"><img alt="top" src="../images/up.gif" /></a></div>
@@ -1069,11 +1080,9 @@ in case of an error</td></tr>
     will be immediately halted and the internal error message returned.
     This is necessary to guard against security problems caused by
     bad requests.</p>
-   
-    <p>If you are using mod_proxy, you may wish to enable
-    <code class="directive"><a href="../mod/mod_proxy.html#proxyerroroverride">ProxyErrorOverride</a></code> so that you can provide
-    custom error messages on behalf of your Origin servers. If you don't enable ProxyErrorOverride,
-    Apache will not generate custom error documents for proxied content.</p>
+
+    <p>Prior to version 2.0, messages were indicated by prefixing
+    them with a single unmatched double quote character.</p>
 
 <h3>See also</h3>
 <ul>
@@ -1137,44 +1146,10 @@ in case of an error</td></tr>
 </ul>
 </div>
 <div class="top"><a href="#page-header"><img alt="top" src="../images/up.gif" /></a></div>
-<div class="directive-section"><h2><a name="ExtendedStatus" id="ExtendedStatus">ExtendedStatus</a> <a name="extendedstatus" id="extendedstatus">Directive</a></h2>
-<table class="directive">
-<tr><th><a href="directive-dict.html#Description">Description:</a></th><td>Keep track of extended status information for each 
-request</td></tr>
-<tr><th><a href="directive-dict.html#Syntax">Syntax:</a></th><td><code>ExtendedStatus On|Off</code></td></tr>
-<tr><th><a href="directive-dict.html#Default">Default:</a></th><td><code>ExtendedStatus Off[*]</code></td></tr>
-<tr><th><a href="directive-dict.html#Context">Context:</a></th><td>server config</td></tr>
-<tr><th><a href="directive-dict.html#Status">Status:</a></th><td>Core</td></tr>
-<tr><th><a href="directive-dict.html#Module">Module:</a></th><td>core</td></tr>
-</table>
-    <p>This option tracks additional data per worker about the
-    currently executing request, and a utilization summary; you 
-    can see these variables during runtime by configuring 
-    <code class="module"><a href="../mod/mod_status.html">mod_status</a></code>.  Note that other modules may
-    rely on this scoreboard.</p>
-
-    <p>This setting applies to the entire server, and cannot be
-    enabled or disabled on a virtualhost-by-virtualhost basis.
-    The collection of extended status information can slow down
-    the server.  Also note that this setting cannot be changed
-    during a graceful restart.</p>
-
-    <div class="note">
-    <p>Note that loading <code class="module"><a href="../mod/mod_status.html">mod_status</a></code> will change 
-    the default behavior to ExtendedStatus On, while other
-    third party modules may do the same.  Such modules rely on
-    collecting detailed information about the state of all workers.
-    The default is changed by <code class="module"><a href="../mod/mod_status.html">mod_status</a></code> beginning
-    with version 2.3.6; the previous default was always Off.</p>
-    </div>
-
-
-</div>
-<div class="top"><a href="#page-header"><img alt="top" src="../images/up.gif" /></a></div>
 <div class="directive-section"><h2><a name="FileETag" id="FileETag">FileETag</a> <a name="fileetag" id="fileetag">Directive</a></h2>
 <table class="directive">
 <tr><th><a href="directive-dict.html#Description">Description:</a></th><td>File attributes used to create the ETag
-HTTP response header for static files</td></tr>
+HTTP response header</td></tr>
 <tr><th><a href="directive-dict.html#Syntax">Syntax:</a></th><td><code>FileETag <var>component</var> ...</code></td></tr>
 <tr><th><a href="directive-dict.html#Default">Default:</a></th><td><code>FileETag INode MTime Size</code></td></tr>
 <tr><th><a href="directive-dict.html#Context">Context:</a></th><td>server config, virtual host, directory, .htaccess</td></tr>
@@ -1185,7 +1160,7 @@ HTTP response header for static files</td></tr>
     <p>
     The <code class="directive">FileETag</code> directive configures the file
     attributes that are used to create the <code>ETag</code> (entity
-    tag) response header field when the document is based on a static file.
+    tag) response header field when the document is based on a file.
     (The <code>ETag</code> value is used in cache management to save
     network bandwidth.) In Apache 1.3.22 and earlier, the
     <code>ETag</code> value was <em>always</em> formed
@@ -1229,12 +1204,6 @@ HTTP response header for static files</td></tr>
     These conditional requests will break if the <code>ETag</code> format is
     changed via <code class="directive">FileETag</code>.
     </div>
-    <div class="note"><h3>Server Side Includes</h3>
-    An ETag is not generated for responses parsed by <code class="module"><a href="../mod/mod_include.html">mod_include</a></code>, 
-    since the response entity can change without a change of the INode, MTime, or Size 
-    of the static file with embedded SSI directives.
-    </div>
-
 
 </div>
 <div class="top"><a href="#page-header"><img alt="top" src="../images/up.gif" /></a></div>
@@ -1323,8 +1292,8 @@ filenames</td></tr>
 <div class="directive-section"><h2><a name="ForceType" id="ForceType">ForceType</a> <a name="forcetype" id="forcetype">Directive</a></h2>
 <table class="directive">
 <tr><th><a href="directive-dict.html#Description">Description:</a></th><td>Forces all matching files to be served with the specified
-media type in the HTTP Content-Type header field</td></tr>
-<tr><th><a href="directive-dict.html#Syntax">Syntax:</a></th><td><code>ForceType <var>media-type</var>|None</code></td></tr>
+MIME content-type</td></tr>
+<tr><th><a href="directive-dict.html#Syntax">Syntax:</a></th><td><code>ForceType <var>MIME-type</var>|None</code></td></tr>
 <tr><th><a href="directive-dict.html#Context">Context:</a></th><td>directory, .htaccess</td></tr>
 <tr><th><a href="directive-dict.html#Override">Override:</a></th><td>FileInfo</td></tr>
 <tr><th><a href="directive-dict.html#Status">Status:</a></th><td>Core</td></tr>
@@ -1337,7 +1306,7 @@ media type in the HTTP Content-Type header field</td></tr>
     <code class="directive"><a href="#files">&lt;Files&gt;</a></code>
     section, this directive forces all matching files to be served
     with the content type identification given by
-    <var>media-type</var>. For example, if you had a directory full of
+    <var>MIME-type</var>. For example, if you had a directory full of
     GIF files, but did not want to label them all with <code>.gif</code>,
     you might want to use:</p>
 
@@ -1345,12 +1314,11 @@ media type in the HTTP Content-Type header field</td></tr>
       ForceType image/gif
     </code></p></div>
 
-    <p>Note that this directive overrides other indirect media type
-    associations defined in mime.types or via the
-    <code class="directive"><a href="../mod/mod_mime.html#addtype">AddType</a></code>.</p>
+    <p>Note that unlike <code class="directive"><a href="#defaulttype">DefaultType</a></code>,
+    this directive overrides all mime-type associations, including
+    filename extensions, that might identify the media type.</p>
 
-    <p>You can also override more general
-    <code class="directive">ForceType</code> settings
+    <p>You can override any <code class="directive">ForceType</code> setting
     by using the value of <code>None</code>:</p>
 
     <div class="example"><p><code>
@@ -1412,41 +1380,6 @@ media type in the HTTP Content-Type header field</td></tr>
 
 </div>
 <div class="top"><a href="#page-header"><img alt="top" src="../images/up.gif" /></a></div>
-<div class="directive-section"><h2><a name="If" id="If">&lt;If&gt;</a> <a name="if" id="if">Directive</a></h2>
-<table class="directive">
-<tr><th><a href="directive-dict.html#Description">Description:</a></th><td>Contains directives that apply only if a condition is
-satisfied by a request at runtime</td></tr>
-<tr><th><a href="directive-dict.html#Syntax">Syntax:</a></th><td><code>&lt;If <var>expression</var>&gt; ... &lt;/If&gt;</code></td></tr>
-<tr><th><a href="directive-dict.html#Context">Context:</a></th><td>server config, virtual host, directory, .htaccess</td></tr>
-<tr><th><a href="directive-dict.html#Override">Override:</a></th><td>All</td></tr>
-<tr><th><a href="directive-dict.html#Status">Status:</a></th><td>Core</td></tr>
-<tr><th><a href="directive-dict.html#Module">Module:</a></th><td>core</td></tr>
-</table>
-    <p>The <code class="directive">&lt;If&gt;</code> directive
-    evaluates an expression at runtime, and applies the enclosed
-    directives if and only if the expression evaluates to true.
-    For example:</p>
-
-    <div class="example"><p><code>
-        &lt;If "$req{Host} = ''"&gt;
-    </code></p></div>
-
-    <p>would match HTTP/1.0 requests without a <var>Host:</var> header.</p>
-
-    <p>You may compare the value of any variable in the request headers
-    ($req), response headers ($resp) or environment ($env) in your
-    expression.</p>
-
-<h3>See also</h3>
-<ul>
-<li><a href="../sections.html">How &lt;Directory&gt;, &lt;Location&gt;,
-    &lt;Files&gt; sections work</a> for an explanation of how these
-    different sections are combined when a request is received.
-    <code class="directive">&lt;If&gt;</code> has the same precedence
-    and usage as <code class="directive">&lt;Files&gt;</code></li>
-</ul>
-</div>
-<div class="top"><a href="#page-header"><img alt="top" src="../images/up.gif" /></a></div>
 <div class="directive-section"><h2><a name="IfDefine" id="IfDefine">&lt;IfDefine&gt;</a> <a name="ifdefine" id="ifdefine">Directive</a></h2>
 <table class="directive">
 <tr><th><a href="directive-dict.html#Description">Description:</a></th><td>Encloses directives that will be processed only
@@ -1479,37 +1412,22 @@ if a test is true at startup</td></tr>
     the test, and only processes the directives if
     <var>parameter-name</var> is <strong>not</strong> defined.</p>
 
-    <p>The <var>parameter-name</var> argument is a define as given on the
-    <code class="program"><a href="../programs/httpd.html">httpd</a></code> command line via <code>-D<var>parameter</var>
-    </code> at the time the server was started or by the <code class="directive"><a href="#define">Define</a></code> directive.</p>
+    <p>The <var>parameter-name</var> argument is a define as given on
+    the <code class="program"><a href="../programs/httpd.html">httpd</a></code> command line via <code>-D<var>parameter-</var>
+    </code>, at the time the server was started.</p>
 
     <p><code class="directive">&lt;IfDefine&gt;</code> sections are
     nest-able, which can be used to implement simple
     multiple-parameter tests. Example:</p>
 
     <div class="example"><p><code>
-      httpd -DReverseProxy -DUseCache -DMemCache ...<br />
+      httpd -DReverseProxy ...<br />
       <br />
       # httpd.conf<br />
       &lt;IfDefine ReverseProxy&gt;<br />
       <span class="indent">
-        LoadModule proxy_module   modules/mod_proxy.so<br />
-        LoadModule proxy_http_module   modules/mod_proxy_http.so<br />
-        &lt;IfDefine UseCache&gt;<br />
-        <span class="indent">
-          LoadModule cache_module   modules/mod_cache.so<br />
-          &lt;IfDefine MemCache&gt;<br />
-          <span class="indent">
-            LoadModule mem_cache_module   modules/mod_mem_cache.so<br />
-          </span>
-          &lt;/IfDefine&gt;<br />
-          &lt;IfDefine !MemCache&gt;<br />
-          <span class="indent">
-            LoadModule disk_cache_module   modules/mod_disk_cache.so<br />
-          </span>
-          &lt;/IfDefine&gt;
-        </span>
-        &lt;/IfDefine&gt;
+        LoadModule rewrite_module modules/mod_rewrite.so<br />
+        LoadModule proxy_module   modules/libproxy.so<br />
       </span>
       &lt;/IfDefine&gt;
     </code></p></div>
@@ -1577,32 +1495,19 @@ the server configuration files</td></tr>
 <tr><th><a href="directive-dict.html#Context">Context:</a></th><td>server config, virtual host, directory</td></tr>
 <tr><th><a href="directive-dict.html#Status">Status:</a></th><td>Core</td></tr>
 <tr><th><a href="directive-dict.html#Module">Module:</a></th><td>core</td></tr>
-<tr><th><a href="directive-dict.html#Compatibility">Compatibility:</a></th><td>Wildcard matching available in 2.0.41 and later, directory
-wildcard matching available in 2.3.6 and later</td></tr>
+<tr><th><a href="directive-dict.html#Compatibility">Compatibility:</a></th><td>Wildcard matching available in 2.0.41 and later</td></tr>
 </table>
     <p>This directive allows inclusion of other configuration files
     from within the server configuration files.</p>
 
-    <p>Shell-style (<code>fnmatch()</code>) wildcard characters can be used
-    in the filename or directory parts of the path to include several files
-    at once, in alphabetical order. In addition, if
-    <code class="directive">Include</code> points to a directory, rather than a file,
-    Apache will read all files in that directory and any subdirectory.
-    However, including entire directories is not recommended, because it is
-    easy to accidentally leave temporary files in a directory that can cause
-    <code class="program"><a href="../programs/httpd.html">httpd</a></code> to fail. Instead, we encourage you to use the
-    wildcard syntax shown below, to include files that match a particular
-    pattern, such as *.conf, for example.</p>
-
-    <p>When a wildcard is specified for a file or directory component of the
-    path, and no file or directory matches the wildcard, the
-    <code class="directive"><a href="#include">Include</a></code> directive will be
-    silently ignored. When a directory or file component of the path is
-    specified exactly, and that directory or file does not exist,
-    <code class="directive"><a href="#include">Include</a></code> directive will fail with an
-    error saying the file or directory cannot be found. This removes the need
-    for placeholder files to exist so that at least one file or directory is
-    found by the wildcard.</p>
+    <p>Shell-style (<code>fnmatch()</code>) wildcard characters can be used to
+    include several files at once, in alphabetical order. In
+    addition, if <code class="directive">Include</code> points to a directory,
+    rather than a file, Apache will read all files in that directory
+    and any subdirectory.  But including entire directories is not
+    recommended, because it is easy to accidentally leave temporary
+    files in a directory that can cause <code class="program"><a href="../programs/httpd.html">httpd</a></code> to
+    fail.</p>
 
     <p>The file path specified may be an absolute path, or may be relative 
     to the <code class="directive"><a href="#serverroot">ServerRoot</a></code> directory.</p>
@@ -1621,14 +1526,17 @@ wildcard matching available in 2.3.6 and later</td></tr>
       Include conf/vhosts/*.conf
     </code></p></div>
 
-    <p>Wildcards may be included in the directory or file portion of the
-    path:</p>
-  
-    <div class="example"><p><code>
-      Include conf/vhosts/*/vhost.conf
-      Include conf/vhosts/*/*.conf
-    </code></p></div>
+    <p>Running <code>apachectl configtest</code> will give you a list
+    of the files that are being processed during the configuration
+    check:</p>
 
+    <div class="example"><p><code>
+      root@host# apachectl configtest<br />
+      Processing config file: /usr/local/apache2/conf/ssl.conf<br />
+      Processing config file: /usr/local/apache2/conf/vhosts/vhost1.conf<br />
+      Processing config file: /usr/local/apache2/conf/vhosts/vhost2.conf<br />
+      Syntax OK
+    </code></p></div>
 
 <h3>See also</h3>
 <ul>
@@ -1665,10 +1573,6 @@ wildcard matching available in 2.3.6 and later</td></tr>
     encoding will be used in order to send content of unknown
     length over persistent connections.</p>
 
-    <p>When a client uses a Keep-Alive connection it will be counted
-    as a single "request" for the <code class="directive"><a href="../mod/mpm_common.html#maxrequestsperchild">MaxRequestsPerChild</a></code> directive, regardless
-    of how many requests are sent using the connection.</p>
-
 <h3>See also</h3>
 <ul>
 <li><code class="directive"><a href="#maxkeepaliverequests">MaxKeepAliveRequests</a></code></li>
@@ -1679,17 +1583,14 @@ wildcard matching available in 2.3.6 and later</td></tr>
 <table class="directive">
 <tr><th><a href="directive-dict.html#Description">Description:</a></th><td>Amount of time the server will wait for subsequent
 requests on a persistent connection</td></tr>
-<tr><th><a href="directive-dict.html#Syntax">Syntax:</a></th><td><code>KeepAliveTimeout <var>num</var>[ms]</code></td></tr>
+<tr><th><a href="directive-dict.html#Syntax">Syntax:</a></th><td><code>KeepAliveTimeout <var>seconds</var></code></td></tr>
 <tr><th><a href="directive-dict.html#Default">Default:</a></th><td><code>KeepAliveTimeout 5</code></td></tr>
 <tr><th><a href="directive-dict.html#Context">Context:</a></th><td>server config, virtual host</td></tr>
 <tr><th><a href="directive-dict.html#Status">Status:</a></th><td>Core</td></tr>
 <tr><th><a href="directive-dict.html#Module">Module:</a></th><td>core</td></tr>
-<tr><th><a href="directive-dict.html#Compatibility">Compatibility:</a></th><td>Specifying a value in milliseconds is available in 
-Apache 2.3.2 and later</td></tr>
 </table>
     <p>The number of seconds Apache will wait for a subsequent
-    request before closing the connection. By adding a postfix of ms the
-    timeout can be also set in milliseconds. Once a request has been
+    request before closing the connection. Once a request has been
     received, the timeout value specified by the
     <code class="directive"><a href="#timeout">Timeout</a></code> directive applies.</p>
 
@@ -1697,10 +1598,6 @@ Apache 2.3.2 and later</td></tr>
     may cause performance problems in heavily loaded servers. The
     higher the timeout, the more server processes will be kept
     occupied waiting on connections with idle clients.</p>
-    
-    <p>In a name-based virtual host context, the value of the first
-    defined virtual host (the default host) in a set of <code class="directive"><a href="#namevirtualhost">NameVirtualHost</a></code> will be used.
-    The other values will be ignored.</p>
 
 </div>
 <div class="top"><a href="#page-header"><img alt="top" src="../images/up.gif" /></a></div>
@@ -1710,8 +1607,8 @@ Apache 2.3.2 and later</td></tr>
 methods</td></tr>
 <tr><th><a href="directive-dict.html#Syntax">Syntax:</a></th><td><code>&lt;Limit <var>method</var> [<var>method</var>] ... &gt; ...
     &lt;/Limit&gt;</code></td></tr>
-<tr><th><a href="directive-dict.html#Context">Context:</a></th><td>directory, .htaccess</td></tr>
-<tr><th><a href="directive-dict.html#Override">Override:</a></th><td>AuthConfig, Limit</td></tr>
+<tr><th><a href="directive-dict.html#Context">Context:</a></th><td>server config, virtual host, directory, .htaccess</td></tr>
+<tr><th><a href="directive-dict.html#Override">Override:</a></th><td>All</td></tr>
 <tr><th><a href="directive-dict.html#Status">Status:</a></th><td>Core</td></tr>
 <tr><th><a href="directive-dict.html#Module">Module:</a></th><td>core</td></tr>
 </table>
@@ -1745,44 +1642,13 @@ methods</td></tr>
     <code>LOCK</code>, and <code>UNLOCK</code>. <strong>The method name is
     case-sensitive.</strong> If <code>GET</code> is used it will also
     restrict <code>HEAD</code> requests. The <code>TRACE</code> method
-    cannot be limited (see <code class="directive"><a href="#traceenable">TraceEnable</a></code>).</p>
+    cannot be limited.</p>
 
     <div class="warning">A <code class="directive"><a href="#limitexcept">&lt;LimitExcept&gt;</a></code> section should always be
-    used in preference to a <code class="directive">&lt;Limit&gt;</code>
-    section when restricting access, since a <code class="directive"><a href="#limitexcept">&lt;LimitExcept&gt;</a></code> section provides protection
+    used in preference to a <code class="directive"><a href="#limit">&lt;Limit&gt;</a></code> section when restricting access,
+    since a <code class="directive"><a href="#limitexcept">&lt;LimitExcept&gt;</a></code> section provides protection
     against arbitrary methods.</div>
 
-    <p>The <code class="directive">&lt;Limit&gt;</code> and
-    <code class="directive"><a href="#limitexcept">&lt;LimitExcept&gt;</a></code>
-    directives may be nested.  In this case, each successive level of
-    <code class="directive">&lt;Limit&gt;</code> or <code class="directive"><a href="#limitexcept">&lt;LimitExcept&gt;</a></code> directives must
-    further restrict the set of methods to which access controls apply.</p>
-
-    <div class="warning">When using
-    <code class="directive">&lt;Limit&gt;</code> or
-    <code class="directive">&lt;LimitExcept&gt;</code> directives with
-    the <code class="directive"><a href="../mod/mod_authz_core.html#require">Require</a></code> directive,
-    note that the first <code class="directive"><a href="../mod/mod_authz_core.html#require">Require</a></code>
-    to succeed authorizes the request, regardless of the presence of other
-    <code class="directive"><a href="../mod/mod_authz_core.html#require">Require</a></code> directives.</div>
-
-    <p>For example, given the following configuration, all users will
-    be authorized for <code>POST</code> requests, and the
-    <code>Require group editors</code> directive will be ignored
-    in all cases:</p>
-
-    <div class="example"><p><code>
-      &lt;LimitExcept GET&gt;
-      <span class="indent">
-        Require valid-user
-      </span> 
-      &lt;/LimitExcept&gt;<br />
-      &lt;Limit POST&gt;
-      <span class="indent">
-        Require group editors
-      </span> 
-      &lt;/Limit&gt;
-    </code></p></div>
 
 </div>
 <div class="top"><a href="#page-header"><img alt="top" src="../images/up.gif" /></a></div>
@@ -1792,8 +1658,8 @@ methods</td></tr>
 except the named ones</td></tr>
 <tr><th><a href="directive-dict.html#Syntax">Syntax:</a></th><td><code>&lt;LimitExcept <var>method</var> [<var>method</var>] ... &gt; ...
     &lt;/LimitExcept&gt;</code></td></tr>
-<tr><th><a href="directive-dict.html#Context">Context:</a></th><td>directory, .htaccess</td></tr>
-<tr><th><a href="directive-dict.html#Override">Override:</a></th><td>AuthConfig, Limit</td></tr>
+<tr><th><a href="directive-dict.html#Context">Context:</a></th><td>server config, virtual host, directory, .htaccess</td></tr>
+<tr><th><a href="directive-dict.html#Override">Override:</a></th><td>All</td></tr>
 <tr><th><a href="directive-dict.html#Status">Status:</a></th><td>Core</td></tr>
 <tr><th><a href="directive-dict.html#Module">Module:</a></th><td>core</td></tr>
 </table>
@@ -1942,8 +1808,8 @@ will be accepted from the client</td></tr>
 <table class="directive">
 <tr><th><a href="directive-dict.html#Description">Description:</a></th><td>Limits the size of the HTTP request header allowed from the
 client</td></tr>
-<tr><th><a href="directive-dict.html#Syntax">Syntax:</a></th><td><code>LimitRequestFieldSize <var>bytes</var></code></td></tr>
-<tr><th><a href="directive-dict.html#Default">Default:</a></th><td><code>LimitRequestFieldSize 8190</code></td></tr>
+<tr><th><a href="directive-dict.html#Syntax">Syntax:</a></th><td><code>LimitRequestFieldsize <var>bytes</var></code></td></tr>
+<tr><th><a href="directive-dict.html#Default">Default:</a></th><td><code>LimitRequestFieldsize 8190</code></td></tr>
 <tr><th><a href="directive-dict.html#Context">Context:</a></th><td>server config</td></tr>
 <tr><th><a href="directive-dict.html#Status">Status:</a></th><td>Core</td></tr>
 <tr><th><a href="directive-dict.html#Module">Module:</a></th><td>core</td></tr>
@@ -2072,8 +1938,8 @@ URLs</td></tr>
     </div>
 
     <p>For all origin (non-proxy) requests, the URL to be matched is a
-    URL-path of the form <code>/path/</code>.  <em>No scheme, hostname,
-    port, or query string may be included.</em>  For proxy requests, the
+    URL-path of the form <code>/path/</code>.  No scheme, hostname,
+    port, or query string may be included.  For proxy requests, the
     URL to be matched is of the form
     <code>scheme://servername/path</code>, and you must include the
     prefix.</p>
@@ -2083,8 +1949,8 @@ URLs</td></tr>
     characters. Neither wildcard character matches a / in the URL-path.</p>
 
     <p><a class="glossarylink" href="../glossary.html#regex" title="see glossary">Regular expressions</a>
-    can also be used, with the addition of the <code>~</code> 
-    character. For example:</p>
+    can also be used, with the addition of the
+    <code>~</code> character. For example:</p>
 
     <div class="example"><p><code>
       &lt;Location ~ "/(extra|special)/data"&gt;
@@ -2092,15 +1958,13 @@ URLs</td></tr>
 
     <p>would match URLs that contained the substring <code>/extra/data</code>
     or <code>/special/data</code>. The directive <code class="directive"><a href="#locationmatch">&lt;LocationMatch&gt;</a></code> behaves
-    identical to the regex version of <code class="directive">&lt;Location&gt;</code>, and is preferred, for the
-    simple reason that <code>~</code> is hard to distinguish from
-    <code>-</code> in many fonts.</p>
+    identical to the regex version of <code class="directive">&lt;Location&gt;</code>.</p>
 
     <p>The <code class="directive">&lt;Location&gt;</code>
     functionality is especially useful when combined with the
     <code class="directive"><a href="#sethandler">SetHandler</a></code>
     directive. For example, to enable status requests, but allow them
-    only from browsers at <code>example.com</code>, you might use:</p>
+    only from browsers at <code>foo.com</code>, you might use:</p>
 
     <div class="example"><p><code>
       &lt;Location /status&gt;<br />
@@ -2108,7 +1972,7 @@ URLs</td></tr>
         SetHandler server-status<br />
         Order Deny,Allow<br />
         Deny from all<br />
-        Allow from .example.com<br />
+        Allow from .foo.com<br />
       </span>
       &lt;/Location&gt;
     </code></p></div>
@@ -2136,8 +2000,7 @@ URLs</td></tr>
 <ul>
 <li><a href="../sections.html">How &lt;Directory&gt;, &lt;Location&gt;
     and &lt;Files&gt; sections work</a> for an explanation of how these
-    different sections are combined when a request is received.</li>
-<li><code class="directive"><a href="#locationmatch">LocationMatch</a></code></li>
+    different sections are combined when a request is received</li>
 </ul>
 </div>
 <div class="top"><a href="#page-header"><img alt="top" src="../images/up.gif" /></a></div>
@@ -2313,227 +2176,6 @@ connection</td></tr>
 
 </div>
 <div class="top"><a href="#page-header"><img alt="top" src="../images/up.gif" /></a></div>
-<div class="directive-section"><h2><a name="Mutex" id="Mutex">Mutex</a> <a name="mutex" id="mutex">Directive</a></h2>
-<table class="directive">
-<tr><th><a href="directive-dict.html#Description">Description:</a></th><td>Configures mutex mechanism and lock file directory for all
-or specified mutexes</td></tr>
-<tr><th><a href="directive-dict.html#Syntax">Syntax:</a></th><td><code>Mutex <var>mechanism</var> [default|<var>mutex-name</var>] ... [OmitPID]</code></td></tr>
-<tr><th><a href="directive-dict.html#Default">Default:</a></th><td><code>Mutex default</code></td></tr>
-<tr><th><a href="directive-dict.html#Context">Context:</a></th><td>server config</td></tr>
-<tr><th><a href="directive-dict.html#Status">Status:</a></th><td>Core</td></tr>
-<tr><th><a href="directive-dict.html#Module">Module:</a></th><td>core</td></tr>
-<tr><th><a href="directive-dict.html#Compatibility">Compatibility:</a></th><td>Available in Apache 2.3.4 and later</td></tr>
-</table>
-    <p>The <code class="directive">Mutex</code> directive sets the mechanism,
-    and optionally the lock file location, that httpd and modules use
-    to serialize access to resources.  Specify <code>default</code> as
-    the first argument to change the settings for all mutexes; specify
-    a mutex name (see table below) as the first argument to override
-    defaults only for that mutex.</p>
-
-    <p>The <code class="directive">Mutex</code> directive is typically used in
-    the following exceptional situations:</p>
-
-    <ul>
-        <li>change the mutex mechanism when the default mechanism selected
-        by <a class="glossarylink" href="../glossary.html#apr" title="see glossary">APR</a> has a functional or performance
-        problem</li>
-
-        <li>change the directory used by file-based mutexes when the
-        default directory does not support locking</li>
-    </ul>
-
-    <div class="note"><h3>Supported modules</h3>
-    <p>This directive only configures mutexes which have been registered
-    with the core server using the <code>ap_mutex_register()</code> API.
-    All modules bundled with httpd support the <code class="directive">Mutex</code>
-    directive, but third-party modules may not.  Consult the documentation
-    of the third-party module, which must indicate the mutex name(s) which
-    can be configured if this directive is supported.</p>
-    </div>
-
-    <p>The following mutex <em>mechanisms</em> are available:</p>
-    <ul>
-        <li><code>default | yes</code>
-        <p>This selects the default locking implementation, as determined by
-        <a class="glossarylink" href="../glossary.html#apr" title="see glossary">APR</a>.  The default locking implementation can
-        be displayed by running <code class="program"><a href="../programs/httpd.html">httpd</a></code> with the 
-        <code>-V</code> option.</p></li>
-
-        <li><code>none | no</code>
-        <p>This effectively disables the mutex, and is only allowed for a
-        mutex if the module indicates that it is a valid choice.  Consult the
-        module documentation for more information.</p></li>
-
-        <li><code>posixsem</code>
-        <p>This is a mutex variant based on a Posix semaphore.</p>
-
-        <div class="warning"><h3>Warning</h3>
-        <p>The semaphore ownership is not recovered if a thread in the process
-        holding the mutex segfaults, resulting in a hang of the web server.</p>
-        </div>
-        </li>
-
-        <li><code>sysvsem</code>
-        <p>This is a mutex variant based on a SystemV IPC semaphore.</p>
-
-        <div class="warning"><h3>Warning</h3>
-        <p>It is possible to "leak" SysV semaphores if processes crash 
-        before the semaphore is removed.</p>
-	</div>
-
-        <div class="warning"><h3>Security</h3>
-        <p>The semaphore API allows for a denial of service attack by any
-        CGIs running under the same uid as the webserver (<em>i.e.</em>,
-        all CGIs, unless you use something like <code class="program"><a href="../programs/suexec.html">suexec</a></code>
-        or <code>cgiwrapper</code>).</p>
-	</div>
-        </li>
-
-        <li><code>sem</code>
-        <p>This selects the "best" available semaphore implementation, choosing
-        between Posix and SystemV IPC semaphores, in that order.</p></li>
-
-        <li><code>pthread</code>
-        <p>This is a mutex variant based on cross-process Posix thread
-        mutexes.</p>
-
-        <div class="warning"><h3>Warning</h3>
-        <p>On most systems, if a child process terminates abnormally while
-        holding a mutex that uses this implementation, the server will deadlock
-        and stop responding to requests.  When this occurs, the server will
-        require a manual restart to recover.</p>
-        <p>Solaris is a notable exception as it provides a mechanism which
-        usually allows the mutex to be recovered after a child process
-        terminates abnormally while holding a mutex.</p>
-        <p>If your system implements the
-        <code>pthread_mutexattr_setrobust_np()</code> function, you may be able
-        to use the <code>pthread</code> option safely.</p>
-        </div>
-        </li>
-
-        <li><code>fcntl:/path/to/mutex</code>
-        <p>This is a mutex variant where a physical (lock-)file and the 
-        <code>fcntl()</code> function are used as the mutex.</p>
-
-        <div class="warning"><h3>Warning</h3>
-        <p>When multiple mutexes based on this mechanism are used within
-        multi-threaded, multi-process environments, deadlock errors (EDEADLK)
-        can be reported for valid mutex operations if <code>fcntl()</code>
-        is not thread-aware, such as on Solaris.</p>
-	</div>
-        </li>
-
-        <li><code>flock:/path/to/mutex</code>
-        <p>This is similar to the <code>fcntl:/path/to/mutex</code> method
-        with the exception that the <code>flock()</code> function is used to
-        provide file locking.</p></li>
-
-        <li><code>file:/path/to/mutex</code>
-        <p>This selects the "best" available file locking implementation,
-        choosing between <code>fcntl</code> and <code>flock</code>, in that
-        order.</p></li>
-    </ul>
-
-    <p>Most mechanisms are only available on selected platforms, where the 
-    underlying platform and <a class="glossarylink" href="../glossary.html#apr" title="see glossary">APR</a> support it.  Mechanisms
-    which aren't available on all platforms are <em>posixsem</em>,
-    <em>sysvsem</em>, <em>sem</em>, <em>pthread</em>, <em>fcntl</em>, 
-    <em>flock</em>, and <em>file</em>.</p>
-
-    <p>With the file-based mechanisms <em>fcntl</em> and <em>flock</em>,
-    the path, if provided, is a directory where the lock file will be created.
-    The default directory is httpd's run-time file directory relative to
-    <code class="directive"><a href="#serverroot">ServerRoot</a></code>.  Always use a local disk
-    filesystem for <code>/path/to/mutex</code> and never a directory residing
-    on a NFS- or AFS-filesystem.  The basename of the file will be the mutex
-    type, an optional instance string provided by the module, and unless the
-    <code>OmitPID</code> keyword is specified, the process id of the httpd 
-    parent process will be appended to to make the file name unique, avoiding
-    conflicts when multiple httpd instances share a lock file directory.  For
-    example, if the mutex name is <code>mpm-accept</code> and the lock file
-    directory is <code>/var/httpd/locks</code>, the lock file name for the
-    httpd instance with parent process id 12345 would be 
-    <code>/var/httpd/locks/mpm-accept.12345</code>.</p>
-
-    <div class="warning"><h3>Security</h3>
-    <p>It is best to <em>avoid</em> putting mutex files in a world-writable
-    directory such as <code>/var/tmp</code> because someone could create
-    a denial of service attack and prevent the server from starting by
-    creating a lockfile with the same name as the one the server will try
-    to create.</p>
-    </div>
-
-    <p>The following table documents the names of mutexes used by httpd
-    and bundled modules.</p>
-
-    <table class="bordered"><tr class="header">
-            <th>Mutex name</th>
-            <th>Module(s)</th>
-            <th>Protected resource</th>
-	</tr>
-<tr>
-            <td><code>mpm-accept</code></td>
-            <td><code class="module"><a href="../mod/prefork.html">prefork</a></code> and <code class="module"><a href="../mod/worker.html">worker</a></code> MPMs</td>
-            <td>incoming connections, to avoid the thundering herd problem;
-            for more information, refer to the
-            <a href="../misc/perf-tuning.html">performance tuning</a>
-            documentation</td>
-	</tr>
-<tr class="odd">
-            <td><code>authdigest-client</code></td>
-            <td><code class="module"><a href="../mod/mod_auth_digest.html">mod_auth_digest</a></code></td>
-            <td>client list in shared memory</td>
-	</tr>
-<tr>
-            <td><code>authdigest-opaque</code></td>
-            <td><code class="module"><a href="../mod/mod_auth_digest.html">mod_auth_digest</a></code></td>
-            <td>counter in shared memory</td>
-	</tr>
-<tr class="odd">
-            <td><code>ldap-cache</code></td>
-            <td><code class="module"><a href="../mod/mod_ldap.html">mod_ldap</a></code></td>
-            <td>LDAP result cache</td>
-	</tr>
-<tr>
-            <td><code>rewrite-map</code></td>
-            <td><code class="module"><a href="../mod/mod_rewrite.html">mod_rewrite</a></code></td>
-            <td>communication with external mapping programs, to avoid
-            intermixed I/O from multiple requests</td>
-	</tr>
-<tr class="odd">
-            <td><code>ssl-cache</code></td>
-            <td><code class="module"><a href="../mod/mod_ssl.html">mod_ssl</a></code></td>
-            <td>SSL session cache</td>
-	</tr>
-<tr>
-            <td><code>ssl-stapling</code></td>
-            <td><code class="module"><a href="../mod/mod_ssl.html">mod_ssl</a></code></td>
-            <td>OCSP stapling response cache</td>
-	</tr>
-<tr class="odd">
-            <td><code>watchdog-callback</code></td>
-            <td><code class="module"><a href="../mod/mod_watchdog.html">mod_watchdog</a></code></td>
-            <td>callback function of a particular client module</td>
-	</tr>
-</table>
-
-    <p>The <code>OmitPID</code> keyword suppresses the addition of the httpd
-    parent process id from the lock file name.</p>
-
-    <p>In the following example, the mutex mechanism for the MPM accept
-    mutex will be changed from the compiled-in default to <code>fcntl</code>,
-    with the associated lock file created in directory
-    <code>/var/httpd/locks</code>.  The mutex mechanism for all other mutexes
-    will be changed from the compiled-in default to <code>sysvsem</code>.</p>
-
-    <div class="example"><p><code>
-    Mutex default sysvsem<br />
-    Mutex mpm-accept fcntl:/var/httpd/locks
-    </code></p></div>
-
-</div>
-<div class="top"><a href="#page-header"><img alt="top" src="../images/up.gif" /></a></div>
 <div class="directive-section"><h2><a name="NameVirtualHost" id="NameVirtualHost">NameVirtualHost</a> <a name="namevirtualhost" id="namevirtualhost">Directive</a></h2>
 <table class="directive">
 <tr><th><a href="directive-dict.html#Description">Description:</a></th><td>Designates an IP address for name-virtual
@@ -2543,56 +2185,40 @@ hosting</td></tr>
 <tr><th><a href="directive-dict.html#Status">Status:</a></th><td>Core</td></tr>
 <tr><th><a href="directive-dict.html#Module">Module:</a></th><td>core</td></tr>
 </table>
+    <p>The <code class="directive">NameVirtualHost</code> directive is a
+    required directive if you want to configure <a href="../vhosts/">name-based virtual hosts</a>.</p>
 
-<p>A single <code class="directive">NameVirtualHost</code> directive 
-identifies a set of identical virtual hosts on which the server will  
-further select from on the basis of the <em>hostname</em> 
-requested by the client.  The <code class="directive">NameVirtualHost</code>
-directive is a required directive if you want to configure 
-<a href="../vhosts/">name-based virtual hosts</a>.</p>
+    <p>Although <var>addr</var> can be hostname it is recommended
+    that you always use an IP address, e.g.</p>
 
-<p>This directive, and the corresponding <code class="directive">VirtualHost</code>,
-<em>must</em> be qualified with a port number if the server supports both HTTP 
-and HTTPS connections.</p>
+    <div class="example"><p><code>
+      NameVirtualHost 111.22.33.44
+    </code></p></div>
 
-<p>Although <var>addr</var> can be a hostname, it is recommended
-that you always use an IP address or a wildcard.  A wildcard
-NameVirtualHost matches only virtualhosts that also have a literal wildcard
-as their argument.</p>
+    <p>With the <code class="directive">NameVirtualHost</code> directive you
+    specify the IP address on which the server will receive requests
+    for the name-based virtual hosts. This will usually be the address
+    to which your name-based virtual host names resolve. In cases
+    where a firewall or other proxy receives the requests and forwards
+    them on a different IP address to the server, you must specify the
+    IP address of the physical interface on the machine which will be
+    servicing the requests. If you have multiple name-based hosts on
+    multiple addresses, repeat the directive for each address.</p>
 
-<p>In cases where a firewall or other proxy receives the requests and 
-forwards them on a different IP address to the server, you must specify the
-IP address of the physical interface on the machine which will be
-servicing the requests. </p>
+    <div class="note"><h3>Note</h3>
+      <p>Note, that the "main server" and any <code>_default_</code> servers
+      will <strong>never</strong> be served for a request to a
+      <code class="directive">NameVirtualHost</code> IP address (unless for some
+      reason you specify <code class="directive">NameVirtualHost</code> but then
+      don't define any <code class="directive">VirtualHost</code>s for that
+      address).</p>
+    </div>
 
-<p> In the example below, requests received on interface 192.0.2.1 and port 80 
-will only select among the first two virtual hosts. Requests received on
-port 80 on any other interface will only select among the third and fourth
-virtual hosts. In the common case where the interface isn't important 
-to the mapping, only the "*:80" NameVirtualHost and VirtualHost directives 
-are necessary.</p>
+    <p>Optionally you can specify a port number on which the
+    name-based virtual hosts should be used, e.g.</p>
 
-   <div class="example"><p><code>
-      NameVirtualHost 192.0.2.1:80<br />
-      NameVirtualHost *:80<br /><br />
-
-      &lt;VirtualHost 192.0.2.1:80&gt;<br />
-      &nbsp; ServerName namebased-a.example.com<br />
-      &lt;/VirtualHost&gt;<br />
-      <br />
-      &lt;VirtualHost 192.0.2.1:80&gt;<br />
-      &nbsp; Servername namebased-b.example.com<br />
-      &lt;/VirtualHost&gt;<br />
-      <br />
-      &lt;VirtualHost *:80&gt;<br />
-      &nbsp; ServerName namebased-c.example.com <br />
-      &lt;/VirtualHost&gt;<br />
-      <br />
-      &lt;VirtualHost *:80&gt;<br />
-      &nbsp; ServerName namebased-d.example.com <br />
-      &lt;/VirtualHost&gt;<br />
-      <br />
-
+    <div class="example"><p><code>
+      NameVirtualHost 111.22.33.44:8080
     </code></p></div>
 
     <p>IPv6 addresses must be enclosed in square brackets, as shown
@@ -2602,14 +2228,21 @@ are necessary.</p>
       NameVirtualHost [2001:db8::a00:20ff:fea7:ccea]:8080
     </code></p></div>
 
+    <p>To receive requests on all interfaces, you can use an argument of
+    <code>*</code></p>
+
+    <div class="example"><p><code>
+      NameVirtualHost *
+    </code></p></div>
+
     <div class="note"><h3>Argument to <code class="directive">&lt;VirtualHost&gt;</code>
       directive</h3>
       <p>Note that the argument to the <code class="directive">&lt;VirtualHost&gt;</code> directive must
       exactly match the argument to the <code class="directive">NameVirtualHost</code> directive.</p>
 
       <div class="example"><p><code>
-        NameVirtualHost 192.0.2.2:80<br />
-        &lt;VirtualHost 192.0.2.2:80&gt;<br />
+        NameVirtualHost 1.2.3.4<br />
+        &lt;VirtualHost 1.2.3.4&gt;<br />
         # ...<br />
         &lt;/VirtualHost&gt;<br />
       </code></p></div>
@@ -2782,6 +2415,101 @@ directory</td></tr>
 
 </div>
 <div class="top"><a href="#page-header"><img alt="top" src="../images/up.gif" /></a></div>
+<div class="directive-section"><h2><a name="Require" id="Require">Require</a> <a name="require" id="require">Directive</a></h2>
+<table class="directive">
+<tr><th><a href="directive-dict.html#Description">Description:</a></th><td>Selects which authenticated users can access
+a resource</td></tr>
+<tr><th><a href="directive-dict.html#Syntax">Syntax:</a></th><td><code>Require <var>entity-name</var> [<var>entity-name</var>] ...</code></td></tr>
+<tr><th><a href="directive-dict.html#Context">Context:</a></th><td>directory, .htaccess</td></tr>
+<tr><th><a href="directive-dict.html#Override">Override:</a></th><td>AuthConfig</td></tr>
+<tr><th><a href="directive-dict.html#Status">Status:</a></th><td>Core</td></tr>
+<tr><th><a href="directive-dict.html#Module">Module:</a></th><td>core</td></tr>
+</table>
+    <p>This directive selects which authenticated users can access a
+    resource.  The restrictions are processed by authorization
+    modules.  Some of the allowed syntaxes provided by
+    <code class="module"><a href="../mod/mod_authz_user.html">mod_authz_user</a></code> and
+    <code class="module"><a href="../mod/mod_authz_groupfile.html">mod_authz_groupfile</a></code> are:</p>
+
+    <dl>
+      <dt><code>Require user <var>userid</var> [<var>userid</var>]
+      ...</code></dt>
+      <dd>Only the named users can access the resource.</dd>
+
+      <dt><code>Require group <var>group-name</var> [<var>group-name</var>]
+      ...</code></dt>
+      <dd>Only users in the named groups can access the resource.</dd>
+
+      <dt><code>Require valid-user</code></dt>
+      <dd>All valid users can access the resource.</dd>
+    </dl>
+
+    <p>Other authorization modules that implement require options
+    include <code class="module"><a href="../mod/mod_authnz_ldap.html">mod_authnz_ldap</a></code>,
+    <code class="module"><a href="../mod/mod_authz_dbm.html">mod_authz_dbm</a></code>, and
+    <code class="module"><a href="../mod/mod_authz_owner.html">mod_authz_owner</a></code>.</p>
+
+    <p><code class="directive">Require</code> must be accompanied by
+    <code class="directive"><a href="#authname">AuthName</a></code> and <code class="directive"><a href="#authtype">AuthType</a></code> directives, and directives such
+    as <code class="directive"><a href="../mod/mod_authn_file.html#authuserfile">AuthUserFile</a></code>
+    and <code class="directive"><a href="../mod/mod_authz_groupfile.html#authgroupfile">AuthGroupFile</a></code> (to
+    define users and groups) in order to work correctly. Example:</p>
+
+    <div class="example"><p><code>
+       AuthType Basic<br />
+       AuthName "Restricted Resource"<br />
+       AuthUserFile /web/users<br />
+       AuthGroupFile /web/groups<br />
+       Require group admin
+    </code></p></div>
+
+    <p>Access controls which are applied in this way are effective for
+    <strong>all</strong> methods. <strong>This is what is normally
+    desired.</strong> If you wish to apply access controls only to
+    specific methods, while leaving other methods unprotected, then
+    place the <code class="directive">Require</code> statement into a
+    <code class="directive"><a href="#limit">&lt;Limit&gt;</a></code>
+    section.</p>
+ 
+    <p>If <code class="directive">Require</code> is used together with 
+    the <code class="directive"><a href="../mod/mod_authz_host.html#allow">Allow</a></code> or
+    <code class="directive"><a href="../mod/mod_authz_host.html#deny">Deny</a></code> directives,
+    then the interaction of these restrictions is controlled by
+    the <code class="directive"><a href="#satisfy">Satisfy</a></code> directive.</p>
+
+    <div class="note"><h3>Removing controls in subdirectories</h3>
+    <p>The following example shows how to use the <code class="directive"><a href="#satisfy">Satisfy</a></code> directive to disable access
+    controls in a subdirectory of a protected directory.  This
+    technique should be used with caution, because it will also
+    disable any access controls imposed by
+    <code class="module"><a href="../mod/mod_authz_host.html">mod_authz_host</a></code>.</p>
+    <div class="example"><p><code>
+      &lt;Directory /path/to/protected/&gt;<br />
+        <span class="indent">
+        Require user david<br />
+        </span>
+      &lt;/Directory&gt;<br />
+      &lt;Directory /path/to/protected/unprotected&gt;<br />
+        <span class="indent">
+        # All access controls and authentication are disabled<br />
+        # in this directory<br />
+        Satisfy Any<br />
+        Allow from all<br />
+        </span>
+      &lt;/Directory&gt;<br />
+    </code></p></div>
+    </div>
+      
+
+<h3>See also</h3>
+<ul>
+<li><a href="../howto/auth.html">Authentication, Authorization,
+    and Access Control</a></li>
+<li><code class="directive"><a href="#satisfy">Satisfy</a></code></li>
+<li><code class="module"><a href="../mod/mod_authz_host.html">mod_authz_host</a></code></li>
+</ul>
+</div>
+<div class="top"><a href="#page-header"><img alt="top" src="../images/up.gif" /></a></div>
 <div class="directive-section"><h2><a name="RLimitCPU" id="RLimitCPU">RLimitCPU</a> <a name="rlimitcpu" id="rlimitcpu">Directive</a></h2>
 <table class="directive">
 <tr><th><a href="directive-dict.html#Description">Description:</a></th><td>Limits the CPU consumption of processes launched
@@ -2898,6 +2626,53 @@ processes launched by Apache children</td></tr>
 </ul>
 </div>
 <div class="top"><a href="#page-header"><img alt="top" src="../images/up.gif" /></a></div>
+<div class="directive-section"><h2><a name="Satisfy" id="Satisfy">Satisfy</a> <a name="satisfy" id="satisfy">Directive</a></h2>
+<table class="directive">
+<tr><th><a href="directive-dict.html#Description">Description:</a></th><td>Interaction between host-level access control and
+user authentication</td></tr>
+<tr><th><a href="directive-dict.html#Syntax">Syntax:</a></th><td><code>Satisfy Any|All</code></td></tr>
+<tr><th><a href="directive-dict.html#Default">Default:</a></th><td><code>Satisfy All</code></td></tr>
+<tr><th><a href="directive-dict.html#Context">Context:</a></th><td>directory, .htaccess</td></tr>
+<tr><th><a href="directive-dict.html#Override">Override:</a></th><td>AuthConfig</td></tr>
+<tr><th><a href="directive-dict.html#Status">Status:</a></th><td>Core</td></tr>
+<tr><th><a href="directive-dict.html#Module">Module:</a></th><td>core</td></tr>
+<tr><th><a href="directive-dict.html#Compatibility">Compatibility:</a></th><td>Influenced by <code class="directive"><a href="#limit">&lt;Limit&gt;</a></code> and <code class="directive"><a href="#limitexcept">&lt;LimitExcept&gt;</a></code> in version 2.0.51 and
+later</td></tr>
+</table>
+    <p>Access policy if both <code class="directive"><a href="../mod/mod_authz_host.html#allow">Allow</a></code> and <code class="directive"><a href="#require">Require</a></code> used. The parameter can be
+    either <code>All</code> or <code>Any</code>. This directive is only
+    useful if access to a particular area is being restricted by both
+    username/password <em>and</em> client host address. In this case
+    the default behavior (<code>All</code>) is to require that the client
+    passes the address access restriction <em>and</em> enters a valid
+    username and password. With the <code>Any</code> option the client will be
+    granted access if they either pass the host restriction or enter a
+    valid username and password. This can be used to password restrict
+    an area, but to let clients from particular addresses in without
+    prompting for a password.</p>
+
+    <p>For example, if you wanted to let people on your network have
+    unrestricted access to a portion of your website, but require that
+    people outside of your network provide a password, you could use a
+    configuration similar to the following:</p>
+
+    <div class="example"><p><code>
+      Require valid-user<br />
+      Order allow,deny<br />
+      Allow from 192.168.1<br />
+      Satisfy Any
+    </code></p></div>
+
+    <p>Since version 2.0.51 <code class="directive">Satisfy</code> directives can
+    be restricted to particular methods by <code class="directive"><a href="#limit">&lt;Limit&gt;</a></code> and <code class="directive"><a href="#limitexcept">&lt;LimitExcept&gt;</a></code> sections.</p>
+
+<h3>See also</h3>
+<ul>
+<li><code class="directive"><a href="../mod/mod_authz_host.html#allow">Allow</a></code></li>
+<li><code class="directive"><a href="#require">Require</a></code></li>
+</ul>
+</div>
+<div class="top"><a href="#page-header"><img alt="top" src="../images/up.gif" /></a></div>
 <div class="directive-section"><h2><a name="ScriptInterpreterSource" id="ScriptInterpreterSource">ScriptInterpreterSource</a> <a name="scriptinterpretersource" id="scriptinterpretersource">Directive</a></h2>
 <table class="directive">
 <tr><th><a href="directive-dict.html#Description">Description:</a></th><td>Technique for locating the interpreter for CGI
@@ -2937,6 +2712,12 @@ later</td></tr>
     registry keys cannot be found, Apache falls back to the behavior of the
     <code>Script</code> option.</p>
 
+    <p>For example, the registry setting to have a script with the .pl extension
+    processed via perl would be:</p>
+
+    <div class="example"><p><code><code>HKEY_CLASSES_ROOT\.pl\Shell\ExecCGI\Command\(Default) =&gt; C:\Perl\bin\perl.exe -wT</code></code></p></div>
+
+
     <div class="warning"><h3>Security</h3>
     <p>Be careful when using <code>ScriptInterpreterSource
     Registry</code> with <code class="directive"><a href="../mod/mod_alias.html#scriptalias">ScriptAlias</a></code>'ed directories, because
@@ -2957,44 +2738,6 @@ later</td></tr>
     <code>ExecCGI</code> key is not a common one. It must be
     configured manually in the windows registry and hence prevents
     accidental program calls on your system.</p>
-
-</div>
-<div class="top"><a href="#page-header"><img alt="top" src="../images/up.gif" /></a></div>
-<div class="directive-section"><h2><a name="SeeRequestTail" id="SeeRequestTail">SeeRequestTail</a> <a name="seerequesttail" id="seerequesttail">Directive</a></h2>
-<table class="directive">
-<tr><th><a href="directive-dict.html#Description">Description:</a></th><td>Determine if mod_status displays the first 63 characters
-of a request or the last 63, assuming the request itself is greater than
-63 chars.</td></tr>
-<tr><th><a href="directive-dict.html#Syntax">Syntax:</a></th><td><code>SeeRequestTail On|Off</code></td></tr>
-<tr><th><a href="directive-dict.html#Default">Default:</a></th><td><code>SeeRequestTail Off</code></td></tr>
-<tr><th><a href="directive-dict.html#Context">Context:</a></th><td>server config</td></tr>
-<tr><th><a href="directive-dict.html#Status">Status:</a></th><td>Core</td></tr>
-<tr><th><a href="directive-dict.html#Module">Module:</a></th><td>core</td></tr>
-<tr><th><a href="directive-dict.html#Compatibility">Compatibility:</a></th><td>Available in Apache 2.2.7 and later.</td></tr>
-</table>
-    <p>mod_status with <code>ExtendedStatus On</code>
-    displays the actual request being handled. 
-    For historical purposes, only 63 characters of the request
-    are actually stored for display purposes. This directive
-    controls whether the 1st 63 characters are stored (the previous
-    behavior and the default) or if the last 63 characters are. This
-    is only applicable, of course, if the length of the request is
-    64 characters or greater.</p>
-
-    <p>If Apache is handling <code>GET&nbsp;/disk1/storage/apache/htdocs/images/imagestore1/food/apples.jpg&nbsp;HTTP/1.1</code> mod_status displays as follows:
-    </p>
-
-    <table class="bordered">
-      <tr>
-        <th>Off (default)</th>
-        <td>GET&nbsp;/disk1/storage/apache/htdocs/images/imagestore1/food/apples</td>
-      </tr>
-      <tr>
-        <th>On</th>
-        <td>orage/apache/htdocs/images/imagestore1/food/apples.jpg&nbsp;HTTP/1.1</td>
-      </tr>
-    </table>
-
 
 </div>
 <div class="top"><a href="#page-header"><img alt="top" src="../images/up.gif" /></a></div>
@@ -3042,10 +2785,9 @@ to name-virtual hosts</td></tr>
     <code class="directive">ServerAlias</code> may include wildcards, if appropriate.</p>
 
     <div class="example"><p><code>
-      &lt;VirtualHost *:80&gt;<br />
+      &lt;VirtualHost *&gt;<br />
       ServerName server.domain.com<br />
       ServerAlias server server2.domain.com server2<br />
-      ServerAlias *.example.com<br />
       # ...<br />
       &lt;/VirtualHost&gt;
     </code></p></div>
@@ -3107,7 +2849,7 @@ itself</td></tr>
 
     <p>See the description of the
     <code class="directive"><a href="#usecanonicalname">UseCanonicalName</a></code> and
-    <code class="directive"><a href="#usecanonicalphysicalport">UseCanonicalPhysicalPort</a></code> directives for
+    <code class="directive"><a href="#usecanonicalphysicalport">UseCanonicalPhysicalPort</a></code>directives for
     settings which determine whether self-referential URLs (e.g., by the
     <code class="module"><a href="../mod/mod_dir.html">mod_dir</a></code> module) will refer to the
     specified port, or to the port number given in the client's request.
@@ -3227,11 +2969,6 @@ header</td></tr>
     information about compiled-in modules.</p>
 
     <dl>
-      <dt><code>ServerTokens Full</code> (or not specified)</dt>
-
-      <dd>Server sends (<em>e.g.</em>): <code>Server: Apache/2.4.1
-      (Unix) PHP/4.2.2 MyMod/1.2</code></dd>
-
       <dt><code>ServerTokens Prod[uctOnly]</code></dt>
 
       <dd>Server sends (<em>e.g.</em>): <code>Server:
@@ -3245,18 +2982,22 @@ header</td></tr>
       <dt><code>ServerTokens Minor</code></dt>
 
       <dd>Server sends (<em>e.g.</em>): <code>Server:
-      Apache/2.4</code></dd>
+      Apache/2.0</code></dd>
 
       <dt><code>ServerTokens Min[imal]</code></dt>
 
       <dd>Server sends (<em>e.g.</em>): <code>Server:
-      Apache/2.4.1</code></dd>
+      Apache/2.0.41</code></dd>
 
       <dt><code>ServerTokens OS</code></dt>
 
-      <dd>Server sends (<em>e.g.</em>): <code>Server: Apache/2.4.1
+      <dd>Server sends (<em>e.g.</em>): <code>Server: Apache/2.0.41
       (Unix)</code></dd>
 
+      <dt><code>ServerTokens Full</code> (or not specified)</dt>
+
+      <dd>Server sends (<em>e.g.</em>): <code>Server: Apache/2.0.41
+      (Unix) PHP/4.2.2 MyMod/1.2</code></dd>
     </dl>
 
     <p>This setting applies to the entire server, and cannot be
@@ -3264,14 +3005,6 @@ header</td></tr>
 
     <p>After version 2.0.44, this directive also controls the
     information presented by the <code class="directive"><a href="#serversignature">ServerSignature</a></code> directive.</p>
-    
-    <div class="note">Setting <code class="directive">ServerTokens</code> to less than
-    <code>minimal</code> is not recommended because it makes it more
-    difficult to debug interoperational problems. Also note that
-    disabling the Server: header does nothing at all to make your
-    server more secure; the idea of "security through obscurity"
-    is a myth and leads to a false sense of safety.</div>
-
 
 <h3>See also</h3>
 <ul>
@@ -3319,9 +3052,6 @@ handler</td></tr>
 
     <p>You can override an earlier defined <code class="directive">SetHandler</code>
     directive by using the value <code>None</code>.</p>
-    <p><strong>Note:</strong> because SetHandler overrides default handlers,
-    normal behaviour such as handling of URLs ending in a slash (/) as
-    directories or index files is suppressed.</p>
 
 <h3>See also</h3>
 <ul>
@@ -3405,29 +3135,26 @@ certain events before failing a request</td></tr>
 <tr><th><a href="directive-dict.html#Status">Status:</a></th><td>Core</td></tr>
 <tr><th><a href="directive-dict.html#Module">Module:</a></th><td>core</td></tr>
 </table>
-    <p>The <code class="directive">TimeOut</code> directive defines the length
-    of time Apache will wait for I/O in various circumstances:</p>
+    <p>The <code class="directive">TimeOut</code> directive currently defines
+    the amount of time Apache will wait for three things:</p>
 
     <ol>
-      <li>When reading data from the client, the length of time to
-      wait for a TCP packet to arrive if the read buffer is
-      empty.</li>
+      <li>The total amount of time it takes to receive a GET
+      request.</li>
 
-      <li>When writing data to the client, the length of time to wait
-      for an acknowledgement of a packet if the send buffer is
-      full.</li>
+      <li>The amount of time between receipt of TCP packets on a
+      POST or PUT request.</li>
 
-      <li>In <code class="module"><a href="../mod/mod_cgi.html">mod_cgi</a></code>, the length of time to wait for
-      output from a CGI script.</li>
-
-      <li>In <code class="module"><a href="../mod/mod_ext_filter.html">mod_ext_filter</a></code>, the length of time to
-      wait for output from a filtering process.</li>
-
-      <li>In <code class="module"><a href="../mod/mod_proxy.html">mod_proxy</a></code>, the default timeout value if
-      <code class="directive"><a href="../mod/mod_proxy.html#proxytimeout">ProxyTimeout</a></code> is not
-      configured.</li>
+      <li>The amount of time between ACKs on transmissions of TCP
+      packets in responses.</li>
     </ol>
 
+    <p>We plan on making these separately configurable at some point
+    down the road. The timer used to default to 1200 before 1.2,
+    but has been lowered to 300 which is still far more than
+    necessary in most situations. It is not set any lower by
+    default because there may still be odd places in the code where
+    the timer is not reset when a packet is sent. </p>
 
 </div>
 <div class="top"><a href="#page-header"><img alt="top" src="../images/up.gif" /></a></div>
@@ -3457,21 +3184,6 @@ requests</td></tr>
     <code>Transfer-Encoding: chunked</code> is used).  The core will
     reflect the full headers and all chunk headers with the response
     body.  As a proxy server, the request body is not restricted to 64k.</p>
-
-</div>
-<div class="top"><a href="#page-header"><img alt="top" src="../images/up.gif" /></a></div>
-<div class="directive-section"><h2><a name="UnDefine" id="UnDefine">UnDefine</a> <a name="undefine" id="undefine">Directive</a></h2>
-<table class="directive">
-<tr><th><a href="directive-dict.html#Description">Description:</a></th><td>Undefine the existence of a variable</td></tr>
-<tr><th><a href="directive-dict.html#Syntax">Syntax:</a></th><td><code>UnDefine <var>parameter-name</var></code></td></tr>
-<tr><th><a href="directive-dict.html#Context">Context:</a></th><td>server config</td></tr>
-<tr><th><a href="directive-dict.html#Status">Status:</a></th><td>Core</td></tr>
-<tr><th><a href="directive-dict.html#Module">Module:</a></th><td>core</td></tr>
-</table>
-    <p>Undoes the effect of a <code class="directive"><a href="#define">Define</a></code> or
-    of passing a <code>-D</code> argument to <code class="program"><a href="../programs/httpd.html">httpd</a></code>.</p>
-    <p>This directive can be used to toggle the use of <code class="directive"><a href="#ifdefine">&lt;IfDefine&gt;</a></code> sections without needing to alter
-    <code>-D</code> arguments in any startup scripts.</p>
 
 </div>
 <div class="top"><a href="#page-header"><img alt="top" src="../images/up.gif" /></a></div>
@@ -3624,11 +3336,11 @@ hostname or IP address</td></tr>
     <div class="example"><h3>Example</h3><p><code>
       &lt;VirtualHost 10.1.2.3&gt;<br />
       <span class="indent">
-        ServerAdmin webmaster@host.example.com<br />
-        DocumentRoot /www/docs/host.example.com<br />
-        ServerName host.example.com<br />
-        ErrorLog logs/host.example.com-error_log<br />
-        TransferLog logs/host.example.com-access_log<br />
+        ServerAdmin webmaster@host.foo.com<br />
+        DocumentRoot /www/docs/host.foo.com<br />
+        ServerName host.foo.com<br />
+        ErrorLog logs/host.foo.com-error_log<br />
+        TransferLog logs/host.foo.com-access_log<br />
       </span>
       &lt;/VirtualHost&gt;
     </code></p></div>
@@ -3671,7 +3383,11 @@ hostname or IP address</td></tr>
     not explicitly listed in another virtual host. In the absence
     of any <code>_default_</code> virtual host the "main" server config,
     consisting of all those definitions outside any VirtualHost
-    section, is used when no IP-match occurs.</p>
+    section, is used when no IP-match occurs.  (But note that any IP
+    address that matches a <code class="directive"><a href="#namevirtualhost">NameVirtualHost</a></code> directive will use neither
+    the "main" server config nor the <code>_default_</code> virtual host.
+    See the <a href="../vhosts/name-based.html">name-based virtual hosting</a>
+    documentation for further details.)</p>
 
     <p>You can specify a <code>:port</code> to change the port that is
     matched. If unspecified then it defaults to the same port as the
@@ -3708,10 +3424,8 @@ hostname or IP address</td></tr>
 <div class="bottomlang">
 <p><span>Available Languages: </span><a href="../de/mod/core.html" hreflang="de" rel="alternate" title="Deutsch">&nbsp;de&nbsp;</a> |
 <a href="../en/mod/core.html" title="English">&nbsp;en&nbsp;</a> |
-<a href="../fr/mod/core.html" hreflang="fr" rel="alternate" title="Français">&nbsp;fr&nbsp;</a> |
-<a href="../ja/mod/core.html" hreflang="ja" rel="alternate" title="Japanese">&nbsp;ja&nbsp;</a> |
-<a href="../tr/mod/core.html" hreflang="tr" rel="alternate" title="Türkçe">&nbsp;tr&nbsp;</a></p>
+<a href="../ja/mod/core.html" hreflang="ja" rel="alternate" title="Japanese">&nbsp;ja&nbsp;</a></p>
 </div><div id="footer">
-<p class="apache">Copyright 2010 The Apache Software Foundation.<br />Licensed under the <a href="http://www.apache.org/licenses/LICENSE-2.0">Apache License, Version 2.0</a>.</p>
+<p class="apache">Copyright 2007 The Apache Software Foundation.<br />Licensed under the <a href="http://www.apache.org/licenses/LICENSE-2.0">Apache License, Version 2.0</a>.</p>
 <p class="menu"><a href="../mod/">Modules</a> | <a href="../mod/directives.html">Directives</a> | <a href="../faq/">FAQ</a> | <a href="../glossary.html">Glossary</a> | <a href="../sitemap.html">Sitemap</a></p></div>
 </body></html>

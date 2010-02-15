@@ -32,6 +32,9 @@
 #include "apr_lib.h"
 #include "ap_regkey.h"
 
+extern OSVERSIONINFO osver; /* hiding in mpm_winnt.c */
+static int win_nt;
+
 /*
  * CGI Script stuff for Win32...
  */
@@ -260,7 +263,9 @@ static apr_array_header_t *split_argv(apr_pool_t *p, const char *interp,
                     break;
                 }
                 ap_unescape_url(w);
-                prep_string(&w, p);
+                if (win_nt) {
+                   prep_string(&w, p);
+                }
                 arg = (const char**)apr_array_push(args);
                 *arg = ap_escape_shell_cmd(p, w);
             }
@@ -353,7 +358,9 @@ static apr_array_header_t *split_argv(apr_pool_t *p, const char *interp,
                 break;
             }
             ap_unescape_url(w);
-            prep_string(&w, p);
+            if (win_nt) {
+                prep_string(&w, p);
+            }
             arg = (const char**)apr_array_push(args);
             *arg = ap_escape_shell_cmd(p, w);
         }
@@ -521,7 +528,7 @@ static apr_status_t ap_cgi_build_command(const char **cmd, const char ***argv,
      * application (following the OEM or Ansi code page in effect.)
      */
     for (i = 0; i < elts_arr->nelts; ++i) {
-        if (elts[i].key && *elts[i].key
+        if (win_nt && elts[i].key && *elts[i].key
                 && (strncmp(elts[i].key, "HTTP_", 5) == 0
                  || strncmp(elts[i].key, "SERVER_", 7) == 0
                  || strncmp(elts[i].key, "REQUEST_", 8) == 0
@@ -534,9 +541,16 @@ static apr_status_t ap_cgi_build_command(const char **cmd, const char ***argv,
     return APR_SUCCESS;
 }
 
+static int win32_pre_config(apr_pool_t *pconf_, apr_pool_t *plog, apr_pool_t *ptemp)
+{
+    win_nt = (osver.dwPlatformId != VER_PLATFORM_WIN32_WINDOWS);
+    return OK;
+}
+
 static void register_hooks(apr_pool_t *p)
 {
     APR_REGISTER_OPTIONAL_FN(ap_cgi_build_command);
+    ap_hook_pre_config(win32_pre_config, NULL, NULL, APR_HOOK_MIDDLE);
 }
 
 static const command_rec win32_cmds[] = {

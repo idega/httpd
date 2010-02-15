@@ -13,19 +13,17 @@
 <body>
 <div id="page-header">
 <p class="menu"><a href="../mod/">Modules</a> | <a href="../mod/directives.html">Directives</a> | <a href="../faq/">FAQ</a> | <a href="../glossary.html">Glossary</a> | <a href="../sitemap.html">Sitemap</a></p>
-<p class="apache">Apache HTTP Server Version 2.3</p>
+<p class="apache">Apache HTTP Server Version 2.2</p>
 <img alt="" src="../images/feather.gif" /></div>
 <div class="up"><a href="./"><img title="&lt;-" alt="&lt;-" src="../images/left.gif" /></a></div>
 <div id="path">
-<a href="http://www.apache.org/">Apache</a> &gt; <a href="http://httpd.apache.org/">HTTP Server</a> &gt; <a href="http://httpd.apache.org/docs/">Documentation</a> &gt; <a href="../">Version 2.3</a> &gt; <a href="./">Modules</a></div>
+<a href="http://www.apache.org/">Apache</a> &gt; <a href="http://httpd.apache.org/">HTTP Server</a> &gt; <a href="http://httpd.apache.org/docs/">Documentation</a> &gt; <a href="../">Version 2.2</a> &gt; <a href="./">Modules</a></div>
 <div id="page-content">
 <div id="preamble"><h1>Apache Module mod_dir</h1>
 <div class="toplang">
 <p><span>Available Languages: </span><a href="../en/mod/mod_dir.html" title="English">&nbsp;en&nbsp;</a> |
-<a href="../fr/mod/mod_dir.html" hreflang="fr" rel="alternate" title="Français">&nbsp;fr&nbsp;</a> |
 <a href="../ja/mod/mod_dir.html" hreflang="ja" rel="alternate" title="Japanese">&nbsp;ja&nbsp;</a> |
-<a href="../ko/mod/mod_dir.html" hreflang="ko" rel="alternate" title="Korean">&nbsp;ko&nbsp;</a> |
-<a href="../tr/mod/mod_dir.html" hreflang="tr" rel="alternate" title="Türkçe">&nbsp;tr&nbsp;</a></p>
+<a href="../ko/mod/mod_dir.html" hreflang="ko" rel="alternate" title="Korean">&nbsp;ko&nbsp;</a></p>
 </div>
 <table class="module"><tr><th><a href="module-dict.html#Description">Description:</a></th><td>Provides for "trailing slash" redirects and
     serving directory index files</td></tr>
@@ -60,7 +58,6 @@
 <ul id="toc">
 <li><img alt="" src="../images/down.gif" /> <a href="#directoryindex">DirectoryIndex</a></li>
 <li><img alt="" src="../images/down.gif" /> <a href="#directoryslash">DirectorySlash</a></li>
-<li><img alt="" src="../images/down.gif" /> <a href="#fallbackresource">FallbackResource</a></li>
 </ul>
 </div>
 
@@ -70,7 +67,7 @@
 <tr><th><a href="directive-dict.html#Description">Description:</a></th><td>List of resources to look for when the client requests
 a directory</td></tr>
 <tr><th><a href="directive-dict.html#Syntax">Syntax:</a></th><td><code>DirectoryIndex
-    disabled | <var>local-url</var> [<var>local-url</var>] ...</code></td></tr>
+    <var>local-url</var> [<var>local-url</var>] ...</code></td></tr>
 <tr><th><a href="directive-dict.html#Default">Default:</a></th><td><code>DirectoryIndex index.html</code></td></tr>
 <tr><th><a href="directive-dict.html#Context">Context:</a></th><td>server config, virtual host, directory, .htaccess</td></tr>
 <tr><th><a href="directive-dict.html#Override">Override:</a></th><td>Indexes</td></tr>
@@ -106,12 +103,6 @@ a directory</td></tr>
     <p>would cause the CGI script <code>/cgi-bin/index.pl</code> to be
     executed if neither <code>index.html</code> or <code>index.txt</code>
     existed in a directory.</p>
-
-    <p>A single argument of "disabled" prevents <code class="module"><a href="../mod/mod_dir.html">mod_dir</a></code> from 
-    searching for an index.  An argument of "disabled" will be interpeted
-    literally if it has any arguments before or after it, even if they are "disabled"
-    as well.</p>
-
 
 </div>
 <div class="top"><a href="#page-header"><img alt="top" src="../images/up.gif" /></a></div>
@@ -167,49 +158,12 @@ a directory</td></tr>
     </div>
 
 </div>
-<div class="top"><a href="#page-header"><img alt="top" src="../images/up.gif" /></a></div>
-<div class="directive-section"><h2><a name="FallbackResource" id="FallbackResource">FallbackResource</a> <a name="fallbackresource" id="fallbackresource">Directive</a></h2>
-<table class="directive">
-<tr><th><a href="directive-dict.html#Description">Description:</a></th><td>Define a default URL for requests that don't map to a file</td></tr>
-<tr><th><a href="directive-dict.html#Syntax">Syntax:</a></th><td><code>FallbackResource <var>local-url</var></code></td></tr>
-<tr><th><a href="directive-dict.html#Default">Default:</a></th><td><code>None - httpd will return 404 (Not Found)</code></td></tr>
-<tr><th><a href="directive-dict.html#Context">Context:</a></th><td>server config, virtual host, directory, .htaccess</td></tr>
-<tr><th><a href="directive-dict.html#Override">Override:</a></th><td>Indexes</td></tr>
-<tr><th><a href="directive-dict.html#Status">Status:</a></th><td>Base</td></tr>
-<tr><th><a href="directive-dict.html#Module">Module:</a></th><td>mod_dir</td></tr>
-</table>
-    <p>Use this to set a handler for any URL that doesn't map to anything
-    in your filesystem, and would otherwise return HTTP 404 (Not Found).
-    For example</p>
-    <div class="example"><p><code>
-        <code>FallbackResource not-404.php</code>
-    </code></p></div>
-    <p>will cause requests for non-existent files to be handled by
-    <code>not-404.php</code>, while requests for files that exist
-    are unaffected.</p>
-    <p>It is frequently desirable to have a single file or resource
-    handle all requests to a particular directory, except those requests
-    that correspond to an existing file or script. This is often
-    referred to as a 'front controller.'</p>
-    <p>In earlier versions of httpd, this effect typically required
-    <code class="module"><a href="../mod/mod_rewrite.html">mod_rewrite</a></code>, and the use of the <code>-f</code> and
-    <code>-d</code> tests for file and directory existence. This now
-    requires only one line of configuration.</p>
-    <div class="example"><p><code>
-        <code>FallbackResource index.php</code>
-    </code></p></div>
-    <p>Existing files, such as images, css files, and so on, will be
-    served normally.</p>
-
-</div>
 </div>
 <div class="bottomlang">
 <p><span>Available Languages: </span><a href="../en/mod/mod_dir.html" title="English">&nbsp;en&nbsp;</a> |
-<a href="../fr/mod/mod_dir.html" hreflang="fr" rel="alternate" title="Français">&nbsp;fr&nbsp;</a> |
 <a href="../ja/mod/mod_dir.html" hreflang="ja" rel="alternate" title="Japanese">&nbsp;ja&nbsp;</a> |
-<a href="../ko/mod/mod_dir.html" hreflang="ko" rel="alternate" title="Korean">&nbsp;ko&nbsp;</a> |
-<a href="../tr/mod/mod_dir.html" hreflang="tr" rel="alternate" title="Türkçe">&nbsp;tr&nbsp;</a></p>
+<a href="../ko/mod/mod_dir.html" hreflang="ko" rel="alternate" title="Korean">&nbsp;ko&nbsp;</a></p>
 </div><div id="footer">
-<p class="apache">Copyright 2010 The Apache Software Foundation.<br />Licensed under the <a href="http://www.apache.org/licenses/LICENSE-2.0">Apache License, Version 2.0</a>.</p>
+<p class="apache">Copyright 2007 The Apache Software Foundation.<br />Licensed under the <a href="http://www.apache.org/licenses/LICENSE-2.0">Apache License, Version 2.0</a>.</p>
 <p class="menu"><a href="../mod/">Modules</a> | <a href="../mod/directives.html">Directives</a> | <a href="../faq/">FAQ</a> | <a href="../glossary.html">Glossary</a> | <a href="../sitemap.html">Sitemap</a></p></div>
 </body></html>

@@ -28,7 +28,6 @@
 #include "http_log.h"
 #include "http_protocol.h"
 #include "http_request.h"
-#include "util_mutex.h"
 #include "util_ldap.h"
 #include "util_ldap_cache.h"
 
@@ -42,6 +41,17 @@
 #error mod_ldap requires APR-util to have LDAP support built in
 #endif
 
+#ifdef AP_NEED_SET_MUTEX_PERMS
+#include "unixd.h"
+#endif
+
+    /* defines for certificate file types
+    */
+#define LDAP_CA_TYPE_UNKNOWN            0
+#define LDAP_CA_TYPE_DER                1
+#define LDAP_CA_TYPE_BASE64             2
+#define LDAP_CA_TYPE_CERT7_DB           3
+
 /* Default define for ldap functions that need a SIZELIMIT but
  * do not have the define
  * XXX This should be removed once a supporting #define is 
@@ -51,20 +61,7 @@
 #define APR_LDAP_SIZELIMIT -1
 #endif
 
-#ifdef LDAP_OPT_DEBUG_LEVEL
-#define AP_LDAP_OPT_DEBUG LDAP_OPT_DEBUG_LEVEL
-#else
-#ifdef LDAP_OPT_DEBUG
-#define AP_LDAP_OPT_DEBUG LDAP_OPT_DEBUG
-#endif
-#endif
-
-#define AP_LDAP_HOPLIMIT_UNSET -1 
-#define AP_LDAP_CHASEREFERRALS_OFF 0
-#define AP_LDAP_CHASEREFERRALS_ON 1
-
 module AP_MODULE_DECLARE_DATA ldap_module;
-static const char *ldap_cache_mutex_type = "ldap-cache";
 
 #define LDAP_CACHE_LOCK() do {                                  \
     if (st->util_ldap_cache_lock)                               \
@@ -75,8 +72,6 @@ static const char *ldap_cache_mutex_type = "ldap-cache";
     if (st->util_ldap_cache_lock)                               \
         apr_global_mutex_unlock(st->util_ldap_cache_lock);      \
 } while (0)
-
-static apr_status_t util_ldap_connection_remove (void *param);
 
 static void util_ldap_strdup (char **str, const char *newstr)
 {
@@ -116,8 +111,7 @@ static int util_ldap_handler(request_rec *r)
         return DECLINED;
     }
 
-    ap_set_content_type(r, "text/html; charset=ISO-8859-1");
-
+    r->content_type = "text/html; charset=ISO-8859-1";
     if (r->header_only)
         return OK;
 
@@ -131,9 +125,9 @@ static int util_ldap_handler(request_rec *r)
     return OK;
 }
 
-
-
 /* ------------------------------------------------------------------ */
+
+
 /*
  * Closes an LDAP connection by unlocking it. The next time
  * uldap_connection_find() is called this connection will be
@@ -153,22 +147,18 @@ static void uldap_connection_close(util_ldap_connection_t *ldc)
      * we don't have to...
      */
 
-     if (!ldc->keep) { 
-         util_ldap_connection_remove(ldc);
-     }
-     else { 
-         /* mark our connection as available for reuse */
+    /* mark our connection as available for reuse */
+
 #if APR_HAS_THREADS
-         apr_thread_mutex_unlock(ldc->lock);
+    apr_thread_mutex_unlock(ldc->lock);
 #endif
-     }
 }
 
 
 /*
  * Destroys an LDAP connection by unbinding and closing the connection to
  * the LDAP server. It is used to bring the connection back to a known
- * state after an error.
+ * state after an error, and during pool cleanup.
  */
 static apr_status_t uldap_connection_unbind(void *param)
 {
@@ -188,17 +178,14 @@ static apr_status_t uldap_connection_unbind(void *param)
 
 /*
  * Clean up an LDAP connection by unbinding and unlocking the connection.
- * This cleanup does not remove the util_ldap_connection_t from the 
- * per-virtualhost list of connections, does not remove the storage
- * for the util_ldap_connection_t or it's data, and is NOT run automatically.
+ * This function is registered with the pool cleanup function - causing
+ * the LDAP connections to be shut down cleanly on graceful restart.
  */
 static apr_status_t uldap_connection_cleanup(void *param)
 {
     util_ldap_connection_t *ldc = param;
 
     if (ldc) {
-        /* Release the rebind info for this connection. No more referral rebinds required. */
-        apr_ldap_rebind_remove(ldc->ldap);
 
         /* unbind and disconnect from the LDAP server */
         uldap_connection_unbind(ldc);
@@ -210,82 +197,22 @@ static apr_status_t uldap_connection_cleanup(void *param)
         if (ldc->binddn) {
             free((void*)ldc->binddn);
         }
-        /* ldc->reason is allocated from r->pool */
-        if (ldc->reason) {
-            ldc->reason = NULL;
-        }
+
         /* unlock this entry */
         uldap_connection_close(ldc);
 
-     }
-
-    return APR_SUCCESS;
-}
-
-/*
- * util_ldap_connection_remove frees all storage associated with the LDAP
- * connection and removes it completely from the per-virtualhost list of
- * connections
- *
- * The caller should hold the lock for this connection
- */
-static apr_status_t util_ldap_connection_remove (void *param) { 
-    util_ldap_connection_t *ldc = param, *l  = NULL, *prev = NULL;
-    util_ldap_state_t *st = ldc->st;
-
-    if (!ldc) return APR_SUCCESS;
-
-    uldap_connection_unbind(ldc);
-
-#if APR_HAS_THREADS
-    apr_thread_mutex_lock(st->mutex);
-#endif
-
-    /* Remove ldc from the list */
-    for (l=st->connections; l; l=l->next) {
-        if (l == ldc) {
-            if (prev) {
-                prev->next = l->next; 
-            }
-            else { 
-                st->connections = l->next;
-            }
-            break;
-        }
-        prev = l;
     }
 
-    /* Some unfortunate duplication between this method
-     * and uldap_connection_cleanup()
-    */
-    if (ldc->bindpw) {
-        free((void*)ldc->bindpw);
-    }
-    if (ldc->binddn) {
-        free((void*)ldc->binddn);
-    }
-
-#if APR_HAS_THREADS
-    apr_thread_mutex_unlock(ldc->lock);
-    apr_thread_mutex_unlock(st->mutex);
-#endif
-
-    /* Destory the pool associated with this connection */
-
-    apr_pool_destroy(ldc->pool);   
-   
     return APR_SUCCESS;
 }
 
 static int uldap_connection_init(request_rec *r,
-                                 util_ldap_connection_t *ldc)
+                                 util_ldap_connection_t *ldc )
 {
     int rc = 0, ldap_option = 0;
     int version  = LDAP_VERSION3;
     apr_ldap_err_t *result = NULL;
-#ifdef LDAP_OPT_NETWORK_TIMEOUT
-    struct timeval connectionTimeout = {10,0};    /* 10 second connection timeout */
-#endif
+    struct timeval timeOut = {10,0};    /* 10 second connection timeout */
     util_ldap_state_t *st =
         (util_ldap_state_t *)ap_get_module_config(r->server->module_config,
         &ldap_module);
@@ -302,16 +229,8 @@ static int uldap_connection_init(request_rec *r,
                   APR_LDAP_NONE,
                   &(result));
 
-    if (NULL == result) {
-        /* something really bad happened */
-        ldc->bound = 0;
-        if (NULL == ldc->reason) {
-            ldc->reason = "LDAP: ldap initialization failed";
-        }
-        return(APR_EGENERAL);
-    }
 
-    if (result->rc) {
+    if (result != NULL && result->rc) {
         ldc->reason = result->reason;
     }
 
@@ -325,16 +244,6 @@ static int uldap_connection_init(request_rec *r,
             ldc->reason = result->reason;
         }
         return(result->rc);
-    }
-
-    /* Now that we have an ldap struct, add it to the referral list for rebinds. */
-    rc = apr_ldap_rebind_add(ldc->pool, ldc->ldap, ldc->binddn, ldc->bindpw);
-    if (rc != APR_SUCCESS) {
-        ap_log_error(APLOG_MARK, APLOG_ERR, 0, r->server,
-                     "LDAP: Unable to add rebind cross reference entry. Out of memory?");
-        uldap_connection_unbind(ldc);
-        ldc->reason = "LDAP: Unable to add rebind cross reference entry.";
-        return(rc);
     }
 
     /* always default to LDAP V3 */
@@ -366,51 +275,10 @@ static int uldap_connection_init(request_rec *r,
     ldap_option = ldc->deref;
     ldap_set_option(ldc->ldap, LDAP_OPT_DEREF, &ldap_option);
 
-    /* Set options for rebind and referrals. */
-    ap_log_error(APLOG_MARK, APLOG_DEBUG, 0, r->server,
-                 "LDAP: Setting referrals to %s.",
-                 ((ldc->ChaseReferrals == AP_LDAP_CHASEREFERRALS_ON) ? "On" : "Off"));
-    apr_ldap_set_option(r->pool, ldc->ldap,
-                        APR_LDAP_OPT_REFERRALS,
-                        (void *)((ldc->ChaseReferrals == AP_LDAP_CHASEREFERRALS_ON) ?
-                                 LDAP_OPT_ON : LDAP_OPT_OFF),
-                        &(result));
-    if (result->rc != LDAP_SUCCESS) {
-        ap_log_error(APLOG_MARK, APLOG_DEBUG, 0, r->server,
-                     "Unable to set LDAP_OPT_REFERRALS option to %s: %d.",
-                     ((ldc->ChaseReferrals == AP_LDAP_CHASEREFERRALS_ON) ? "On" : "Off"),
-                     result->rc);
-        result->reason = "Unable to set LDAP_OPT_REFERRALS.";
-        ldc->reason = result->reason;
-        uldap_connection_unbind(ldc);
-        return(result->rc);
-    }
-
-    if ((ldc->ReferralHopLimit != AP_LDAP_HOPLIMIT_UNSET) && ldc->ChaseReferrals == AP_LDAP_CHASEREFERRALS_ON) {
-        /* Referral hop limit - only if referrals are enabled and a hop limit is explicitly requested */
-        ap_log_error(APLOG_MARK, APLOG_DEBUG, 0, r->server,
-                     "Setting referral hop limit to %d.",
-                     ldc->ReferralHopLimit);
-        apr_ldap_set_option(r->pool, ldc->ldap,
-                            APR_LDAP_OPT_REFHOPLIMIT,
-                            (void *)&ldc->ReferralHopLimit,
-                            &(result));
-        if (result->rc != LDAP_SUCCESS) {
-          ap_log_error(APLOG_MARK, APLOG_DEBUG, 0, r->server,
-                       "Unable to set LDAP_OPT_REFHOPLIMIT option to %d: %d.",
-                       ldc->ReferralHopLimit,
-                       result->rc);
-          result->reason = "Unable to set LDAP_OPT_REFHOPLIMIT.";
-          ldc->reason = result->reason;
-          uldap_connection_unbind(ldc);
-          return(result->rc);
-        }
-    }
-
 /*XXX All of the #ifdef's need to be removed once apr-util 1.2 is released */
 #ifdef APR_LDAP_OPT_VERIFY_CERT
-    apr_ldap_set_option(r->pool, ldc->ldap, APR_LDAP_OPT_VERIFY_CERT,
-                        &(st->verify_svr_cert), &(result));
+    apr_ldap_set_option(r->pool, ldc->ldap,
+                        APR_LDAP_OPT_VERIFY_CERT, &(st->verify_svr_cert), &(result));
 #else
 #if defined(LDAPSSL_VERIFY_SERVER)
     if (st->verify_svr_cert) {
@@ -435,12 +303,12 @@ static int uldap_connection_init(request_rec *r,
 
 #ifdef LDAP_OPT_NETWORK_TIMEOUT
     if (st->connectionTimeout > 0) {
-        connectionTimeout.tv_sec = st->connectionTimeout;
+        timeOut.tv_sec = st->connectionTimeout;
     }
 
     if (st->connectionTimeout >= 0) {
         rc = apr_ldap_set_option(r->pool, ldc->ldap, LDAP_OPT_NETWORK_TIMEOUT,
-                                 (void *)&connectionTimeout, &(result));
+                                 (void *)&timeOut, &(result));
         if (APR_SUCCESS != rc) {
             ap_log_error(APLOG_MARK, APLOG_ERR, 0, r->server,
                              "LDAP: Could not set the connection timeout");
@@ -448,60 +316,7 @@ static int uldap_connection_init(request_rec *r,
     }
 #endif
 
-#ifdef LDAP_OPT_TIMEOUT
-    /*
-     * LDAP_OPT_TIMEOUT is not portable, but it influences all synchronous ldap
-     * function calls and not just ldap_search_ext_s(), which accepts a timeout
-     * parameter.
-     * XXX: It would be possible to simulate LDAP_OPT_TIMEOUT by replacing all
-     * XXX: synchronous ldap function calls with asynchronous calls and using
-     * XXX: ldap_result() with a timeout.
-     */
-    if (st->opTimeout) {
-        rc = apr_ldap_set_option(r->pool, ldc->ldap, LDAP_OPT_TIMEOUT,
-                                 st->opTimeout, &(result));
-        if (APR_SUCCESS != rc) {
-            ap_log_error(APLOG_MARK, APLOG_ERR, 0, r->server,
-                             "LDAP: Could not set LDAP_OPT_TIMEOUT");
-        }
-    }
-#endif
-
     return(rc);
-}
-
-/*
- * Replacement function for ldap_simple_bind_s() with a timeout.
- * To do this in a portable way, we have to use ldap_simple_bind() and 
- * ldap_result().
- *
- * Returns LDAP_SUCCESS on success; and an error code on failure
- */
-static int uldap_simple_bind(util_ldap_connection_t *ldc, char *binddn,
-                             char* bindpw, struct timeval *timeout)
-{
-    LDAPMessage *result;
-    int rc;
-    int msgid = ldap_simple_bind(ldc->ldap, binddn, bindpw);
-    if (msgid == -1) {
-        ldc->reason = "LDAP: ldap_simple_bind() failed";
-        /* -1 is LDAP_SERVER_DOWN in openldap, use something else */
-        return LDAP_OTHER;
-    }
-    rc = ldap_result(ldc->ldap, msgid, 0, timeout, &result);
-    if (rc == -1) {
-        ldc->reason = "LDAP: ldap_simple_bind() result retrieval failed";
-        /* -1 is LDAP_SERVER_DOWN in openldap, use something else */
-        rc = LDAP_OTHER;
-    }
-    else if (rc == 0) {
-        ldc->reason = "LDAP: ldap_simple_bind() timed out";
-        rc = LDAP_TIMEOUT;
-    } else if (ldap_parse_result(ldc->ldap, result, &rc, NULL, NULL, NULL,
-                                 NULL, 1) == -1) {
-        ldc->reason = "LDAP: ldap_simple_bind() parse result failed";
-    }
-    return rc;
 }
 
 /*
@@ -515,8 +330,6 @@ static int uldap_connection_open(request_rec *r,
 {
     int rc = 0;
     int failures = 0;
-    int new_connection = 0;
-    util_ldap_state_t *st;
 
     /* sanity check for NULL */
     if (!ldc) {
@@ -535,7 +348,6 @@ static int uldap_connection_open(request_rec *r,
     */
     if (NULL == ldc->ldap)
     {
-       new_connection = 1;
        rc = uldap_connection_init( r, ldc );
        if (LDAP_SUCCESS != rc)
        {
@@ -544,33 +356,22 @@ static int uldap_connection_open(request_rec *r,
     }
 
 
-    st = (util_ldap_state_t *)ap_get_module_config(r->server->module_config,
-                                                   &ldap_module);
-
     /* loop trying to bind up to 10 times if LDAP_SERVER_DOWN error is
-     * returned. If LDAP_TIMEOUT is returned on the first try, maybe the
-     * connection was idle for a long time and has been dropped by a firewall.
-     * In this case close the connection immediately and try again.
-     *
-     * On Success or any other error, break out of the loop.
+     * returned.  Break out of the loop on Success or any other error.
      *
      * NOTE: Looping is probably not a great idea. If the server isn't
      * responding the chances it will respond after a few tries are poor.
      * However, the original code looped and it only happens on
      * the error condition.
-     */
+      */
     for (failures=0; failures<10; failures++)
     {
-        rc = uldap_simple_bind(ldc, (char *)ldc->binddn, (char *)ldc->bindpw,
-                               st->opTimeout);
-        if ((AP_LDAP_IS_SERVER_DOWN(rc) && failures == 5) ||
-            (rc == LDAP_TIMEOUT && failures == 0))
-        {
-           if (rc == LDAP_TIMEOUT && !new_connection) {
-               ap_log_rerror(APLOG_MARK, APLOG_INFO, 0, r,
-                             "ldap_simple_bind() timed out on reused "
-                             "connection, dropped by firewall?");
-           }
+        rc = ldap_simple_bind_s(ldc->ldap,
+                                (char *)ldc->binddn,
+                                (char *)ldc->bindpw);
+        if (!AP_LDAP_IS_SERVER_DOWN(rc)) {
+            break;
+        } else if (failures == 5) {
            /* attempt to init the connection once again */
            uldap_connection_unbind( ldc );
            rc = uldap_connection_init( r, ldc );
@@ -578,10 +379,7 @@ static int uldap_connection_open(request_rec *r,
            {
                break;
            }
-        }
-        else if (!AP_LDAP_IS_SERVER_DOWN(rc)) {
-            break;
-        }
+       }
     }
 
     /* free the handle if there was an error
@@ -589,7 +387,7 @@ static int uldap_connection_open(request_rec *r,
     if (LDAP_SUCCESS != rc)
     {
        uldap_connection_unbind(ldc);
-        ldc->reason = "LDAP: ldap_simple_bind() failed";
+        ldc->reason = "LDAP: ldap_simple_bind_s() failed";
     }
     else {
         ldc->bound = 1;
@@ -658,8 +456,7 @@ static util_ldap_connection_t *
     util_ldap_state_t *st =
         (util_ldap_state_t *)ap_get_module_config(r->server->module_config,
         &ldap_module);
-    util_ldap_config_t *dc =
-        (util_ldap_config_t *) ap_get_module_config(r->per_dir_config, &ldap_module);
+
 
 #if APR_HAS_THREADS
     /* mutex lock this function */
@@ -730,43 +527,37 @@ static util_ldap_connection_t *
 /* artificially disable cache */
 /* l = NULL; */
 
-    /* If no connection was found after the second search, we
+    /* If no connection what found after the second search, we
      * must create one.
      */
     if (!l) {
-        apr_pool_t *newpool;
-        if (apr_pool_create(&newpool, NULL) != APR_SUCCESS) {
+
+        /*
+         * Add the new connection entry to the linked list. Note that we
+         * don't actually establish an LDAP connection yet; that happens
+         * the first time authentication is requested.
+         */
+        /* create the details to the pool in st */
+        l = apr_pcalloc(st->pool, sizeof(util_ldap_connection_t));
+        if (apr_pool_create(&l->pool, st->pool) != APR_SUCCESS) { 
             ap_log_rerror(APLOG_MARK, APLOG_CRIT, 0, r,
                           "util_ldap: Failed to create memory pool");
 #if APR_HAS_THREADS
             apr_thread_mutex_unlock(st->mutex);
 #endif
             return NULL;
+    
         }
- 
-        /*
-         * Add the new connection entry to the linked list. Note that we
-         * don't actually establish an LDAP connection yet; that happens
-         * the first time authentication is requested.
-         */
-
-        /* create the details of this connection in the new pool */
-        l = apr_pcalloc(newpool, sizeof(util_ldap_connection_t));
-        l->pool = newpool;
-        l->st = st;
-
 #if APR_HAS_THREADS
-        apr_thread_mutex_create(&l->lock, APR_THREAD_MUTEX_DEFAULT, l->pool);
+        apr_thread_mutex_create(&l->lock, APR_THREAD_MUTEX_DEFAULT, st->pool);
         apr_thread_mutex_lock(l->lock);
 #endif
         l->bound = 0;
-        l->host = apr_pstrdup(l->pool, host);
+        l->host = apr_pstrdup(st->pool, host);
         l->port = port;
         l->deref = deref;
         util_ldap_strdup((char**)&(l->binddn), binddn);
         util_ldap_strdup((char**)&(l->bindpw), bindpw);
-        l->ChaseReferrals = dc->ChaseReferrals;
-        l->ReferralHopLimit = dc->ReferralHopLimit;
 
         /* The security mode after parsing the URL will always be either
          * APR_LDAP_NONE (ldap://) or APR_LDAP_SSL (ldaps://).
@@ -778,7 +569,10 @@ static util_ldap_connection_t *
         /* save away a copy of the client cert list that is presently valid */
         l->client_certs = apr_array_copy_hdr(l->pool, st->client_certs);
 
-        l->keep = 1;
+        /* add the cleanup to the pool */
+        apr_pool_cleanup_register(l->pool, l,
+                                  uldap_connection_cleanup,
+                                  apr_pool_cleanup_null);
 
         if (p) {
             p->next = l;
@@ -879,21 +673,11 @@ start_over:
     /* search for reqdn */
     result = ldap_search_ext_s(ldc->ldap, (char *)reqdn, LDAP_SCOPE_BASE,
                                "(objectclass=*)", NULL, 1,
-                               NULL, NULL, st->opTimeout, APR_LDAP_SIZELIMIT, &res);
+                               NULL, NULL, NULL, APR_LDAP_SIZELIMIT, &res);
     if (AP_LDAP_IS_SERVER_DOWN(result))
     {
         ldc->reason = "DN Comparison ldap_search_ext_s() "
                       "failed with server down";
-        uldap_connection_unbind(ldc);
-        goto start_over;
-    }
-    if (result == LDAP_TIMEOUT && failures == 0) {
-        /*
-         * we are reusing a connection that doesn't seem to be active anymore
-         * (firewall state drop?), let's try a new connection.
-         */
-        ldc->reason = "DN Comparison ldap_search_ext_s() "
-                      "failed with timeout";
         uldap_connection_unbind(ldc);
         goto start_over;
     }
@@ -939,9 +723,9 @@ start_over:
 /*
  * Does an generic ldap_compare operation. It accepts a cache that it will use
  * to lookup the compare in the cache. We cache two kinds of compares
- * (require group compares) and (require user compares). Each compare has a
- * different cache node: require group includes the DN; require user does not
- * because the require user cache is owned by the
+ * (require group compares) and (require user compares). Each compare has a different
+ * cache node: require group includes the DN; require user does not because the
+ * require user cache is owned by the
  *
  */
 static int uldap_cache_compare(request_rec *r, util_ldap_connection_t *ldc,
@@ -978,8 +762,6 @@ static int uldap_cache_compare(request_rec *r, util_ldap_connection_t *ldc,
         the_compare_node.attrib = (char *)attrib;
         the_compare_node.value = (char *)value;
         the_compare_node.result = 0;
-        the_compare_node.sgl_processed = 0;
-        the_compare_node.subgroupList = NULL;
 
         compare_nodep = util_ald_cache_fetch(curl->compare_cache,
                                              &the_compare_node);
@@ -992,24 +774,24 @@ static int uldap_cache_compare(request_rec *r, util_ldap_connection_t *ldc,
             }
             else {
                 /* ...and it is good */
+                /* unlock this read lock */
+                LDAP_CACHE_UNLOCK();
                 if (LDAP_COMPARE_TRUE == compare_nodep->result) {
                     ldc->reason = "Comparison true (cached)";
+                    return compare_nodep->result;
                 }
                 else if (LDAP_COMPARE_FALSE == compare_nodep->result) {
                     ldc->reason = "Comparison false (cached)";
+                    return compare_nodep->result;
                 }
                 else if (LDAP_NO_SUCH_ATTRIBUTE == compare_nodep->result) {
                     ldc->reason = "Comparison no such attribute (cached)";
+                    return compare_nodep->result;
                 }
                 else {
                     ldc->reason = "Comparison undefined (cached)";
+                    return compare_nodep->result;
                 }
-
-                /* record the result code to return with the reason... */
-                result = compare_nodep->result;
-                /* and unlock this read lock */
-                LDAP_CACHE_UNLOCK();
-                return result;
             }
         }
         /* unlock this read lock */
@@ -1021,7 +803,6 @@ start_over:
         /* too many failures */
         return result;
     }
-
     if (LDAP_SUCCESS != (result = uldap_connection_open(r, ldc))) {
         /* connect failed */
         return result;
@@ -1037,15 +818,6 @@ start_over:
         uldap_connection_unbind(ldc);
         goto start_over;
     }
-    if (result == LDAP_TIMEOUT && failures == 0) {
-        /*
-         * we are reusing a connection that doesn't seem to be active anymore
-         * (firewall state drop?), let's try a new connection.
-         */
-        ldc->reason = "ldap_compare_s() failed with timeout";
-        uldap_connection_unbind(ldc);
-        goto start_over;
-    }
 
     ldc->reason = "Comparison complete";
     if ((LDAP_COMPARE_TRUE == result) ||
@@ -1056,8 +828,6 @@ start_over:
             LDAP_CACHE_LOCK();
             the_compare_node.lastcompare = curtime;
             the_compare_node.result = result;
-            the_compare_node.sgl_processed = 0;
-            the_compare_node.subgroupList = NULL;
 
             /* If the node doesn't exist then insert it, otherwise just update
              * it with the last results
@@ -1069,15 +839,7 @@ start_over:
                 || (strcmp(the_compare_node.attrib,compare_nodep->attrib) != 0)
                 || (strcmp(the_compare_node.value, compare_nodep->value) != 0))
             {
-                void *junk;
-
-                junk = util_ald_cache_insert(curl->compare_cache,
-                                             &the_compare_node);
-                if(junk == NULL) {
-                    ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, r,
-                                  "[%" APR_PID_T_FMT "] cache_compare: Cache"
-                                  " insertion failure.", getpid());
-                }
+                util_ald_cache_insert(curl->compare_cache, &the_compare_node);
             }
             else {
                 compare_nodep->lastcompare = curtime;
@@ -1100,426 +862,6 @@ start_over:
     }
     return result;
 }
-
-
-static util_compare_subgroup_t* uldap_get_subgroups(request_rec *r,
-                                                    util_ldap_connection_t *ldc,
-                                                    const char *url,
-                                                    const char *dn,
-                                                    char **subgroupAttrs,
-                                                    apr_array_header_t *subgroupclasses)
-{
-    int failures = 0;
-    int result = LDAP_COMPARE_FALSE;
-    util_compare_subgroup_t *res = NULL;
-    LDAPMessage *sga_res, *entry;
-    struct mod_auth_ldap_groupattr_entry_t *sgc_ents;
-    apr_array_header_t *subgroups = apr_array_make(r->pool, 20, sizeof(char *));
-
-    sgc_ents = (struct mod_auth_ldap_groupattr_entry_t *) subgroupclasses->elts;
-
-    if (!subgroupAttrs) {
-        return res;
-    }
-
-start_over:
-    /*
-     * 3.B. The cache didn't have any subgrouplist yet. Go check for subgroups.
-     */
-    if (failures++ > 10) {
-        /* too many failures */
-        return res;
-    }
-
-    if (LDAP_SUCCESS != (result = uldap_connection_open(r, ldc))) {
-        /* connect failed */
-        return res;
-    }
-
-    /* try to do the search */
-    result = ldap_search_ext_s(ldc->ldap, (char *)dn, LDAP_SCOPE_BASE,
-                               (char *)"cn=*", subgroupAttrs, 0,
-                               NULL, NULL, NULL, APR_LDAP_SIZELIMIT, &sga_res);
-    if (AP_LDAP_IS_SERVER_DOWN(result)) {
-        ldc->reason = "ldap_search_ext_s() for subgroups failed with server"
-                      " down";
-        uldap_connection_unbind(ldc);
-        goto start_over;
-    }
-    if (result == LDAP_TIMEOUT && failures == 0) {
-        /*
-         * we are reusing a connection that doesn't seem to be active anymore
-         * (firewall state drop?), let's try a new connection.
-         */
-        ldc->reason = "ldap_search_ext_s() for subgroups failed with timeout";
-        uldap_connection_unbind(ldc);
-        goto start_over;
-    }
-
-    /* if there is an error (including LDAP_NO_SUCH_OBJECT) return now */
-    if (result != LDAP_SUCCESS) {
-        ldc->reason = "ldap_search_ext_s() for subgroups failed";
-        return res;
-    }
-
-    entry = ldap_first_entry(ldc->ldap, sga_res);
-
-    /*
-     * Get values for the provided sub-group attributes.
-     */
-    if (subgroupAttrs) {
-        int indx = 0, tmp_sgcIndex;
-
-        while (subgroupAttrs[indx]) {
-            char **values;
-            int val_index = 0;
-
-            /* Get *all* matching "member" values from this group. */
-            values = ldap_get_values(ldc->ldap, entry, subgroupAttrs[indx]);
-
-            if (values) {
-                val_index = 0;
-                /*
-                 * Now we are going to pare the subgroup members of this group
-                 * to *just* the subgroups, add them to the compare_nodep, and
-                 * then proceed to check the new level of subgroups.
-                 */
-                while (values[val_index]) {
-                    /* Check if this entry really is a group. */
-                    tmp_sgcIndex = 0;
-                    result = LDAP_COMPARE_FALSE;
-                    while ((tmp_sgcIndex < subgroupclasses->nelts)
-                           && (result != LDAP_COMPARE_TRUE)) {
-                        result = uldap_cache_compare(r, ldc, url,
-                                                     values[val_index],
-                                                     "objectClass",
-                                                     sgc_ents[tmp_sgcIndex].name
-                                                     );
-
-                        if (result != LDAP_COMPARE_TRUE) {
-                            tmp_sgcIndex++;
-                        }
-                    }
-                    /* It's a group, so add it to the array.  */
-                    if (result == LDAP_COMPARE_TRUE) {
-                        char **newgrp = (char **) apr_array_push(subgroups);
-                        *newgrp = apr_pstrdup(r->pool, values[val_index]);
-                    }
-                    val_index++;
-                }
-                ldap_value_free(values);
-            }
-            indx++;
-        }
-    }
-
-    ldap_msgfree(sga_res);
-
-    if (subgroups->nelts > 0) {
-        /* We need to fill in tmp_local_subgroups using the data from LDAP */
-        int sgindex;
-        char **group;
-        res = apr_pcalloc(r->pool, sizeof(util_compare_subgroup_t));
-        res->subgroupDNs  = apr_pcalloc(r->pool,
-                                        sizeof(char *) * (subgroups->nelts));
-        for (sgindex = 0; (group = apr_array_pop(subgroups)); sgindex++) {
-            res->subgroupDNs[sgindex] = apr_pstrdup(r->pool, *group);
-        }
-        res->len = sgindex;
-    }
-
-    return res;
-}
-
-
-/*
- * Does a recursive lookup operation to try to find a user within (cached)
- * nested groups. It accepts a cache that it will use to lookup previous
- * compare attempts. We cache two kinds of compares (require group compares)
- * and (require user compares). Each compare has a different cache node:
- * require group includes the DN; require user does not because the require
- * user cache is owned by the
- *
- * DON'T CALL THIS UNLESS YOU CALLED uldap_cache_compare FIRST!!!!!
- *
- *
- * 1. Call uldap_cache_compare for each subgroupclass value to check the
- *    generic, user-agnostic, cached group entry. This will create a new generic
- *    cache entry if there
- *    wasn't one. If nothing returns LDAP_COMPARE_TRUE skip to step 5 since we
- *    have no groups.
- * 2. Lock The cache and get the generic cache entry.
- * 3. Check if there is already a subgrouplist in this generic group's cache
- *    entry.
- *    A. If there is, go to step 4.
- *    B. If there isn't:
- *       i)   Use ldap_search to get the full list
- *            of subgroup "members" (which may include non-group "members").
- *       ii)  Use uldap_cache_compare to strip the list down to just groups.
- *       iii) Lock and add this stripped down list to the cache of the generic
- *            group.
- * 4. Loop through the sgl and call uldap_cache_compare (using the user info)
- *    for each
- *    subgroup to see if the subgroup contains the user and to get the subgroups
- *    added to the
- *    cache (with user-afinity, if they aren't already there).
- *    A. If the user is in the subgroup, then we'll be returning
- *       LDAP_COMPARE_TRUE.
- *    B. if the user isn't in the subgroup (LDAP_COMPARE_FALSE via
- *       uldap_cache_compare) then recursively call this function to get the
- *       sub-subgroups added...
- * 5. Cleanup local allocations.
- * 6. Return the final result.
- */
-
-static int uldap_cache_check_subgroups(request_rec *r,
-                                       util_ldap_connection_t *ldc,
-                                       const char *url, const char *dn,
-                                       const char *attrib, const char *value,
-                                       char **subgroupAttrs,
-                                       apr_array_header_t *subgroupclasses,
-                                       int cur_subgroup_depth,
-                                       int max_subgroup_depth)
-{
-    int result = LDAP_COMPARE_FALSE;
-    util_url_node_t *curl;
-    util_url_node_t curnode;
-    util_compare_node_t *compare_nodep;
-    util_compare_node_t the_compare_node;
-    util_compare_subgroup_t *tmp_local_sgl = NULL;
-    int sgl_cached_empty = 0, sgindex = 0, base_sgcIndex = 0;
-    struct mod_auth_ldap_groupattr_entry_t *sgc_ents =
-            (struct mod_auth_ldap_groupattr_entry_t *) subgroupclasses->elts;
-    util_ldap_state_t *st = (util_ldap_state_t *)
-                            ap_get_module_config(r->server->module_config,
-                                                 &ldap_module);
-
-    /*
-     * Stop looking at deeper levels of nested groups if we have reached the
-     * max. Since we already checked the top-level group in uldap_cache_compare,
-     * we don't need to check it again here - so if max_subgroup_depth is set
-     * to 0, we won't check it (i.e. that is why we check < rather than <=).
-     * We'll be calling uldap_cache_compare from here to check if the user is
-     * in the next level before we recurse into that next level looking for
-     * more subgroups.
-     */
-    if (cur_subgroup_depth >= max_subgroup_depth) {
-        return LDAP_COMPARE_FALSE;
-    }
-
-    /*
-     * 1. Check the "groupiness" of the specified basedn. Stopping at the first
-     *    TRUE return.
-     */
-    while ((base_sgcIndex < subgroupclasses->nelts)
-           && (result != LDAP_COMPARE_TRUE)) {
-        result = uldap_cache_compare(r, ldc, url, dn, "objectClass",
-                                     sgc_ents[base_sgcIndex].name);
-        if (result != LDAP_COMPARE_TRUE) {
-            base_sgcIndex++;
-        }
-    }
-
-    if (result != LDAP_COMPARE_TRUE) {
-        ldc->reason = "DN failed group verification.";
-        return result;
-    }
-
-    /*
-     * 2. Find previously created cache entry and check if there is already a
-     *    subgrouplist.
-     */
-    LDAP_CACHE_LOCK();
-    curnode.url = url;
-    curl = util_ald_cache_fetch(st->util_ldap_cache, &curnode);
-    LDAP_CACHE_UNLOCK();
-
-    if (curl && curl->compare_cache) {
-        /* make a comparison to the cache */
-        LDAP_CACHE_LOCK();
-
-        the_compare_node.dn = (char *)dn;
-        the_compare_node.attrib = (char *)"objectClass";
-        the_compare_node.value = (char *)sgc_ents[base_sgcIndex].name;
-        the_compare_node.result = 0;
-        the_compare_node.sgl_processed = 0;
-        the_compare_node.subgroupList = NULL;
-
-        compare_nodep = util_ald_cache_fetch(curl->compare_cache,
-                                             &the_compare_node);
-
-        if (compare_nodep != NULL) {
-            /*
-             * Found the generic group entry... but the user isn't in this
-             * group or we wouldn't be here.
-             */
-            if (compare_nodep->sgl_processed) {
-                if (compare_nodep->subgroupList) {
-                    /* Make a local copy of the subgroup list */
-                    int i;
-                    ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, r,
-                                  "[%" APR_PID_T_FMT "] util_ldap:"
-                                  " Making local copy of SGL for "
-                                  "group (%s)(objectClass=%s) ",
-                                  getpid(), dn,
-                                  (char *)sgc_ents[base_sgcIndex].name);
-                    tmp_local_sgl = apr_pcalloc(r->pool,
-                                                sizeof(util_compare_subgroup_t));
-                    tmp_local_sgl->len = compare_nodep->subgroupList->len;
-                    tmp_local_sgl->subgroupDNs =
-                        apr_pcalloc(r->pool,
-                                    sizeof(char *) * compare_nodep->subgroupList->len);
-                    for (i = 0; i < compare_nodep->subgroupList->len; i++) {
-                        tmp_local_sgl->subgroupDNs[i] =
-                            apr_pstrdup(r->pool,
-                                        compare_nodep->subgroupList->subgroupDNs[i]);
-                    }
-                }
-                else {
-                    sgl_cached_empty = 1;
-                }
-            }
-        }
-        LDAP_CACHE_UNLOCK();
-    }
-
-    if (!tmp_local_sgl && !sgl_cached_empty) {
-        /* No Cached SGL, retrieve from LDAP */
-        ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, r,
-                      "[%" APR_PID_T_FMT "] util_ldap: no cached SGL for %s,"
-                      " retrieving from LDAP" , getpid(), dn);
-        tmp_local_sgl = uldap_get_subgroups(r, ldc, url, dn, subgroupAttrs,
-                                            subgroupclasses);
-        if (!tmp_local_sgl) {
-            /* No SGL aailable via LDAP either */
-            ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, r, "[%" APR_PID_T_FMT "]"
-                          " util_ldap: no subgroups for %s" , getpid(), dn);
-        }
-
-      if (curl && curl->compare_cache) {
-        /*
-         * Find the generic group cache entry and add the sgl we just retrieved.
-         */
-        LDAP_CACHE_LOCK();
-
-        the_compare_node.dn = (char *)dn;
-        the_compare_node.attrib = (char *)"objectClass";
-        the_compare_node.value = (char *)sgc_ents[base_sgcIndex].name;
-        the_compare_node.result = 0;
-        the_compare_node.sgl_processed = 0;
-        the_compare_node.subgroupList = NULL;
-
-        compare_nodep = util_ald_cache_fetch(curl->compare_cache,
-                                             &the_compare_node);
-
-        if (compare_nodep == NULL) {
-            /*
-             * The group entry we want to attach our SGL to doesn't exist.
-             * We only got here if we verified this DN was actually a group
-             * based on the objectClass, but we can't call the compare function
-             * while we already hold the cache lock -- only the insert.
-             */
-            ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, r,
-                          "[%" APR_PID_T_FMT "] util_ldap: Cache entry "
-                          "for %s doesn't exist",
-                           getpid(), dn);
-            the_compare_node.result = LDAP_COMPARE_TRUE;
-            util_ald_cache_insert(curl->compare_cache, &the_compare_node);
-            compare_nodep = util_ald_cache_fetch(curl->compare_cache,
-                                                 &the_compare_node);
-            if (compare_nodep == NULL) {
-                ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, r,
-                              "[%" APR_PID_T_FMT "] util_ldap: Couldn't "
-                              "retrieve group entry for %s from cache",
-                               getpid(), dn);
-            }
-        }
-
-        /*
-         * We have a valid cache entry and a locally generated SGL.
-         * Attach the SGL to the cache entry
-         */
-        if (compare_nodep && !compare_nodep->sgl_processed) {
-            if (!tmp_local_sgl) {
-                /* We looked up an SGL for a group and found it to be empty */
-                if (compare_nodep->subgroupList == NULL) {
-                    compare_nodep->sgl_processed = 1;
-                }
-            }
-            else {
-                util_compare_subgroup_t *sgl_copy =
-                    util_ald_sgl_dup(curl->compare_cache, tmp_local_sgl);
-                ap_log_error(APLOG_MARK, APLOG_DEBUG, 0, r->server,
-                             "Copying local SGL of len %d for group %s into cache",
-                             tmp_local_sgl->len, dn);
-                if (sgl_copy) {
-                    if (compare_nodep->subgroupList) {
-                        util_ald_sgl_free(curl->compare_cache,
-                                          &(compare_nodep->subgroupList));
-                    }
-                    compare_nodep->subgroupList = sgl_copy;
-                    compare_nodep->sgl_processed = 1;
-                }
-                else {
-                    ap_log_error(APLOG_MARK, APLOG_ERR, 0, r->server,
-                                 "Copy of SGL failed to obtain shared memory, "
-                                 "couldn't update cache");
-                }
-            }
-        }
-        LDAP_CACHE_UNLOCK();
-      }
-    }
-
-    /*
-     * tmp_local_sgl has either been created, or copied out of the cache
-     * If tmp_local_sgl is NULL, there are no subgroups to process and we'll
-     * return false
-     */
-    result = LDAP_COMPARE_FALSE;
-    if (!tmp_local_sgl) {
-        return result;
-    }
-
-    while ((result != LDAP_COMPARE_TRUE) && (sgindex < tmp_local_sgl->len)) {
-        const char *group = NULL;
-        group = tmp_local_sgl->subgroupDNs[sgindex];
-        /*
-         * 4. Now loop through the subgroupList and call uldap_cache_compare
-         * to check for the user.
-         */
-        result = uldap_cache_compare(r, ldc, url, group, attrib, value);
-        if (result == LDAP_COMPARE_TRUE) {
-            /*
-             * 4.A. We found the user in the subgroup. Return
-             * LDAP_COMPARE_TRUE.
-             */
-            ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, r, "[%" APR_PID_T_FMT "]"
-                          " util_ldap: Found user %s in a subgroup (%s) at"
-                          " level %d of %d.", getpid(), r->user, group,
-                          cur_subgroup_depth+1, max_subgroup_depth);
-        }
-        else {
-            /*
-             * 4.B. We didn't find the user in this subgroup, so recurse into
-             * it and keep looking.
-             */
-            ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, r, "[%" APR_PID_T_FMT "]"
-                          " util_ldap: user %s not found in subgroup (%s) at"
-                          " level %d of %d.", getpid(), r->user, group,
-                          cur_subgroup_depth+1, max_subgroup_depth);
-            result = uldap_cache_check_subgroups(r, ldc, url, group, attrib,
-                                                 value, subgroupAttrs,
-                                                 subgroupclasses,
-                                                 cur_subgroup_depth+1,
-                                                 max_subgroup_depth);
-        }
-        sgindex++;
-    }
-
-    return result;
-}
-
 
 static int uldap_cache_checkuserid(request_rec *r, util_ldap_connection_t *ldc,
                                    const char *url, const char *basedn,
@@ -1581,10 +923,12 @@ static int uldap_cache_checkuserid(request_rec *r, util_ldap_connection_t *ldc,
                 /* ...and entry is valid */
                 *binddn = apr_pstrdup(r->pool, search_nodep->dn);
                 if (attrs) {
-                    int i;
-                    *retvals = apr_pcalloc(r->pool, sizeof(char *) * search_nodep->numvals);
-                    for (i = 0; i < search_nodep->numvals; i++) {
+                    int i = 0, k = 0;
+                    while (attrs[k++]);
+                    *retvals = apr_pcalloc(r->pool, sizeof(char *) * k);
+                    while (search_nodep->vals[i]) {
                         (*retvals)[i] = apr_pstrdup(r->pool, search_nodep->vals[i]);
+                        i++;
                     }
                 }
                 LDAP_CACHE_UNLOCK();
@@ -1615,7 +959,7 @@ start_over:
     result = ldap_search_ext_s(ldc->ldap,
                                (char *)basedn, scope,
                                (char *)filter, attrs, 0,
-                               NULL, NULL, st->opTimeout, APR_LDAP_SIZELIMIT, &res);
+                               NULL, NULL, NULL, APR_LDAP_SIZELIMIT, &res);
     if (AP_LDAP_IS_SERVER_DOWN(result))
     {
         ldc->reason = "ldap_search_ext_s() for user failed with server down";
@@ -1670,16 +1014,12 @@ start_over:
      * fails, it means that the password is wrong (the dn obviously
      * exists, since we just retrieved it)
      */
-    result = uldap_simple_bind(ldc, (char *)*binddn, (char *)bindpw,
-                               st->opTimeout);
-    if (AP_LDAP_IS_SERVER_DOWN(result) ||
-        (result == LDAP_TIMEOUT && failures == 0)) {
-        if (AP_LDAP_IS_SERVER_DOWN(result))
-            ldc->reason = "ldap_simple_bind() to check user credentials "
-                          "failed with server down";
-        else
-            ldc->reason = "ldap_simple_bind() to check user credentials "
-                          "timed out";
+    result = ldap_simple_bind_s(ldc->ldap,
+                                (char *)*binddn,
+                                (char *)bindpw);
+    if (AP_LDAP_IS_SERVER_DOWN(result)) {
+        ldc->reason = "ldap_simple_bind_s() to check user credentials "
+                      "failed with server down";
         ldap_msgfree(res);
         uldap_connection_unbind(ldc);
         goto start_over;
@@ -1687,7 +1027,7 @@ start_over:
 
     /* failure? if so - return */
     if (result != LDAP_SUCCESS) {
-        ldc->reason = "ldap_simple_bind() to check user credentials failed";
+        ldc->reason = "ldap_simple_bind_s() to check user credentials failed";
         ldap_msgfree(res);
         uldap_connection_unbind(ldc);
         return result;
@@ -1832,10 +1172,12 @@ static int uldap_cache_getuserdn(request_rec *r, util_ldap_connection_t *ldc,
                 /* ...and entry is valid */
                 *binddn = apr_pstrdup(r->pool, search_nodep->dn);
                 if (attrs) {
-                    int i;
-                    *retvals = apr_pcalloc(r->pool, sizeof(char *) * search_nodep->numvals);
-                    for (i = 0; i < search_nodep->numvals; i++) {
+                    int i = 0, k = 0;
+                    while (attrs[k++]);
+                    *retvals = apr_pcalloc(r->pool, sizeof(char *) * k);
+                    while (search_nodep->vals[i]) {
                         (*retvals)[i] = apr_pstrdup(r->pool, search_nodep->vals[i]);
+                        i++;
                     }
                 }
                 LDAP_CACHE_UNLOCK();
@@ -1866,7 +1208,7 @@ start_over:
     result = ldap_search_ext_s(ldc->ldap,
                                (char *)basedn, scope,
                                (char *)filter, attrs, 0,
-                               NULL, NULL, st->opTimeout, APR_LDAP_SIZELIMIT, &res);
+                               NULL, NULL, NULL, APR_LDAP_SIZELIMIT, &res);
     if (AP_LDAP_IS_SERVER_DOWN(result))
     {
         ldc->reason = "ldap_search_ext_s() for user failed with server down";
@@ -2053,8 +1395,8 @@ static const char *util_ldap_set_cache_ttl(cmd_parms *cmd, void *dummy,
     st->search_cache_ttl = atol(ttl) * 1000000;
 
     ap_log_error(APLOG_MARK, APLOG_DEBUG, 0, cmd->server,
-                 "[%" APR_PID_T_FMT "] ldap cache: Setting cache TTL to %ld"
-                 " microseconds.", getpid(), st->search_cache_ttl);
+                 "[%" APR_PID_T_FMT "] ldap cache: Setting cache TTL to %ld microseconds.",
+                 getpid(), st->search_cache_ttl);
 
     return NULL;
 }
@@ -2077,8 +1419,8 @@ static const char *util_ldap_set_cache_entries(cmd_parms *cmd, void *dummy,
     }
 
     ap_log_error(APLOG_MARK, APLOG_DEBUG, 0, cmd->server,
-                 "[%" APR_PID_T_FMT "] ldap cache: Setting search cache size"
-                 " to %ld entries.", getpid(), st->search_cache_size);
+                 "[%" APR_PID_T_FMT "] ldap cache: Setting search cache size to %ld entries.",
+                 getpid(), st->search_cache_size);
 
     return NULL;
 }
@@ -2098,8 +1440,8 @@ static const char *util_ldap_set_opcache_ttl(cmd_parms *cmd, void *dummy,
     st->compare_cache_ttl = atol(ttl) * 1000000;
 
     ap_log_error(APLOG_MARK, APLOG_DEBUG, 0, cmd->server,
-                 "[%" APR_PID_T_FMT "] ldap cache: Setting operation cache TTL"
-                 " to %ld microseconds.", getpid(), st->compare_cache_ttl);
+                 "[%" APR_PID_T_FMT "] ldap cache: Setting operation cache TTL to %ld microseconds.",
+                 getpid(), st->compare_cache_ttl);
 
     return NULL;
 }
@@ -2122,8 +1464,8 @@ static const char *util_ldap_set_opcache_entries(cmd_parms *cmd, void *dummy,
     }
 
     ap_log_error(APLOG_MARK, APLOG_DEBUG, 0, cmd->server,
-                 "[%" APR_PID_T_FMT "] ldap cache: Setting operation cache size"
-                 " to %ld entries.", getpid(), st->compare_cache_size);
+                 "[%" APR_PID_T_FMT "] ldap cache: Setting operation cache size to %ld "
+                 "entries.", getpid(), st->compare_cache_size);
 
     return NULL;
 }
@@ -2431,11 +1773,9 @@ static const char *util_ldap_set_connection_timeout(cmd_parms *cmd,
                                                     void *dummy,
                                                     const char *ttl)
 {
-#ifdef LDAP_OPT_NETWORK_TIMEOUT
     util_ldap_state_t *st =
         (util_ldap_state_t *)ap_get_module_config(cmd->server->module_config,
                                                   &ldap_module);
-#endif
     const char *err = ap_check_cmd_context(cmd, GLOBAL_ONLY);
 
     if (err != NULL) {
@@ -2446,131 +1786,16 @@ static const char *util_ldap_set_connection_timeout(cmd_parms *cmd,
     st->connectionTimeout = atol(ttl);
 
     ap_log_error(APLOG_MARK, APLOG_DEBUG, 0, cmd->server,
-                 "[%" APR_PID_T_FMT "] ldap connection: Setting connection"
-                 " timeout to %ld seconds.", getpid(), st->connectionTimeout);
+                 "[%" APR_PID_T_FMT "] ldap connection: Setting connection timeout to "
+                 "%ld seconds.", getpid(), st->connectionTimeout);
 #else
     ap_log_error(APLOG_MARK, APLOG_NOTICE, 0, cmd->server,
-                 "LDAP: Connection timeout option not supported by the "
+                 "LDAP: Connection timout option not supported by the "
                  "LDAP SDK in use." );
 #endif
 
     return NULL;
 }
-
-
-static const char *util_ldap_set_chase_referrals(cmd_parms *cmd,
-                                                 void *config,
-                                                 int mode)
-{
-    util_ldap_config_t *dc =  config;
-
-    ap_log_error(APLOG_MARK, APLOG_DEBUG, 0, cmd->server,
-                      "LDAP: Setting referral chasing %s",
-                      (mode == AP_LDAP_CHASEREFERRALS_ON) ? "ON" : "OFF");
-
-    dc->ChaseReferrals = mode;
-
-    return(NULL);
-}
-
-static const char *util_ldap_set_debug_level(cmd_parms *cmd,
-                                             void *config,
-                                             const char *arg) { 
-    util_ldap_state_t *st =
-        (util_ldap_state_t *)ap_get_module_config(cmd->server->module_config,
-                                                  &ldap_module);
-
-    const char *err = ap_check_cmd_context(cmd, GLOBAL_ONLY);
-    if (err != NULL) {
-        return err;
-    }
-
-#ifndef AP_LDAP_OPT_DEBUG
-    return "This directive is not supported with the currently linked LDAP library";
-#endif
-
-    st->debug_level = atoi(arg);
-    return NULL;
-} 
-
-static const char *util_ldap_set_referral_hop_limit(cmd_parms *cmd,
-                                                    void *config,
-                                                    const char *hop_limit)
-{
-    util_ldap_config_t *dc =  config;
-
-    dc->ReferralHopLimit = atol(hop_limit);
-
-    if (dc->ReferralHopLimit <= 0) { 
-        return "LDAPReferralHopLimit must be greater than zero (Use 'LDAPReferrals Off' to disable referral chasing)";
-    }
-
-    ap_log_error(APLOG_MARK, APLOG_DEBUG, 0, cmd->server,
-                 "LDAP: Limit chased referrals to maximum of %d hops.",
-                 dc->ReferralHopLimit);
-
-    return NULL;
-}
-
-static void *util_ldap_create_dir_config(apr_pool_t *p, char *d) {
-   util_ldap_config_t *dc =
-       (util_ldap_config_t *) apr_pcalloc(p,sizeof(util_ldap_config_t));
-
-   /* defaults are AP_LDAP_CHASEREFERRALS_ON and AP_LDAP_DEFAULT_HOPLIMIT */
-   dc->ChaseReferrals = AP_LDAP_CHASEREFERRALS_ON;
-   dc->ReferralHopLimit = AP_LDAP_HOPLIMIT_UNSET;
-
-   return dc;
-}
-
-static const char *util_ldap_set_op_timeout(cmd_parms *cmd,
-                                            void *dummy,
-                                            const char *val)
-{
-    long timeout;
-    char *endptr;
-    util_ldap_state_t *st =
-        (util_ldap_state_t *)ap_get_module_config(cmd->server->module_config,
-                                                  &ldap_module);
-    const char *err = ap_check_cmd_context(cmd, GLOBAL_ONLY);
-
-    if (err != NULL) {
-        return err;
-    }
-
-    timeout = strtol(val, &endptr, 10);
-    if ((val == endptr) || (*endptr != '\0')) {
-        return "Timeout not numerical";
-    }
-    if (timeout < 0) {
-        return "Timeout must be non-negative";
-    }
-
-    if (timeout) {
-        if (!st->opTimeout) {
-            st->opTimeout = apr_pcalloc(cmd->pool, sizeof(struct timeval));
-        }
-        st->opTimeout->tv_sec = timeout;
-    }
-    else {
-        st->opTimeout = NULL;
-    }
-
-    ap_log_error(APLOG_MARK, APLOG_DEBUG, 0, cmd->server,
-                 "[%" APR_PID_T_FMT "] ldap connection: Setting op timeout "
-                 "to %ld seconds.", getpid(), timeout);
-
-#ifndef LDAP_OPT_TIMEOUT
-
-    ap_log_error(APLOG_MARK, APLOG_DEBUG, 0, cmd->server,
-                 "LDAP: LDAP_OPT_TIMEOUT option not supported by the "
-                 "LDAP library in use. Using LDAPTimeout value as search "
-                 "timeout only." );
-#endif
-
-    return NULL;
-}
-
 
 
 static void *util_ldap_create_config(apr_pool_t *p, server_rec *s)
@@ -2579,15 +1804,14 @@ static void *util_ldap_create_config(apr_pool_t *p, server_rec *s)
         (util_ldap_state_t *)apr_pcalloc(p, sizeof(util_ldap_state_t));
 
     /* Create a per vhost pool for mod_ldap to use, serialized with 
-     * st->mutex (also one per vhost).  both are replicated by fork(),
-     * no shared memory managed by either.
+     * st->mutex (also one per vhost) 
      */
     apr_pool_create(&st->pool, p);
 #if APR_HAS_THREADS
     apr_thread_mutex_create(&st->mutex, APR_THREAD_MUTEX_DEFAULT, st->pool);
 #endif
 
-    st->cache_bytes = 500000;
+    st->cache_bytes = 100000;
     st->search_cache_ttl = 600000000;
     st->search_cache_size = 1024;
     st->compare_cache_ttl = 600000000;
@@ -2599,8 +1823,6 @@ static void *util_ldap_create_config(apr_pool_t *p, server_rec *s)
     st->secure = APR_LDAP_NONE;
     st->secure_set = 0;
     st->connectionTimeout = 10;
-    st->opTimeout = apr_pcalloc(p, sizeof(struct timeval));
-    st->opTimeout->tv_sec = 60;
     st->verify_svr_cert = 1;
 
     return st;
@@ -2648,9 +1870,7 @@ static void *util_ldap_merge_config(apr_pool_t *p, void *basev,
         trying to make special expections for one LDAP SDK, GLOBAL_ONLY 
         is being enforced on this setting as well. */
     st->connectionTimeout = base->connectionTimeout;
-    st->opTimeout = base->opTimeout;
     st->verify_svr_cert = base->verify_svr_cert;
-    st->debug_level = base->debug_level;
 
     return st;
 }
@@ -2668,20 +1888,6 @@ static apr_status_t util_ldap_cleanup_module(void *data)
 
     return APR_SUCCESS;
 
-}
-
-static int util_ldap_pre_config(apr_pool_t *pconf, apr_pool_t *plog,
-                                apr_pool_t *ptemp)
-{
-    apr_status_t result;
-
-    result = ap_mutex_register(pconf, ldap_cache_mutex_type, NULL,
-                               APR_LOCK_DEFAULT, 0);
-    if (result != APR_SUCCESS) {
-        return result;
-    }
-
-    return OK;
 }
 
 static int util_ldap_post_config(apr_pool_t *p, apr_pool_t *plog,
@@ -2733,11 +1939,29 @@ static int util_ldap_post_config(apr_pool_t *p, apr_pool_t *plog,
             return DONE;
         }
 
-        result = ap_global_mutex_create(&st->util_ldap_cache_lock,
-                                        ldap_cache_mutex_type, NULL, s, p, 0);
+
+#if APR_HAS_SHARED_MEMORY
+        if (st->cache_file) {
+            st->lock_file = apr_pstrcat(st->pool, st->cache_file, ".lck",
+                                        NULL);
+        }
+#endif
+
+        result = apr_global_mutex_create(&st->util_ldap_cache_lock,
+                                         st->lock_file, APR_LOCK_DEFAULT,
+                                         st->pool);
         if (result != APR_SUCCESS) {
             return result;
         }
+
+#ifdef AP_NEED_SET_MUTEX_PERMS
+        result = unixd_set_global_mutex_perms(st->util_ldap_cache_lock);
+        if (result != APR_SUCCESS) {
+            ap_log_error(APLOG_MARK, APLOG_CRIT, result, s,
+                         "LDAP cache: failed to set mutex permissions");
+            return result;
+        }
+#endif
 
         /* merge config in all vhost */
         s_vhost = s->next;
@@ -2755,6 +1979,7 @@ static int util_ldap_post_config(apr_pool_t *p, apr_pool_t *plog,
                          "for VHOST: %s", st->cache_shm, st->cache_rmm,
                          s_vhost->server_hostname);
 #endif
+            st_vhost->lock_file = st->lock_file;
             s_vhost = s_vhost->next;
         }
 #if APR_HAS_SHARED_MEMORY
@@ -2807,20 +2032,6 @@ static int util_ldap_post_config(apr_pool_t *p, apr_pool_t *plog,
                      result_err ? result_err->reason : "");
     }
 
-    /* Initialize the rebind callback's cross reference list. */
-    apr_ldap_rebind_init (p);
-
-#ifdef AP_LDAP_OPT_DEBUG
-    if (st->debug_level > 0) { 
-        result = ldap_set_option(NULL, AP_LDAP_OPT_DEBUG, &st->debug_level);
-        if (result != LDAP_SUCCESS) {
-            ap_log_error(APLOG_MARK, APLOG_ERR, 0, s,
-                    "LDAP: Could not set the LDAP library debug level to %d:(%d) %s", 
-                    st->debug_level, result, ldap_err2string(result));
-        }
-    }
-#endif
-
     return(OK);
 }
 
@@ -2833,12 +2044,12 @@ static void util_ldap_child_init(apr_pool_t *p, server_rec *s)
     if (!st->util_ldap_cache_lock) return;
 
     sts = apr_global_mutex_child_init(&st->util_ldap_cache_lock,
-              apr_global_mutex_lockfile(st->util_ldap_cache_lock), p);
+                                      st->lock_file, p);
     if (sts != APR_SUCCESS) {
         ap_log_error(APLOG_MARK, APLOG_CRIT, sts, s,
                      "Failed to initialise global mutex %s in child process %"
                      APR_PID_T_FMT ".",
-                     ldap_cache_mutex_type, getpid());
+                     st->lock_file, getpid());
     }
 }
 
@@ -2855,9 +2066,9 @@ static const command_rec util_ldap_cmds[] = {
     AP_INIT_TAKE1("LDAPCacheEntries", util_ldap_set_cache_entries,
                   NULL, RSRC_CONF,
                   "Set the maximum number of entries that are possible in the "
-                  "LDAP search cache. Use 0 or -1 to disable the search cache " 
-                  "(default: 1024)"),
-                  
+                  "LDAP search cache. Use 0 for no limit. "
+                  "-1 disables the cache. (default: 1024)"),
+
     AP_INIT_TAKE1("LDAPCacheTTL", util_ldap_set_cache_ttl,
                   NULL, RSRC_CONF,
                   "Set the maximum time (in seconds) that an item can be "
@@ -2867,8 +2078,8 @@ static const command_rec util_ldap_cmds[] = {
     AP_INIT_TAKE1("LDAPOpCacheEntries", util_ldap_set_opcache_entries,
                   NULL, RSRC_CONF,
                   "Set the maximum number of entries that are possible "
-                  "in the LDAP compare cache. Use 0 or -1 to disable the compare cache " 
-                  "(default: 1024)"),
+                  "in the LDAP compare cache. Use 0 for no limit. "
+                  "Use -1 to disable the cache. (default: 1024)"),
 
     AP_INIT_TAKE1("LDAPOpCacheTTL", util_ldap_set_opcache_ttl,
                   NULL, RSRC_CONF,
@@ -2878,25 +2089,23 @@ static const command_rec util_ldap_cmds[] = {
 
     AP_INIT_TAKE23("LDAPTrustedGlobalCert", util_ldap_set_trusted_global_cert,
                    NULL, RSRC_CONF,
-                   "Takes three arguments; the first argument is the cert "
-                   "type of the second argument, one of CA_DER, CA_BASE64, "
-                   "CA_CERT7_DB, CA_SECMOD, CERT_DER, CERT_BASE64, CERT_KEY3_DB, "
-                   "CERT_NICKNAME, KEY_DER, or KEY_BASE64. The second argument "
-                   "specifes the file and/or directory containing the trusted CA "
-                   "certificates (and global client certs for Netware) used to "
-                   "validate the LDAP server. The third argument is an optional "
-                   "passphrase if applicable."),
+                   "Takes three args; the file and/or directory containing "
+                   "the trusted CA certificates (and global client certs "
+                   "for Netware) used to validate the LDAP server.  Second "
+                   "arg is the cert type for the first arg, one of CA_DER, "
+                   "CA_BASE64, CA_CERT7_DB, CA_SECMOD, CERT_DER, CERT_BASE64, "
+                   "CERT_KEY3_DB, CERT_NICKNAME, KEY_DER, or KEY_BASE64. "
+                   "Third arg is an optional passphrase if applicable."),
 
     AP_INIT_TAKE23("LDAPTrustedClientCert", util_ldap_set_trusted_client_cert,
                    NULL, RSRC_CONF,
-                   "Takes three arguments: the first argument is the certificate "
-                   "type of the second argument, one of CA_DER, CA_BASE64, "
-                   "CA_CERT7_DB, CA_SECMOD, CERT_DER, CERT_BASE64, CERT_KEY3_DB, "
-                   "CERT_NICKNAME, KEY_DER, or KEY_BASE64. The second argument "
-                   "specifies the file and/or directory containing the client "
-                   "certificate, or certificate ID used to validate this LDAP "
-                   "client.  The third argument is an optional passphrase if "
-                   "applicable."),
+                   "Takes three args; the file and/or directory containing "
+                   "the client certificate, or certificate ID used to "
+                   "validate this LDAP client.  Second arg is the cert type "
+                   "for the first arg, one of CA_DER, CA_BASE64, CA_CERT7_DB, "
+                   "CA_SECMOD, CERT_DER, CERT_BASE64, CERT_KEY3_DB, "
+                   "CERT_NICKNAME, KEY_DER, or KEY_BASE64. Third arg is an "
+                   "optional passphrase if applicable."),
 
     AP_INIT_TAKE1("LDAPTrustedMode", util_ldap_set_trusted_mode,
                   NULL, RSRC_CONF,
@@ -2905,32 +2114,13 @@ static const command_rec util_ldap_cmds[] = {
 
     AP_INIT_FLAG("LDAPVerifyServerCert", util_ldap_set_verify_srv_cert,
                   NULL, RSRC_CONF,
-                  "Set to 'ON' requires that the server certificate be verified"
-                  " before a secure LDAP connection can be establish.  Default"
-                  " 'ON'"),
+                  "Set to 'ON' requires that the server certificate be verified "
+                  "before a secure LDAP connection can be establish.  Default 'ON'"),
 
     AP_INIT_TAKE1("LDAPConnectionTimeout", util_ldap_set_connection_timeout,
                   NULL, RSRC_CONF,
                   "Specify the LDAP socket connection timeout in seconds "
                   "(default: 10)"),
-
-    AP_INIT_FLAG("LDAPReferrals", util_ldap_set_chase_referrals,
-                  NULL, OR_AUTHCFG,
-                  "Choose whether referrals are chased ['ON'|'OFF'].  Default 'ON'"),
-
-    AP_INIT_TAKE1("LDAPReferralHopLimit", util_ldap_set_referral_hop_limit,
-                  NULL, OR_AUTHCFG,
-                  "Limit the number of referral hops that LDAP can follow. "
-                  "(Integer value, Consult LDAP SDK documentation for applicability and defaults"),
-
-    AP_INIT_TAKE1("LDAPLibraryDebug", util_ldap_set_debug_level,
-                  NULL, RSRC_CONF,
-                  "Enable debugging in LDAP SDK (Default: off, values: SDK specific"),
-
-    AP_INIT_TAKE1("LDAPTimeout", util_ldap_set_op_timeout,
-                  NULL, RSRC_CONF,
-                  "Specify the LDAP bind/search timeout in seconds "
-                  "(0 = no limit). Default: 60"),
 
     {NULL}
 };
@@ -2947,9 +2137,7 @@ static void util_ldap_register_hooks(apr_pool_t *p)
     APR_REGISTER_OPTIONAL_FN(uldap_cache_checkuserid);
     APR_REGISTER_OPTIONAL_FN(uldap_cache_getuserdn);
     APR_REGISTER_OPTIONAL_FN(uldap_ssl_supported);
-    APR_REGISTER_OPTIONAL_FN(uldap_cache_check_subgroups);
 
-    ap_hook_pre_config(util_ldap_pre_config, NULL, NULL, APR_HOOK_MIDDLE);
     ap_hook_post_config(util_ldap_post_config,NULL,NULL,APR_HOOK_MIDDLE);
     ap_hook_handler(util_ldap_handler, NULL, NULL, APR_HOOK_MIDDLE);
     ap_hook_child_init(util_ldap_child_init, NULL, NULL, APR_HOOK_MIDDLE);
@@ -2957,7 +2145,7 @@ static void util_ldap_register_hooks(apr_pool_t *p)
 
 module AP_MODULE_DECLARE_DATA ldap_module = {
    STANDARD20_MODULE_STUFF,
-   util_ldap_create_dir_config, /* create dir config */
+   NULL,                        /* create dir config */
    NULL,                        /* merge dir config */
    util_ldap_create_config,     /* create server config */
    util_ldap_merge_config,      /* merge server config */

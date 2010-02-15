@@ -29,6 +29,7 @@
 #define APR_WANT_MEMFUNC
 #include "apr_want.h"
 
+#define CORE_PRIVATE
 #include "util_filter.h"
 #include "ap_config.h"
 #include "httpd.h"
@@ -38,7 +39,6 @@
 #include "http_main.h"
 #include "http_request.h"
 #include "http_vhost.h"
-#include "http_connection.h"
 #include "http_log.h"           /* For errors detected in basic auth common
                                  * support code... */
 #include "apr_date.h"           /* For apr_date_parse_http and APR_DATE_BAD */
@@ -102,7 +102,7 @@ static apr_status_t get_remaining_chunk_line(http_ctx_t *ctx,
     apr_off_t brigade_length;
     apr_bucket *e;
     const char *lineend;
-    apr_size_t len = 0;
+    apr_size_t len;
 
     /*
      * As the brigade b should have been requested in mode AP_MODE_GETLINE
@@ -272,6 +272,7 @@ apr_status_t ap_http_filter(ap_filter_t *f, apr_bucket_brigade *b,
             char *endstr;
 
             ctx->state = BODY_LENGTH;
+            errno = 0;
 
             /* Protects against over/underflow, non-digit chars in the
              * string (excluding leading space) (the endstr checks)
@@ -322,31 +323,18 @@ apr_status_t ap_http_filter(ap_filter_t *f, apr_bucket_brigade *b,
             (ctx->state == BODY_LENGTH && ctx->remaining > 0)) &&
             f->r->expecting_100 && f->r->proto_num >= HTTP_VERSION(1,1) &&
             !(f->r->eos_sent || f->r->bytes_sent)) {
-            if (!ap_is_HTTP_SUCCESS(f->r->status)) {
-                ctx->state = BODY_NONE;
-                ctx->eos_sent = 1;
-            } else {
-                char *tmp;
-                int len;
+            char *tmp;
 
-                /* if we send an interim response, we're no longer
-                 * in a state of expecting one.
-                 */
-                f->r->expecting_100 = 0;
-                tmp = apr_pstrcat(f->r->pool, AP_SERVER_PROTOCOL, " ",
-                                  ap_get_status_line(HTTP_CONTINUE), CRLF CRLF,
-                                  NULL);
-                len = strlen(tmp);
-                ap_xlate_proto_to_ascii(tmp, len);
-                apr_brigade_cleanup(bb);
-                e = apr_bucket_pool_create(tmp, len, f->r->pool,
-                                           f->c->bucket_alloc);
-                APR_BRIGADE_INSERT_HEAD(bb, e);
-                e = apr_bucket_flush_create(f->c->bucket_alloc);
-                APR_BRIGADE_INSERT_TAIL(bb, e);
+            tmp = apr_pstrcat(f->r->pool, AP_SERVER_PROTOCOL, " ",
+                              ap_get_status_line(100), CRLF CRLF, NULL);
+            apr_brigade_cleanup(bb);
+            e = apr_bucket_pool_create(tmp, strlen(tmp), f->r->pool,
+                                       f->c->bucket_alloc);
+            APR_BRIGADE_INSERT_HEAD(bb, e);
+            e = apr_bucket_flush_create(f->c->bucket_alloc);
+            APR_BRIGADE_INSERT_TAIL(bb, e);
 
-                ap_pass_brigade(f->c->output_filters, bb);
-            }
+            ap_pass_brigade(f->c->output_filters, bb);
         }
 
         /* We can't read the chunk until after sending 100 if required. */
@@ -431,10 +419,6 @@ apr_status_t ap_http_filter(ap_filter_t *f, apr_bucket_brigade *b,
                         ( (rv == APR_SUCCESS && APR_BRIGADE_EMPTY(bb)) ||
                           (APR_STATUS_IS_EAGAIN(rv)) )) {
                         return APR_EAGAIN;
-                    }
-                    /* If we get an error, then leave */
-                    if (rv != APR_SUCCESS) {
-                        return rv;
                     }
                     /*
                      * We really don't care whats on this line. If it is RFC
@@ -527,11 +511,6 @@ apr_status_t ap_http_filter(ap_filter_t *f, apr_bucket_brigade *b,
 
     if (ctx->state != BODY_NONE) {
         ctx->remaining -= totalread;
-        if (ctx->remaining > 0) {
-            e = APR_BRIGADE_LAST(b);
-            if (APR_BUCKET_IS_EOS(e))
-                return APR_EOF;
-        }
     }
 
     /* If we have no more bytes remaining on a C-L request,
@@ -814,21 +793,12 @@ static void validate_status_line(request_rec *r)
 {
     char *end;
 
-    if (r->status_line) {
-        int len = strlen(r->status_line);
-        if (len < 3
+    if (r->status_line
+        && (strlen(r->status_line) <= 4
             || apr_strtoi64(r->status_line, &end, 10) != r->status
-            || (end - 3) != r->status_line
-            || (len >= 4 && ! apr_isspace(r->status_line[3]))) {
-            r->status_line = NULL;
-        }
-        /* Since we passed the above check, we know that length three
-         * is equivalent to only a 3 digit numeric http status.
-         * RFC2616 mandates a trailing space, let's add it.
-         */
-        else if (len == 3) {
-            r->status_line = apr_pstrcat(r->pool, r->status_line, " ", NULL);
-        }
+            || *end != ' '
+            || (end - 3) != r->status_line)) {
+        r->status_line = NULL;
     }
 }
 
@@ -877,7 +847,6 @@ static void basic_http_header(request_rec *r, apr_bucket_brigade *bb,
 {
     char *date;
     const char *server;
-    const char *us = ap_get_server_banner();
     header_struct h;
     struct iovec vec[4];
 
@@ -933,26 +902,18 @@ static void basic_http_header(request_rec *r, apr_bucket_brigade *bb,
         server = apr_table_get(r->headers_out, "Server");
         if (server) {
             form_header_field(&h, "Server", server);
-        } else {
-            if (*us) {
-                form_header_field(&h, "Server", ap_get_server_banner());
-            }
         }
     }
     else {
         date = apr_palloc(r->pool, APR_RFC822_DATE_LEN);
         ap_recent_rfc822_date(date, r->request_time);
         form_header_field(&h, "Date", date);
-        if (*us) {
-            form_header_field(&h, "Server", ap_get_server_banner());
-        }
+        form_header_field(&h, "Server", ap_get_server_banner());
     }
 
     /* unset so we don't send them again */
     apr_table_unset(r->headers_out, "Date");        /* Avoid bogosity */
-    if (*us) {
-        apr_table_unset(r->headers_out, "Server");
-    }
+    apr_table_unset(r->headers_out, "Server");
 }
 
 AP_DECLARE(void) ap_basic_http_header(request_rec *r, apr_bucket_brigade *bb)
@@ -963,11 +924,37 @@ AP_DECLARE(void) ap_basic_http_header(request_rec *r, apr_bucket_brigade *bb)
     basic_http_header(r, bb, protocol);
 }
 
+/* Navigator versions 2.x, 3.x and 4.0 betas up to and including 4.0b2
+ * have a header parsing bug.  If the terminating \r\n occur starting
+ * at offset 256, 257 or 258 of output then it will not properly parse
+ * the headers.  Curiously it doesn't exhibit this problem at 512, 513.
+ * We are guessing that this is because their initial read of a new request
+ * uses a 256 byte buffer, and subsequent reads use a larger buffer.
+ * So the problem might exist at different offsets as well.
+ *
+ * This should also work on keepalive connections assuming they use the
+ * same small buffer for the first read of each new request.
+ *
+ * At any rate, we check the bytes written so far and, if we are about to
+ * tickle the bug, we instead insert a bogus padding header.  Since the bug
+ * manifests as a broken image in Navigator, users blame the server.  :(
+ * It is more expensive to check the User-Agent than it is to just add the
+ * bytes, so we haven't used the BrowserMatch feature here.
+ */
 static void terminate_header(apr_bucket_brigade *bb)
 {
+    char tmp[] = "X-Pad: avoid browser bug" CRLF;
     char crlf[] = CRLF;
+    apr_off_t len;
     apr_size_t buflen;
 
+    (void) apr_brigade_length(bb, 1, &len);
+
+    if (len >= 255 && len <= 257) {
+        buflen = strlen(tmp);
+        ap_xlate_proto_to_ascii(tmp, buflen);
+        apr_brigade_write(bb, NULL, NULL, tmp, buflen);
+    }
     buflen = strlen(crlf);
     ap_xlate_proto_to_ascii(crlf, buflen);
     apr_brigade_write(bb, NULL, NULL, crlf, buflen);
@@ -1060,23 +1047,12 @@ AP_DECLARE_NONSTD(int) ap_send_http_trace(request_rec *r)
     /* Now we recreate the request, and echo it back */
 
     bb = apr_brigade_create(r->pool, r->connection->bucket_alloc);
-#if APR_CHARSET_EBCDIC
-    {
-        char *tmp;
-        apr_size_t len;
-        len = strlen(r->the_request);
-        tmp = apr_pmemdup(r->pool, r->the_request, len);
-        ap_xlate_proto_to_ascii(tmp, len);
-        apr_brigade_putstrs(bb, NULL, NULL, tmp, CRLF_ASCII, NULL);
-    }
-#else
     apr_brigade_putstrs(bb, NULL, NULL, r->the_request, CRLF, NULL);
-#endif
     h.pool = r->pool;
     h.bb = bb;
     apr_table_do((int (*) (void *, const char *, const char *))
                  form_header_field, (void *) &h, r->headers_in, NULL);
-    apr_brigade_puts(bb, NULL, NULL, CRLF_ASCII);
+    apr_brigade_puts(bb, NULL, NULL, CRLF);
 
     /* If configured to accept a body, echo the body */
     if (bodylen) {
@@ -1106,7 +1082,6 @@ AP_CORE_DECLARE_NONSTD(apr_status_t) ap_http_header_filter(ap_filter_t *f,
     header_struct h;
     header_filter_ctx *ctx = f->ctx;
     const char *ctype;
-    ap_bucket_error *eb = NULL;
 
     AP_DEBUG_ASSERT(!r->main);
 
@@ -1115,7 +1090,7 @@ AP_CORE_DECLARE_NONSTD(apr_status_t) ap_http_header_filter(ap_filter_t *f,
             ctx = f->ctx = apr_pcalloc(r->pool, sizeof(header_filter_ctx));
         }
         else if (ctx->headers_sent) {
-            apr_brigade_cleanup(b);
+            apr_brigade_destroy(b);
             return OK;
         }
     }
@@ -1124,26 +1099,12 @@ AP_CORE_DECLARE_NONSTD(apr_status_t) ap_http_header_filter(ap_filter_t *f,
          e != APR_BRIGADE_SENTINEL(b);
          e = APR_BUCKET_NEXT(e))
     {
-        if (AP_BUCKET_IS_ERROR(e) && !eb) {
-            eb = e->data;
-            continue;
-        }
-        /*
-         * If we see an EOC bucket it is a signal that we should get out
-         * of the way doing nothing.
-         */
-        if (AP_BUCKET_IS_EOC(e)) {
-            ap_remove_output_filter(f);
-            return ap_pass_brigade(f->next, b);
-        }
-    }
-    if (eb) {
-        int status;
+        if (AP_BUCKET_IS_ERROR(e)) {
+            ap_bucket_error *eb = e->data;
 
-        status = eb->status;
-        apr_brigade_cleanup(b);
-        ap_die(status, r);
-        return AP_FILTER_ERROR;
+            ap_die(eb->status, r);
+            return AP_FILTER_ERROR;
+        }
     }
 
     if (r->assbackwards) {
@@ -1197,7 +1158,7 @@ AP_CORE_DECLARE_NONSTD(apr_status_t) ap_http_header_filter(ap_filter_t *f,
     }
 
     ctype = ap_make_content_type(r, r->content_type);
-    if (ctype) {
+    if (strcasecmp(ctype, NO_CONTENT_TYPE)) {
         apr_table_setn(r->headers_out, "Content-Type", ctype);
     }
 
@@ -1208,22 +1169,10 @@ AP_CORE_DECLARE_NONSTD(apr_status_t) ap_http_header_filter(ap_filter_t *f,
 
     if (!apr_is_empty_array(r->content_languages)) {
         int i;
-        char *token;
         char **languages = (char **)(r->content_languages->elts);
-        const char *field = apr_table_get(r->headers_out, "Content-Language");
-
-        while (field && (token = ap_get_list_item(r->pool, &field)) != NULL) {
-            for (i = 0; i < r->content_languages->nelts; ++i) {
-                if (!strcasecmp(token, languages[i]))
-                    break;
-            }
-            if (i == r->content_languages->nelts) {
-                *((char **) apr_array_push(r->content_languages)) = token;
-            }
+        for (i = 0; i < r->content_languages->nelts; ++i) {
+            apr_table_mergen(r->headers_out, "Content-Language", languages[i]);
         }
-
-        field = apr_array_pstrcat(r->pool, r->content_languages, ',');
-        apr_table_setn(r->headers_out, "Content-Language", field);
     }
 
     /*
@@ -1286,7 +1235,7 @@ AP_CORE_DECLARE_NONSTD(apr_status_t) ap_http_header_filter(ap_filter_t *f,
     ap_pass_brigade(f->next, b2);
 
     if (r->header_only) {
-        apr_brigade_cleanup(b);
+        apr_brigade_destroy(b);
         ctx->headers_sent = 1;
         return OK;
     }
@@ -1575,24 +1524,13 @@ AP_DECLARE(long) ap_get_client_block(request_rec *r, char *buffer,
     return bufsiz;
 }
 
-/* Context struct for ap_http_outerror_filter */
-typedef struct {
-    int seen_eoc;
-} outerror_filter_ctx_t;
-
 /* Filter to handle any error buckets on output */
 apr_status_t ap_http_outerror_filter(ap_filter_t *f,
                                      apr_bucket_brigade *b)
 {
     request_rec *r = f->r;
-    outerror_filter_ctx_t *ctx = (outerror_filter_ctx_t *)(f->ctx);
     apr_bucket *e;
 
-    /* Create context if none is present */
-    if (!ctx) {
-        ctx = apr_pcalloc(r->pool, sizeof(outerror_filter_ctx_t));
-        f->ctx = ctx;
-    }
     for (e = APR_BRIGADE_FIRST(b);
          e != APR_BRIGADE_SENTINEL(b);
          e = APR_BUCKET_NEXT(e))
@@ -1606,42 +1544,9 @@ apr_status_t ap_http_outerror_filter(ap_filter_t *f,
                 /* stream aborted and we have not ended it yet */
                 r->connection->keepalive = AP_CONN_CLOSE;
             }
-            continue;
-        }
-        /* Detect EOC buckets and memorize this in the context. */
-        if (AP_BUCKET_IS_EOC(e)) {
-            ctx->seen_eoc = 1;
-        }
-    }
-    /*
-     * Remove all data buckets that are in a brigade after an EOC bucket
-     * was seen, as an EOC bucket tells us that no (further) resource
-     * and protocol data should go out to the client. OTOH meta buckets
-     * are still welcome as they might trigger needed actions down in
-     * the chain (e.g. in network filters like SSL).
-     * Remark 1: It is needed to dump ALL data buckets in the brigade
-     *           since an filter in between might have inserted data
-     *           buckets BEFORE the EOC bucket sent by the original
-     *           sender and we do NOT want this data to be sent.
-     * Remark 2: Dumping all data buckets here does not necessarily mean
-     *           that no further data is send to the client as:
-     *           1. Network filters like SSL can still be triggered via
-     *              meta buckets to talk with the client e.g. for a
-     *              clean shutdown.
-     *           2. There could be still data that was buffered before
-     *              down in the chain that gets flushed by a FLUSH or an
-     *              EOS bucket.
-     */
-    if (ctx->seen_eoc) {
-        for (e = APR_BRIGADE_FIRST(b);
-             e != APR_BRIGADE_SENTINEL(b);
-             e = APR_BUCKET_NEXT(e))
-        {
-            if (!APR_BUCKET_IS_METADATA(e)) {
-                APR_BUCKET_REMOVE(e);
-            }
         }
     }
 
     return ap_pass_brigade(f->next,  b);
 }
+

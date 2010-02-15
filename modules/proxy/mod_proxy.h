@@ -30,7 +30,19 @@
 
    Also note numerous FIXMEs and CHECKMEs which should be eliminated.
 
+   This code is once again experimental!
+
+   Things to do:
+
+   1. Make it completely work (for FTP too)
+
+   2. HTTP/1.1
+
+   Chuck Murcko <chuck@topsail.org> 02-06-01
+
  */
+
+#define CORE_PRIVATE
 
 #include "apr_hooks.h"
 #include "apr.h"
@@ -98,7 +110,6 @@ struct proxy_remote {
 };
 
 #define PROXYPASS_NOCANON 0x01
-#define PROXYPASS_INTERPOLATE 0x02
 struct proxy_alias {
     const char  *real;
     const char  *fake;
@@ -129,6 +140,7 @@ typedef struct {
     apr_array_header_t *aliases;
     apr_array_header_t *noproxies;
     apr_array_header_t *dirconn;
+    apr_array_header_t *allowed_connect_ports;
     apr_array_header_t *workers;
     apr_array_header_t *balancers;
     proxy_worker       *forward;    /* forward proxy worker */
@@ -159,6 +171,8 @@ typedef struct {
      */
     int error_override;
     int error_override_set;
+    int preserve_host;
+    int preserve_host_set;
     apr_interval_time_t timeout;
     char timeout_set;
     enum {
@@ -198,41 +212,25 @@ typedef struct {
     apr_array_header_t* cookie_domains;
     const apr_strmatch_pattern* cookie_path_str;
     const apr_strmatch_pattern* cookie_domain_str;
-    int interpolate_env;
-    int preserve_host;
-    int preserve_host_set;
+    const char *ftp_directory_charset;
 } proxy_dir_conf;
-
-/* if we interpolate env vars per-request, we'll need a per-request
- * copy of the reverse proxy config
- */
-typedef struct {
-    apr_array_header_t *raliases;
-    apr_array_header_t* cookie_paths;
-    apr_array_header_t* cookie_domains;
-} proxy_req_conf;
 
 typedef struct {
     conn_rec     *connection;
     const char   *hostname;
     apr_port_t   port;
     int          is_ssl;
-    apr_pool_t   *pool;     /* Subpool for hostname and addr data */
+    apr_pool_t   *pool;     /* Subpool used for creating socket */
     apr_socket_t *sock;     /* Connection socket */
     apr_sockaddr_t *addr;   /* Preparsed remote address info */
-    apr_uint32_t flags;     /* Connection flags */
+    apr_uint32_t flags;     /* Conection flags */
     int          close;     /* Close 'this' connection */
+    int          close_on_recycle; /* Close the connection when returning to pool */
     proxy_worker *worker;   /* Connection pool this connection belongs to */
     void         *data;     /* per scheme connection data */
 #if APR_HAS_THREADS
     int          inreslist; /* connection in apr_reslist? */
 #endif
-    apr_pool_t   *scpool;   /* Subpool used for socket and connection data */
-    request_rec  *r;        /* Request record of the frontend request
-                             * which the backend currently answers. */
-    int          need_flush;/* Flag to decide whether we need to flush the
-                             * filter chain or not */
-    void         *forward;  /* opaque forward proxy data */
 } proxy_conn_rec;
 
 typedef struct {
@@ -335,15 +333,10 @@ struct proxy_worker {
          flush_auto
     } flush_packets;           /* control AJP flushing */
     int             flush_wait;  /* poll wait time in microseconds if flush_auto */
+    int             lbset;      /* load balancer cluster set */
     apr_interval_time_t ping_timeout;
     char ping_timeout_set;
-    int             lbset;      /* load balancer cluster set */
     char            retry_set;
-    char            disablereuse;
-    char            disablereuse_set;
-    apr_interval_time_t conn_timeout;
-    char            conn_timeout_set;
-    const char      *flusher;  /* flush provider used by mod_proxy_fdpass */
 };
 
 /*
@@ -371,8 +364,6 @@ struct proxy_balancer {
     apr_thread_mutex_t  *mutex;  /* Thread lock for updating lb params */
 #endif
     void            *context;   /* general purpose storage */
-    const char      *sticky_path;  /* URL sticky session identifier */
-    int             scolonsep;     /* true if ';' seps sticky session paths */
 };
 
 struct proxy_balancer_method {
@@ -380,8 +371,6 @@ struct proxy_balancer_method {
     proxy_worker *(*finder)(proxy_balancer *balancer,
                             request_rec *r);
     void            *context;   /* general purpose storage */
-    apr_status_t (*reset)(proxy_balancer *balancer, server_rec *s);
-    apr_status_t (*age)(proxy_balancer *balancer, server_rec *s);
 };
 
 #if APR_HAS_THREADS
@@ -484,8 +473,6 @@ PROXY_DECLARE(apr_status_t) ap_proxy_string_read(conn_rec *c, apr_bucket_brigade
 PROXY_DECLARE(void) ap_proxy_table_unmerge(apr_pool_t *p, apr_table_t *t, char *key);
 /* DEPRECATED (will be replaced with ap_proxy_connect_backend */
 PROXY_DECLARE(int) ap_proxy_connect_to_backend(apr_socket_t **, const char *, apr_sockaddr_t *, const char *, proxy_server_conf *, server_rec *, apr_pool_t *);
-PROXY_DECLARE(apr_status_t) ap_proxy_ssl_connection_cleanup(proxy_conn_rec *conn,
-                                                            request_rec *r);
 PROXY_DECLARE(int) ap_proxy_ssl_enable(conn_rec *c);
 PROXY_DECLARE(int) ap_proxy_ssl_disable(conn_rec *c);
 PROXY_DECLARE(int) ap_proxy_conn_is_https(conn_rec *c);
@@ -559,12 +546,10 @@ PROXY_DECLARE(void) ap_proxy_initialize_worker_share(proxy_server_conf *conf,
  * Initize the worker
  * @param worker worker to initialize
  * @param s      current server record
- * @param p      memory pool used for mutex and Connection pool.
  * @return       APR_SUCCESS or error code
  */
 PROXY_DECLARE(apr_status_t) ap_proxy_initialize_worker(proxy_worker *worker,
-                                                       server_rec *s,
-                                                       apr_pool_t *p);
+                                                       server_rec *s);
 /**
  * Get the balancer from proxy configuration
  * @param p     memory pool used for finding balancer
@@ -592,7 +577,7 @@ PROXY_DECLARE(const char *) ap_proxy_add_balancer(proxy_balancer **balancer,
  * Add the worker to the balancer
  * @param pool     memory pool for adding worker 
  * @param balancer balancer to add to
- * @param worker worker to add
+ * @param balancer worker to add
  * @note Single worker can be added to multiple balancers.
  */
 PROXY_DECLARE(void) ap_proxy_add_worker_to_balancer(apr_pool_t *pool,
@@ -631,8 +616,7 @@ PROXY_DECLARE(int) ap_proxy_post_request(proxy_worker *worker,
 
 /**
  * Request status function
- * @param status   status of proxy request (result)
- * @param r        the request to obtain the status for
+ * @param status   status of proxy request
  * @return         OK or DECLINED
  */
  PROXY_DECLARE(int) ap_proxy_request_status(int *status, request_rec *r);
@@ -662,10 +646,10 @@ PROXY_DECLARE(int) ap_proxy_determine_connection(apr_pool_t *p, request_rec *r,
                                                  apr_port_t proxyport,
                                                  char *server_portstr,
                                                  int server_portstr_size);
-
 /**
  * Mark a worker for retry
  * @param proxy_function calling proxy scheme (http, ajp, ...)
+ * @param conf    current proxy server configuration
  * @param worker  worker used for retrying
  * @param s       current server record
  * @return        OK if marked for retry, DECLINED otherwise
@@ -736,28 +720,12 @@ PROXY_DECLARE(int) ap_proxy_connection_create(const char *proxy_function,
 PROXY_DECLARE(void) ap_proxy_backend_broke(request_rec *r,
                                            apr_bucket_brigade *brigade);
 
-/**
- * Transform buckets from one bucket allocator to another one by creating a
- * transient bucket for each data bucket and let it use the data read from
- * the old bucket. Metabuckets are transformed by just recreating them.
- * Attention: Currently only the following bucket types are handled:
- *
- * All data buckets
- * FLUSH
- * EOS
- *
- * If an other bucket type is found its type is logged as a debug message
- * and APR_EGENERAL is returned.
- * @param r    current request record of client request. Only used for logging
- *             purposes
- * @param from the brigade that contains the buckets to transform
- * @param to   the brigade that will receive the transformed buckets
- * @return     APR_SUCCESS if all buckets could be transformed APR_EGENERAL
- *             otherwise
- */
-PROXY_DECLARE(apr_status_t)
-ap_proxy_buckets_lifetime_transform(request_rec *r, apr_bucket_brigade *from,
-                                        apr_bucket_brigade *to);
+/* Scoreboard */
+#if MODULE_MAGIC_NUMBER_MAJOR > 20020903
+#define PROXY_HAS_SCOREBOARD 1
+#else
+#define PROXY_HAS_SCOREBOARD 0
+#endif
 
 #define PROXY_LBMETHOD "proxylbmethod"
 

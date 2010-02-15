@@ -38,21 +38,6 @@
 #include <openssl/evp.h>
 #include <openssl/rand.h>
 #include <openssl/x509v3.h>
-
-/* hack for non-configure platforms (NetWare, Win32) */
-#if !defined(HAVE_OCSP) && (OPENSSL_VERSION_NUMBER >= 0x00907000)
-#define HAVE_OCSP
-#endif
-#ifdef HAVE_OCSP
-#include <openssl/x509_vfy.h>
-#include <openssl/ocsp.h>
-#endif
-
-/* ECC support came along in OpenSSL 1.0.0 */
-#if (OPENSSL_VERSION_NUMBER < 0x10000000)
-#define OPENSSL_NO_EC
-#endif
-
 /** Avoid tripping over an engine build installed globally and detected
  * when the user points at an explicit non-engine flavor of OpenSSL
  */
@@ -108,10 +93,8 @@
 /** ...shifting sands of openssl... */
 #if (OPENSSL_VERSION_NUMBER >= 0x0090707f)
 # define MODSSL_D2I_SSL_SESSION_CONST    const
-# define MODSSL_SSL_CIPHER_CONST         const
 #else
 # define MODSSL_D2I_SSL_SESSION_CONST
-# define MODSSL_SSL_CIPHER_CONST
 #endif
 
 #if (OPENSSL_VERSION_NUMBER >= 0x00908000)
@@ -155,11 +138,6 @@ typedef int (modssl_read_bio_cb_fn)(char*,int,int,void*);
 #define HAVE_SSL_RAND_EGD /* since 9.5.1 */
 
 #define HAVE_SSL_X509V3_EXT_d2i
-
-#if OPENSSL_VERSION_NUMBER >= 0x00908080 && defined(HAVE_OCSP) \
-    && !defined(OPENSSL_NO_TLSEXT)
-#define HAVE_OCSP_STAPLING
-#endif
 
 #ifndef PEM_F_DEF_CALLBACK
 #ifdef PEM_F_PEM_DEF_CALLBACK
@@ -284,16 +262,6 @@ typedef void (*modssl_popfree_fn)(char *data);
 
 #ifndef SSL_SESS_CACHE_NO_INTERNAL
 #define SSL_SESS_CACHE_NO_INTERNAL  SSL_SESS_CACHE_NO_INTERNAL_LOOKUP
-#endif
-
-#ifndef OPENSSL_NO_TLSEXT
-#ifndef SSL_CTRL_SET_TLSEXT_HOSTNAME
-#define OPENSSL_NO_TLSEXT
-#endif
-#endif
-
-#ifndef sk_STRING_pop
-#define sk_STRING_pop sk_pop
 #endif
 
 #endif /* SSL_TOOLKIT_COMPAT_H */

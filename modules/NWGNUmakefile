@@ -1,7 +1,7 @@
 #
 # Declare the sub-directories to be built here
 #
-# To build with exerimental modules set the environment
+# To build with exerimental modules set the environment 
 #  variable EXPERIMENTAL=1
 # To build with the mod_ssl module set the environment
 #  variable WITH_MOD_SSL=1
@@ -14,12 +14,10 @@ endif
 SUBDIRS = \
 	aaa \
 	cache \
-	cluster \
 	dav\main \
 	dav\fs \
 	dav\lock \
 	echo \
-	examples \
 	generators \
 	loggers \
 	mappers \
@@ -27,8 +25,7 @@ SUBDIRS = \
 	proxy \
 	filters \
 	database \
-	session \
-	$(EOLIST)
+	$(EOLIST) 
 
 # If LDAPSDK has been defined then build the util_ldap module
 ifneq "$(LDAPSDK)" ""
@@ -40,14 +37,6 @@ endif
 ifdef WITH_MOD_SSL
 ifneq "$(OSSLSDK)" ""
 SUBDIRS += ssl \
-	$(EOLIST)
-endif
-endif
-
-# If WITH_MOD_LUA and LUASRC have been defined then build the mod_lua module
-ifdef WITH_MOD_LUA
-ifneq "$(LUASRC)" ""
-SUBDIRS += lua \
 	$(EOLIST)
 endif
 endif
@@ -64,15 +53,9 @@ SUBDIRS += experimental \
 	$(EOLIST)
 endif
 
-# Allow the debugging modules to be built if DEBUG is defined
+# Allow the debug modules to be built if DEBUG is defined
 ifdef DEBUG
-SUBDIRS += debugging \
-	$(EOLIST)
-endif
-
-# Allow the test modules to be built if TEST is defined
-ifdef TEST
-SUBDIRS += test \
+SUBDIRS += debug \
 	$(EOLIST)
 endif
 
@@ -87,7 +70,7 @@ include $(AP_WORK)\build\NWGNUhead.inc
 #
 # build this level's files
 
-ifeq "$(wildcard NWGNUmakefile.mak)" "NWGNUmakefile.mak"
+ifeq "$(wildcard NWGNUmakefile.mak)" "NWGNUmakefile.mak" 
 include NWGNUmakefile.mak
 endif
 
@@ -96,4 +79,5 @@ endif
 # installation area
 #
 install :: nlms FORCE
+
 

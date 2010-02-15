@@ -65,6 +65,19 @@
 #define AJP13_SSL_SESSION_INDICATOR     "SSL_SESSION_ID"
 #define AJP13_SSL_KEY_SIZE_INDICATOR    "SSL_CIPHER_USEKEYSIZE"
 
+#if APR_CHARSET_EBCDIC
+
+#define USE_CHARSET_EBCDIC
+#define ajp_xlate_to_ascii(b, l) ap_xlate_proto_to_ascii(b, l)
+#define ajp_xlate_from_ascii(b, l) ap_xlate_proto_from_ascii(b, l)
+
+#else                           /* APR_CHARSET_EBCDIC */
+
+#define ajp_xlate_to_ascii(b, l) 
+#define ajp_xlate_from_ascii(b, l) 
+
+#endif
+
 #ifdef AJP_USE_HTTPD_WRAP
 #include "httpd_wrap.h"
 #else
@@ -78,7 +91,7 @@
 #endif
 
 #include "mod_proxy.h"
-#include "util_ebcdic.h"
+
 
 /** AJP Specific error codes
  */
@@ -118,10 +131,10 @@ struct ajp_msg
     apr_size_t  len;
     /** The current read position */ 
     apr_size_t  pos;
-    /** Flag indicating the origing of the message */ 
-    int         server_side;
     /** The size of the buffer */
     apr_size_t max_size;
+    /** Flag indicating the origing of the message */ 
+    int         server_side;
 };
 
 /**
@@ -134,7 +147,6 @@ struct ajp_msg
 #define AJP_MSG_BUFFER_SZ           8192
 #define AJP_MAX_BUFFER_SZ           65536
 #define AJP13_MAX_SEND_BODY_SZ      (AJP_MAX_BUFFER_SZ - AJP_HEADER_SZ)
-#define AJP_PING_PONG_SZ            128
 
 /** Send a request from web server to container*/
 #define CMD_AJP13_FORWARD_REQUEST   (unsigned char)2
@@ -315,10 +327,10 @@ apr_status_t ajp_msg_get_string(ajp_msg_t *msg, const char **rvalue);
 /**
  * Get a Byte array from AJP Message
  *
- * @param msg        AJP Message to get value from
- * @param rvalue     Pointer where value will be returned
- * @param rvalue_len Pointer where Byte array len will be returned
- * @return           APR_SUCCESS or error
+ * @param msg       AJP Message to get value from
+ * @param rvalue    Pointer where value will be returned
+ * @param rvalueLen Pointer where Byte array len will be returned
+ * @return          APR_SUCCESS or error
  */
 apr_status_t ajp_msg_get_bytes(ajp_msg_t *msg, apr_byte_t **rvalue,
                                apr_size_t *rvalue_len);
@@ -349,7 +361,7 @@ apr_status_t ajp_msg_copy(ajp_msg_t *smsg, ajp_msg_t *dmsg);
  * | PING CMD (1 byte)     |
  * +-----------------------+
  *
- * @param msg       AJP message to put serialized message
+ * @param smsg      AJP message to put serialized message
  * @return          APR_SUCCESS or error
  */
 apr_status_t ajp_msg_serialize_ping(ajp_msg_t *msg);
@@ -361,7 +373,7 @@ apr_status_t ajp_msg_serialize_ping(ajp_msg_t *msg);
  * | CPING CMD (1 byte)    |
  * +-----------------------+
  *
- * @param msg      AJP message to put serialized message
+ * @param smsg      AJP message to put serialized message
  * @return          APR_SUCCESS or error
  */
 apr_status_t ajp_msg_serialize_cping(ajp_msg_t *msg);
@@ -379,8 +391,8 @@ char * ajp_msg_dump(apr_pool_t *pool, ajp_msg_t *msg, char *err);
 /** 
  * Send an AJP message to backend
  *
- * @param sock      backend socket
- * @param msg       AJP message to put serialized message
+ * @param soct      backend socket
+ * @param smsg      AJP message to put serialized message
  * @return          APR_SUCCESS or error
  */
 apr_status_t ajp_ilink_send(apr_socket_t *sock, ajp_msg_t *msg);
@@ -389,7 +401,7 @@ apr_status_t ajp_ilink_send(apr_socket_t *sock, ajp_msg_t *msg);
  * Receive an AJP message from backend
  *
  * @param sock      backend socket
- * @param msg       AJP message to put serialized message
+ * @param smsg      AJP message to put serialized message
  * @return          APR_SUCCESS or error
  */
 apr_status_t ajp_ilink_receive(apr_socket_t *sock, ajp_msg_t *msg);
@@ -399,7 +411,7 @@ apr_status_t ajp_ilink_receive(apr_socket_t *sock, ajp_msg_t *msg);
  * @param sock      backend socket
  * @param r         current request
  * @param buffsize  max size of the AJP packet.
- * @param uri       requested uri
+ * @uri uri         requested uri
  * @return          APR_SUCCESS or error
  */
 apr_status_t ajp_send_header(apr_socket_t *sock, request_rec *r,
@@ -451,7 +463,6 @@ int ajp_parse_type(request_rec  *r, ajp_msg_t *msg);
 /**
  * Parse the header message from container 
  * @param r         current request
- * @param conf      proxy config
  * @param msg       AJP message
  * @return          APR_SUCCESS or error
  */

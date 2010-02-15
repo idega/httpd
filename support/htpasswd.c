@@ -115,41 +115,9 @@ static void to64(char *s, unsigned long v, int n)
     }
 }
 
-static void generate_salt(char *s, size_t size)
-{
-    static unsigned char tbl[] = 
-        "./0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
-    size_t i;
-    for (i = 0; i < size; ++i) {
-        int idx = (int) (64.0 * rand() / (RAND_MAX + 1.0));
-        s[i] = tbl[idx];
-    }
-}
-
-static apr_status_t seed_rand(void)
-{
-    int seed = 0;
-    apr_status_t rv;
-    rv = apr_generate_random_bytes((unsigned char*) &seed, sizeof(seed));
-    if (rv) {
-        apr_file_printf(errfile, "Unable to generate random bytes: %pm" NL, &rv);
-        return rv;
-    }
-    srand(seed);
-    return rv;
-}
-
 static void putline(apr_file_t *f, const char *l)
 {
-    apr_status_t rc;
-    rc = apr_file_puts(l, f);
-    if (rc != APR_SUCCESS) {
-        char errstr[MAX_STRING_LEN];
-        apr_strerror(rc, errstr, MAX_STRING_LEN);
-        apr_file_printf(errfile, "Error writing temp file: %s" NL, errstr);
-        apr_file_close(f);
-        exit(ERR_FILEPERM);
-    }
+    apr_file_puts(l, f);
 }
 
 /*
@@ -194,10 +162,8 @@ static int mkrecord(char *user, char *record, apr_size_t rlen, char *passwd,
         break;
 
     case ALG_APMD5:
-        if (seed_rand()) {
-            break;
-        }
-        generate_salt(&salt[0], 8);
+        (void) srand((int) time((time_t *) NULL));
+        to64(&salt[0], rand(), 8);
         salt[8] = '\0';
 
         apr_md5_encode((const char *)pw, (const char *)salt,
@@ -209,25 +175,14 @@ static int mkrecord(char *user, char *record, apr_size_t rlen, char *passwd,
         apr_cpystrn(cpw,pw,sizeof(cpw));
         break;
 
-#if (!(defined(WIN32) || defined(NETWARE)))
+#if !(defined(WIN32) || defined(NETWARE))
     case ALG_CRYPT:
     default:
-        if (seed_rand()) {
-            break;
-        }
+        (void) srand((int) time((time_t *) NULL));
         to64(&salt[0], rand(), 8);
         salt[8] = '\0';
 
-        apr_cpystrn(cpw, crypt(pw, salt), sizeof(cpw) - 1);
-        if (strlen(pw) > 8) {
-            char *truncpw = strdup(pw);
-            truncpw[8] = '\0';
-            if (!strcmp(cpw, crypt(truncpw, salt))) {
-                apr_file_printf(errfile, "Warning: Password truncated to 8 characters "
-                                "by CRYPT algorithm." NL);
-            }
-            free(truncpw);
-        }
+        apr_cpystrn(cpw, (char *)crypt(pw, salt), sizeof(cpw) - 1);
         break;
 #endif
     }
@@ -260,9 +215,14 @@ static void usage(void)
     apr_file_printf(errfile, " -n  Don't update file; display results on "
                     "stdout." NL);
     apr_file_printf(errfile, " -m  Force MD5 encryption of the password"
+#if defined(WIN32) || defined(TPF) || defined(NETWARE)
         " (default)"
+#endif
         "." NL);
     apr_file_printf(errfile, " -d  Force CRYPT encryption of the password"
+#if (!(defined(WIN32) || defined(TPF) || defined(NETWARE)))
+            " (default)"
+#endif
             "." NL);
     apr_file_printf(errfile, " -p  Do not encrypt the password (plaintext)." NL);
     apr_file_printf(errfile, " -s  Force SHA encryption of the password." NL);
@@ -270,11 +230,10 @@ static void usage(void)
             "rather than prompting for it." NL);
     apr_file_printf(errfile, " -D  Delete the specified user." NL);
     apr_file_printf(errfile,
-            "On other systems than Windows and NetWare the '-p' flag will "
-            "probably not work." NL);
+            "On Windows, NetWare and TPF systems the '-m' flag is used by "
+            "default." NL);
     apr_file_printf(errfile,
-            "The SHA algorithm does not use a salt and is less secure than "
-            "the MD5 algorithm." NL);
+            "On all other systems, the '-p' flag will probably not work." NL);
     exit(ERR_SYNTAX);
 }
 
@@ -441,7 +400,7 @@ int main(int argc, const char * const argv[])
     char *scratch, cp[MAX_STRING_LEN];
     int found = 0;
     int i;
-    int alg = ALG_APMD5;
+    int alg = ALG_CRYPT;
     int mask = 0;
     apr_pool_t *pool;
     int existing_file = 0;
@@ -483,7 +442,7 @@ int main(int argc, const char * const argv[])
     }
 #endif
 
-#if (!(defined(WIN32) || defined(NETWARE)))
+#if (!(defined(WIN32) || defined(TPF) || defined(NETWARE)))
     if (alg == ALG_PLAIN) {
         apr_file_printf(errfile,"Warning: storing passwords as plain text "
                         "might just not work on this platform." NL);

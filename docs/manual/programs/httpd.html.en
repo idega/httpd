@@ -12,15 +12,14 @@
 <link href="../images/favicon.ico" rel="shortcut icon" /></head>
 <body id="manual-page"><div id="page-header">
 <p class="menu"><a href="../mod/">Modules</a> | <a href="../mod/directives.html">Directives</a> | <a href="../faq/">FAQ</a> | <a href="../glossary.html">Glossary</a> | <a href="../sitemap.html">Sitemap</a></p>
-<p class="apache">Apache HTTP Server Version 2.3</p>
+<p class="apache">Apache HTTP Server Version 2.2</p>
 <img alt="" src="../images/feather.gif" /></div>
 <div class="up"><a href="./"><img title="&lt;-" alt="&lt;-" src="../images/left.gif" /></a></div>
 <div id="path">
-<a href="http://www.apache.org/">Apache</a> &gt; <a href="http://httpd.apache.org/">HTTP Server</a> &gt; <a href="http://httpd.apache.org/docs/">Documentation</a> &gt; <a href="../">Version 2.3</a> &gt; <a href="./">Programs</a></div><div id="page-content"><div id="preamble"><h1>httpd - Apache Hypertext Transfer Protocol Server</h1>
+<a href="http://www.apache.org/">Apache</a> &gt; <a href="http://httpd.apache.org/">HTTP Server</a> &gt; <a href="http://httpd.apache.org/docs/">Documentation</a> &gt; <a href="../">Version 2.2</a> &gt; <a href="./">Programs</a></div><div id="page-content"><div id="preamble"><h1>httpd - Apache Hypertext Transfer Protocol Server</h1>
 <div class="toplang">
 <p><span>Available Languages: </span><a href="../en/programs/httpd.html" title="English">&nbsp;en&nbsp;</a> |
-<a href="../ko/programs/httpd.html" hreflang="ko" rel="alternate" title="Korean">&nbsp;ko&nbsp;</a> |
-<a href="../tr/programs/httpd.html" hreflang="tr" rel="alternate" title="Türkçe">&nbsp;tr&nbsp;</a></p>
+<a href="../ko/programs/httpd.html" hreflang="ko" rel="alternate" title="Korean">&nbsp;ko&nbsp;</a></p>
 </div>
 
      <p><code>httpd</code> is the Apache HyperText Transfer Protocol
@@ -112,6 +111,12 @@ problems during startup.</dd>
 
 <dd>Send error messages during server startup to <var>file</var>.</dd>
 
+<dt><code>-R <var>directory</var></code></dt>
+
+<dd>When the server is compiled using the <code>SHARED_CORE</code>
+rule, this specifies the <var>directory</var> for the shared
+object files.</dd>
+
 <dt><code>-h</code></dt>
 
 <dd>Output a short summary of available command line options.</dd>
@@ -124,8 +129,8 @@ the <code class="directive"><a href="../mod/mod_so.html#loadmodule">LoadModule</
 
 <dt><code>-L</code></dt>
 
-<dd>Output a list of directives provided by static modules, together with expected arguments and
-places where the directive is valid. Directives provided by shared modules are not listed.</dd>
+<dd>Output a list of directives together with expected arguments and
+places where the directive is valid.</dd>
 
 <dt><code>-M</code></dt>
 
@@ -135,10 +140,6 @@ places where the directive is valid. Directives provided by shared modules are n
 
 <dd>Show the settings as parsed from the config file (currently only
 shows the virtualhost settings).</dd>
-
-<dt><code>-T</code></dt>
-
-<dd>Skip document root check at startup/restart.</dd>
 
 <dt><code>-t</code></dt>
 
@@ -188,9 +189,8 @@ be read.</dd>
 </div></div>
 <div class="bottomlang">
 <p><span>Available Languages: </span><a href="../en/programs/httpd.html" title="English">&nbsp;en&nbsp;</a> |
-<a href="../ko/programs/httpd.html" hreflang="ko" rel="alternate" title="Korean">&nbsp;ko&nbsp;</a> |
-<a href="../tr/programs/httpd.html" hreflang="tr" rel="alternate" title="Türkçe">&nbsp;tr&nbsp;</a></p>
+<a href="../ko/programs/httpd.html" hreflang="ko" rel="alternate" title="Korean">&nbsp;ko&nbsp;</a></p>
 </div><div id="footer">
-<p class="apache">Copyright 2010 The Apache Software Foundation.<br />Licensed under the <a href="http://www.apache.org/licenses/LICENSE-2.0">Apache License, Version 2.0</a>.</p>
+<p class="apache">Copyright 2007 The Apache Software Foundation.<br />Licensed under the <a href="http://www.apache.org/licenses/LICENSE-2.0">Apache License, Version 2.0</a>.</p>
 <p class="menu"><a href="../mod/">Modules</a> | <a href="../mod/directives.html">Directives</a> | <a href="../faq/">FAQ</a> | <a href="../glossary.html">Glossary</a> | <a href="../sitemap.html">Sitemap</a></p></div>
 </body></html>

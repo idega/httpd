@@ -79,6 +79,10 @@
 #define IMAP_DEFAULT_DEFAULT "nocontent"
 #define IMAP_BASE_DEFAULT "map"
 
+#ifdef SUNOS4
+double strtod();                /* SunOS needed this */
+#endif
+
 module AP_MODULE_DECLARE_DATA imagemap_module;
 
 typedef struct {

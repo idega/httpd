@@ -29,10 +29,11 @@ extern "C" {
 #ifdef HAVE_SYS_TIMES_H
 #include <sys/time.h>
 #include <sys/times.h>
+#elif defined(TPF)
+#include <time.h>
 #endif
 
 #include "ap_config.h"
-#include "http_config.h"
 #include "apr_hooks.h"
 #include "apr_thread_proc.h"
 #include "apr_portable.h"
@@ -86,8 +87,18 @@ typedef enum {
     SB_SHARED = 2
 } ap_scoreboard_e;
 
+#define SB_WORKING  0  /* The server is busy and the child is useful. */
+#define SB_IDLE_DIE 1  /* The server is idle and the child is superfluous. */
+                       /*   The child should check for this and exit gracefully. */
+
 /* stuff which is worker specific */
+/***********************WARNING***************************************/
+/* These are things that are used by mod_status. Do not put anything */
+/*   in here that you cannot live without. This structure will not   */
+/*   be available if mod_status is not loaded.                       */
+/*********************************************************************/
 typedef struct worker_score worker_score;
+
 struct worker_score {
     int thread_num;
 #if APR_HAS_THREADS
@@ -131,9 +142,10 @@ typedef struct {
 
 /* stuff which the parent generally writes and the children rarely read */
 typedef struct process_score process_score;
-struct process_score {
+struct process_score{
     pid_t pid;
     ap_generation_t generation;	/* generation of this child */
+    ap_scoreboard_e sb_type;
     int quiescing;          /* the process whose pid is stored above is
                              * going down gracefully
                              */
@@ -141,7 +153,8 @@ struct process_score {
 
 /* stuff which is lb specific */
 typedef struct lb_score lb_score;
-struct lb_score {
+struct lb_score{
+    /* TODO: make a real stuct from this */
     unsigned char data[1024];
 };
 
@@ -170,16 +183,13 @@ apr_status_t ap_cleanup_scoreboard(void *d);
 AP_DECLARE(void) ap_create_sb_handle(ap_sb_handle_t **new_sbh, apr_pool_t *p,
                                      int child_num, int thread_num);
     
-AP_DECLARE(int) ap_find_child_by_pid(apr_proc_t *pid);
+int find_child_by_pid(apr_proc_t *pid);
 AP_DECLARE(int) ap_update_child_status(ap_sb_handle_t *sbh, int status, request_rec *r);
 AP_DECLARE(int) ap_update_child_status_from_indexes(int child_num, int thread_num,
                                                     int status, request_rec *r);
-AP_DECLARE(int) ap_update_child_status_from_conn(ap_sb_handle_t *sbh, int status, conn_rec *c);
-AP_DECLARE(void) ap_time_process_request(ap_sb_handle_t *sbh, int status);
+void ap_time_process_request(ap_sb_handle_t *sbh, int status);
 
-AP_DECLARE(worker_score *) ap_get_scoreboard_worker(ap_sb_handle_t *sbh);
-AP_DECLARE(worker_score *) ap_get_scoreboard_worker_from_indexes(int child_num,
-                                                                int thread_num);
+AP_DECLARE(worker_score *) ap_get_scoreboard_worker(int x, int y);
 AP_DECLARE(process_score *) ap_get_scoreboard_process(int x);
 AP_DECLARE(global_score *) ap_get_scoreboard_global(void);
 AP_DECLARE(lb_score *) ap_get_scoreboard_lb(int lb_num);
@@ -189,12 +199,7 @@ AP_DECLARE_DATA extern const char *ap_scoreboard_fname;
 AP_DECLARE_DATA extern int ap_extended_status;
 AP_DECLARE_DATA extern int ap_mod_status_reqtail;
 
-/*
- * Command handlers [internal]
- */
-const char *ap_set_scoreboard(cmd_parms *cmd, void *dummy, const char *arg);
-const char *ap_set_extended_status(cmd_parms *cmd, void *dummy, int arg);
-const char *ap_set_reqtail(cmd_parms *cmd, void *dummy, int arg);
+AP_DECLARE_DATA extern ap_generation_t volatile ap_my_generation;
 
 /* Hooks */
 /**
@@ -211,12 +216,6 @@ AP_DECLARE_HOOK(int, pre_mpm, (apr_pool_t *p, ap_scoreboard_e sb_type))
   * @return the number of load balancer workers.
   */  
 APR_DECLARE_OPTIONAL_FN(int, ap_proxy_lb_workers,
-                        (void));
-/**
-  * proxy load balancer
-  * @return the size of lb_workers.
-  */  
-APR_DECLARE_OPTIONAL_FN(int, ap_proxy_lb_worker_size,
                         (void));
 
 /* for time_process_request() in http_main.c */

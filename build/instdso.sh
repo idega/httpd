@@ -49,16 +49,7 @@ then
     $CMD || exit $?
 fi
 
-case $SYS in
-    SunOS)
-        INSTALL_CMD=cp
-        ;;
-    *)
-        type install >/dev/null 2>&1 && INSTALL_CMD=install || INSTALL_CMD=cp
-        ;;
-esac
-
-CMD="$SH_LIBTOOL --mode=install $INSTALL_CMD $DSOARCHIVE $TARGETDIR/"
+CMD="$SH_LIBTOOL --mode=install cp $DSOARCHIVE $TARGETDIR/"
 echo $CMD
 $CMD || exit $?
 
@@ -70,12 +61,9 @@ then
     exit 0
 fi
 
-if test -s "$TARGETDIR/$DSOARCHIVE_BASENAME"
-then
-  DLNAME=`sed -n "/^dlname=/{s/.*='\([^']*\)'/\1/;p;}" $TARGETDIR/$DSOARCHIVE_BASENAME`
-  LIBRARY_NAMES=`sed -n "/^library_names/{s/library_names='\([^']*\)'/\1/;p;}" $TARGETDIR/$DSOARCHIVE_BASENAME`
-  LIBRARY_NAMES=`echo $LIBRARY_NAMES | sed -e "s/ *$DLNAME//g"`
-fi
+DLNAME=`sed -n "/^dlname=/{s/.*='\([^']*\)'/\1/;p;}" $TARGETDIR/$DSOARCHIVE_BASENAME`
+LIBRARY_NAMES=`sed -n "/^library_names/{s/library_names='\([^']*\)'/\1/;p;}" $TARGETDIR/$DSOARCHIVE_BASENAME`
+LIBRARY_NAMES=`echo $LIBRARY_NAMES | sed -e "s/ *$DLNAME//g"`
 
 if test -z "$DLNAME"
 then

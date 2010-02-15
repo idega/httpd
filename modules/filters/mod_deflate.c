@@ -157,15 +157,6 @@ static int check_gzip(request_rec *r, apr_table_t *hdrs1, apr_table_t *hdrs2)
             }
         }
     }
-    /*
-     * If we have dealt with the headers above but content_encoding was set
-     * before sync it with the new value in the hdrs table as
-     * r->content_encoding takes precedence later on in the http_header_filter
-     * and hence would destroy what we have just set in the hdrs table.
-     */
-    if (hdrs && r->content_encoding) {
-        r->content_encoding = apr_table_get(hdrs, "Content-Encoding");
-    }
     return found;
 }
 
@@ -381,43 +372,23 @@ static apr_status_t deflate_ctx_cleanup(void *data)
         ctx->libz_end_func(&ctx->stream);
     return APR_SUCCESS;
 }
-
-/* ETag must be unique among the possible representations, so a change
- * to content-encoding requires a corresponding change to the ETag.
- * This routine appends -transform (e.g., -gzip) to the entity-tag
- * value inside the double-quotes if an ETag has already been set
- * and its value already contains double-quotes. PR 39727
+/* PR 39727: we're screwing up our clients if we leave a strong ETag
+ * header while transforming content.  Henrik Nordstrom suggests
+ * appending ";gzip".
+ *
+ * Pending a more thorough review of our Etag handling, let's just
+ * implement his suggestion.  It fixes the bug, or at least turns it
+ * from a showstopper to an inefficiency.  And it breaks nothing that
+ * wasn't already broken.
  */
 static void deflate_check_etag(request_rec *r, const char *transform)
 {
     const char *etag = apr_table_get(r->headers_out, "ETag");
-    apr_size_t etaglen;
-
-    if ((etag && ((etaglen = strlen(etag)) > 2))) {
-        if (etag[etaglen - 1] == '"') {
-            apr_size_t transformlen = strlen(transform);
-            char *newtag = apr_palloc(r->pool, etaglen + transformlen + 2);
-            char *d = newtag;
-            char *e = d + etaglen - 1;
-            const char *s = etag;
-
-            for (; d < e; ++d, ++s) {
-                *d = *s;          /* copy etag to newtag up to last quote */
-            }
-            *d++ = '-';           /* append dash to newtag */
-            s = transform;
-            e = d + transformlen;
-            for (; d < e; ++d, ++s) {
-                *d = *s;          /* copy transform to newtag */
-            }
-            *d++ = '"';           /* append quote to newtag */
-            *d   = '\0';          /* null terminate newtag */
-
-            apr_table_setn(r->headers_out, "ETag", newtag);
-        }
-    }   
+    if (etag && (((etag[0] != 'W') && (etag[0] !='w')) || (etag[1] != '/'))) {
+        apr_table_set(r->headers_out, "ETag",
+                      apr_pstrcat(r->pool, etag, "-", transform, NULL));
+    }
 }
-
 static apr_status_t deflate_out_filter(ap_filter_t *f,
                                        apr_bucket_brigade *bb)
 {
@@ -445,16 +416,22 @@ static apr_status_t deflate_out_filter(ap_filter_t *f,
         char *token;
         const char *encoding;
 
-        /*
-         * Only work on main request, not subrequests,
-         * that are not a 204 response with no content
-         * and are not tagged with the no-gzip env variable
-         * and not a partial response to a Range request.
+        /* only work on main request/no subrequests */
+        if (r->main != NULL) {
+            ap_remove_output_filter(f);
+            return ap_pass_brigade(f->next, bb);
+        }
+
+        /* some browsers might have problems, so set no-gzip
+         * (with browsermatch) for them
          */
-        if ((r->main != NULL) || (r->status == HTTP_NO_CONTENT) ||
-            apr_table_get(r->subprocess_env, "no-gzip") ||
-            apr_table_get(r->headers_out, "Content-Range")
-           ) {
+        if (apr_table_get(r->subprocess_env, "no-gzip")) {
+            ap_remove_output_filter(f);
+            return ap_pass_brigade(f->next, bb);
+        }
+
+        /* We can't operate on Content-Ranges */
+        if (apr_table_get(r->headers_out, "Content-Range") != NULL) {
             ap_remove_output_filter(f);
             return ap_pass_brigade(f->next, bb);
         }
@@ -557,47 +534,48 @@ static apr_status_t deflate_out_filter(ap_filter_t *f,
             }
         }
 
-        /* At this point we have decided to filter the content. Let's try to
-         * to initialize zlib (except for 304 responses, where we will only
-         * send out the headers).
-         */
-
-        if (r->status != HTTP_NOT_MODIFIED) {
-            ctx = f->ctx = apr_pcalloc(r->pool, sizeof(*ctx));
-            ctx->bb = apr_brigade_create(r->pool, f->c->bucket_alloc);
-            ctx->buffer = apr_palloc(r->pool, c->bufferSize);
-            ctx->libz_end_func = deflateEnd;
-
-            zRC = deflateInit2(&ctx->stream, c->compressionlevel, Z_DEFLATED,
-                               c->windowSize, c->memlevel,
-                               Z_DEFAULT_STRATEGY);
-
-            if (zRC != Z_OK) {
-                deflateEnd(&ctx->stream);
-                ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, r,
-                              "unable to init Zlib: "
-                              "deflateInit2 returned %d: URL %s",
-                              zRC, r->uri);
-                /*
-                 * Remove ourselves as it does not make sense to return:
-                 * We are not able to init libz and pass data down the chain
-                 * uncompressed.
-                 */
-                ap_remove_output_filter(f);
-                return ap_pass_brigade(f->next, bb);
-            }
-            /*
-             * Register a cleanup function to ensure that we cleanup the internal
-             * libz resources.
-             */
-            apr_pool_cleanup_register(r->pool, ctx, deflate_ctx_cleanup,
-                                      apr_pool_cleanup_null);
+        /* For a 304 or 204 response there is no entity included in
+         * the response and hence nothing to deflate. */
+        if (r->status == HTTP_NOT_MODIFIED || r->status == HTTP_NO_CONTENT) {
+            ap_remove_output_filter(f);
+            return ap_pass_brigade(f->next, bb);
         }
 
+        /* We're cool with filtering this. */
+        ctx = f->ctx = apr_pcalloc(r->pool, sizeof(*ctx));
+        ctx->bb = apr_brigade_create(r->pool, f->c->bucket_alloc);
+        ctx->buffer = apr_palloc(r->pool, c->bufferSize);
+        ctx->libz_end_func = deflateEnd;
+
+        zRC = deflateInit2(&ctx->stream, c->compressionlevel, Z_DEFLATED,
+                           c->windowSize, c->memlevel,
+                           Z_DEFAULT_STRATEGY);
+
+        if (zRC != Z_OK) {
+            deflateEnd(&ctx->stream);
+            ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, r,
+                          "unable to init Zlib: "
+                          "deflateInit2 returned %d: URL %s",
+                          zRC, r->uri);
+            /*
+             * Remove ourselves as it does not make sense to return:
+             * We are not able to init libz and pass data down the chain
+             * uncompressed.
+             */
+            ap_remove_output_filter(f);
+            return ap_pass_brigade(f->next, bb);
+        }
         /*
-         * Zlib initialization worked, so we can now change the important
-         * content metadata before sending the response out.
+         * Register a cleanup function to ensure that we cleanup the internal
+         * libz resources.
          */
+        apr_pool_cleanup_register(r->pool, ctx, deflate_ctx_cleanup,
+                                  apr_pool_cleanup_null);
+
+        /* add immortal gzip header */
+        e = apr_bucket_immortal_create(gzip_header, sizeof gzip_header,
+                                       f->c->bucket_alloc);
+        APR_BRIGADE_INSERT_TAIL(ctx->bb, e);
 
         /* If the entire Content-Encoding is "identity", we can replace it. */
         if (!encoding || !strcasecmp(encoding, "identity")) {
@@ -606,25 +584,9 @@ static apr_status_t deflate_out_filter(ap_filter_t *f,
         else {
             apr_table_mergen(r->headers_out, "Content-Encoding", "gzip");
         }
-        /* Fix r->content_encoding if it was set before */
-        if (r->content_encoding) {
-            r->content_encoding = apr_table_get(r->headers_out,
-                                                "Content-Encoding");
-        }
         apr_table_unset(r->headers_out, "Content-Length");
         apr_table_unset(r->headers_out, "Content-MD5");
         deflate_check_etag(r, "gzip");
-
-        /* For a 304 response, only change the headers */
-        if (r->status == HTTP_NOT_MODIFIED) {
-            ap_remove_output_filter(f);
-            return ap_pass_brigade(f->next, bb);
-        }
-
-        /* add immortal gzip header */
-        e = apr_bucket_immortal_create(gzip_header, sizeof gzip_header,
-                                       f->c->bucket_alloc);
-        APR_BRIGADE_INSERT_TAIL(ctx->bb, e);
 
         /* initialize deflate output buffer */
         ctx->stream.next_out = ctx->buffer;
@@ -1019,11 +981,14 @@ static apr_status_t deflate_in_filter(ap_filter_t *f,
     }
 
     if (!APR_BRIGADE_EMPTY(ctx->proc_bb)) {
+        apr_bucket_brigade *newbb;
+
         /* May return APR_INCOMPLETE which is fine by us. */
         apr_brigade_partition(ctx->proc_bb, readbytes, &bkt);
 
+        newbb = apr_brigade_split(ctx->proc_bb, bkt);
         APR_BRIGADE_CONCAT(bb, ctx->proc_bb);
-        apr_brigade_split_ex(bb, bkt, ctx->proc_bb);
+        APR_BRIGADE_CONCAT(ctx->proc_bb, newbb);
     }
 
     return APR_SUCCESS;
@@ -1052,31 +1017,29 @@ static apr_status_t inflate_out_filter(ap_filter_t *f,
 
     if (!ctx) {
 
-        /*
-         * Only work on main request, not subrequests,
-         * that are not a 204 response with no content
-         * and not a partial response to a Range request,
-         * and only when Content-Encoding ends in gzip.
-         */
-        if (!ap_is_initial_req(r) || (r->status == HTTP_NO_CONTENT) ||
-            (apr_table_get(r->headers_out, "Content-Range") != NULL) ||
-            (check_gzip(r, r->headers_out, r->err_headers_out) == 0)
-           ) {
+        /* only work on main request/no subrequests */
+        if (!ap_is_initial_req(r)) {
+            ap_remove_output_filter(f);
+            return ap_pass_brigade(f->next, bb);
+        }
+
+        /* We can't operate on Content-Ranges */
+        if (apr_table_get(r->headers_out, "Content-Range") != NULL) {
             ap_remove_output_filter(f);
             return ap_pass_brigade(f->next, bb);
         }
 
         /*
-         * At this point we have decided to filter the content, so change
-         * important content metadata before sending any response out.
-         * Content-Encoding was already reset by the check_gzip() call.
+         * Let's see what our current Content-Encoding is.
+         * Only inflate if gzipped.
          */
-        apr_table_unset(r->headers_out, "Content-Length");
-        apr_table_unset(r->headers_out, "Content-MD5");
-        deflate_check_etag(r, "gunzip");
+        if (check_gzip(r, r->headers_out, r->err_headers_out) == 0) {
+            ap_remove_output_filter(f);
+            return ap_pass_brigade(f->next, bb);
+        }
 
-        /* For a 304 response, only change the headers */
-        if (r->status == HTTP_NOT_MODIFIED) {
+        /* No need to inflate HEAD or 204/304 */
+        if (APR_BUCKET_IS_EOS(APR_BRIGADE_FIRST(bb))) {
             ap_remove_output_filter(f);
             return ap_pass_brigade(f->next, bb);
         }
@@ -1112,6 +1075,11 @@ static apr_status_t inflate_out_filter(ap_filter_t *f,
          */
         apr_pool_cleanup_register(r->pool, ctx, deflate_ctx_cleanup,
                                   apr_pool_cleanup_null);
+
+        /* these are unlikely to be set anyway, but ... */
+        apr_table_unset(r->headers_out, "Content-Length");
+        apr_table_unset(r->headers_out, "Content-MD5");
+        deflate_check_etag(r, "gunzip");
 
         /* initialize inflate output buffer */
         ctx->stream.next_out = ctx->buffer;

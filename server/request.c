@@ -32,8 +32,8 @@
 #define APR_WANT_STRFUNC
 #include "apr_want.h"
 
+#define CORE_PRIVATE
 #include "ap_config.h"
-#include "ap_provider.h"
 #include "httpd.h"
 #include "http_config.h"
 #include "http_request.h"
@@ -44,11 +44,8 @@
 #include "util_filter.h"
 #include "util_charset.h"
 #include "util_script.h"
-#include "ap_expr.h"
-#include "mod_request.h"
 
 #include "mod_core.h"
-#include "mod_auth.h"
 
 #if APR_HAVE_STDARG_H
 #include <stdarg.h>
@@ -84,12 +81,8 @@ AP_IMPLEMENT_HOOK_VOID(insert_filter, (request_rec *r), (r))
 AP_IMPLEMENT_HOOK_RUN_ALL(int, create_request,
                           (request_rec *r), (r), OK, DECLINED)
 
-static int auth_internal_per_conf = 0;
-static int auth_internal_per_conf_hooks = 0;
-static int auth_internal_per_conf_providers = 0;
 
-
-static int decl_die(int status, const char *phase, request_rec *r)
+static int decl_die(int status, char *phase, request_rec *r)
 {
     if (status == DECLINED) {
         ap_log_rerror(APLOG_MARK, APLOG_CRIT, 0, r,
@@ -159,10 +152,14 @@ AP_DECLARE(int) ap_process_request_internal(request_rec *r)
         return access_status;
     }
 
-    /* Rerun the location walk, which overrides any map_to_storage config.
+    /* Excluding file-specific requests with no 'true' URI...
      */
-    if ((access_status = ap_location_walk(r))) {
-        return access_status;
+    if (!file_req) {
+        /* Rerun the location walk, which overrides any map_to_storage config.
+         */
+        if ((access_status = ap_location_walk(r))) {
+            return access_status;
+        }
     }
 
     /* Only on the main request! */
@@ -177,55 +174,75 @@ AP_DECLARE(int) ap_process_request_internal(request_rec *r)
      * functions in map_to_storage that use the same merge results given
      * identical input.)  If the config changes, we must re-auth.
      */
-    if (r->prev && (r->prev->per_dir_config == r->per_dir_config)) {
-        r->user = r->prev->user;
-        r->ap_auth_type = r->prev->ap_auth_type;
-    }
-    else if (r->main && (r->main->per_dir_config == r->per_dir_config)) {
+    if (r->main && (r->main->per_dir_config == r->per_dir_config)) {
         r->user = r->main->user;
         r->ap_auth_type = r->main->ap_auth_type;
+    }
+    else if (r->prev && (r->prev->per_dir_config == r->per_dir_config)) {
+        r->user = r->prev->user;
+        r->ap_auth_type = r->prev->ap_auth_type;
     }
     else {
         switch (ap_satisfies(r)) {
         case SATISFY_ALL:
         case SATISFY_NOSPEC:
-            if ((access_status = ap_run_access_checker(r)) != OK) {
+            if ((access_status = ap_run_access_checker(r)) != 0) {
                 return decl_die(access_status, "check access", r);
             }
 
-            if ((access_status = ap_run_check_user_id(r)) != OK) {
-                return decl_die(access_status, "check user", r);
-            }
-
-            if ((access_status = ap_run_auth_checker(r)) != OK) {
-                return decl_die(access_status, "check authorization", r);
-            }
-            break;
-        case SATISFY_ANY:
-            if ((access_status = ap_run_access_checker(r)) != OK) {
-
-                if ((access_status = ap_run_check_user_id(r)) != OK) {
-                    return decl_die(access_status, "check user", r);
+            if (ap_some_auth_required(r)) {
+                if (((access_status = ap_run_check_user_id(r)) != 0)
+                    || !ap_auth_type(r)) {
+                    return decl_die(access_status, ap_auth_type(r)
+                                  ? "check user.  No user file?"
+                                  : "perform authentication. AuthType not set!",
+                                  r);
                 }
 
-                if ((access_status = ap_run_auth_checker(r)) != OK) {
-                    return decl_die(access_status, "check authorization", r);
+                if (((access_status = ap_run_auth_checker(r)) != 0)
+                    || !ap_auth_type(r)) {
+                    return decl_die(access_status, ap_auth_type(r)
+                                  ? "check access.  No groups file?"
+                                  : "perform authentication. AuthType not set!",
+                                   r);
+                }
+            }
+            break;
+
+        case SATISFY_ANY:
+            if (((access_status = ap_run_access_checker(r)) != 0)) {
+                if (!ap_some_auth_required(r)) {
+                    return decl_die(access_status, "check access", r);
+                }
+
+                if (((access_status = ap_run_check_user_id(r)) != 0)
+                    || !ap_auth_type(r)) {
+                    return decl_die(access_status, ap_auth_type(r)
+                                  ? "check user.  No user file?"
+                                  : "perform authentication. AuthType not set!",
+                                  r);
+                }
+
+                if (((access_status = ap_run_auth_checker(r)) != 0)
+                    || !ap_auth_type(r)) {
+                    return decl_die(access_status, ap_auth_type(r)
+                                  ? "check access.  No groups file?"
+                                  : "perform authentication. AuthType not set!",
+                                  r);
                 }
             }
             break;
         }
-
-
     }
     /* XXX Must make certain the ap_run_type_checker short circuits mime
      * in mod-proxy for r->proxyreq && r->parsed_uri.scheme
      *                              && !strcmp(r->parsed_uri.scheme, "http")
      */
-    if ((access_status = ap_run_type_checker(r)) != OK) {
+    if ((access_status = ap_run_type_checker(r)) != 0) {
         return decl_die(access_status, "find types", r);
     }
 
-    if ((access_status = ap_run_fixups(r)) != OK) {
+    if ((access_status = ap_run_fixups(r)) != 0) {
         return access_status;
     }
 
@@ -254,61 +271,44 @@ typedef struct walk_cache_t {
     ap_conf_vector_t   *dir_conf_merged; /* Base per_dir_config */
     ap_conf_vector_t   *per_dir_result;  /* per_dir_config += walked result */
     apr_array_header_t *walked;          /* The list of walk_walked_t results */
-    struct walk_cache_t *prev; /* Prev cache of same call in this (sub)req */
-    int count; /* Number of prev invocations of same call in this (sub)req */
 } walk_cache_t;
 
 static walk_cache_t *prep_walk_cache(apr_size_t t, request_rec *r)
 {
-    void **note, **inherit_note;
-    walk_cache_t *cache, *prev_cache, *copy_cache;
-    int count;
+    walk_cache_t *cache;
+    void **note;
 
-    /* Find the most relevant, recent walk cache to work from and provide
-     * a copy the caller is allowed to munge.  In the case of a sub-request
-     * or internal redirect, this is the cache corresponding to the equivalent
-     * invocation of the same function call in the "parent" request, if such
-     * a cache exists.  Otherwise it is the walk cache of the previous
-     * invocation of the same function call in the current request, if
-     * that exists; if not, then create a new walk cache.
+    /* Find the most relevant, recent entry to work from.  That would be
+     * this request (on the second call), or the parent request of a
+     * subrequest, or the prior request of an internal redirect.  Provide
+     * this _walk()er with a copy it is allowed to munge.  If there is no
+     * parent or prior cached request, then create a new walk cache.
      */
     note = ap_get_request_note(r, t);
     if (!note) {
         return NULL;
     }
 
-    copy_cache = prev_cache = *note;
-    count = prev_cache ? (prev_cache->count + 1) : 0;
+    if (!(cache = *note)) {
+        void **inherit_note;
 
-    if ((r->prev
-         && (inherit_note = ap_get_request_note(r->prev, t))
-         && *inherit_note)
-        || (r->main
-            && (inherit_note = ap_get_request_note(r->main, t))
-            && *inherit_note)) {
-        walk_cache_t *inherit_cache = *inherit_note;
-
-        while (inherit_cache->count > count) {
-            inherit_cache = inherit_cache->prev;
+        if ((r->main
+             && ((inherit_note = ap_get_request_note(r->main, t)))
+             && *inherit_note)
+            || (r->prev
+                && ((inherit_note = ap_get_request_note(r->prev, t)))
+                && *inherit_note)) {
+            cache = apr_pmemdup(r->pool, *inherit_note,
+                                sizeof(*cache));
+            cache->walked = apr_array_copy(r->pool, cache->walked);
         }
-        if (inherit_cache->count == count) {
-            copy_cache = inherit_cache;
+        else {
+            cache = apr_pcalloc(r->pool, sizeof(*cache));
+            cache->walked = apr_array_make(r->pool, 4, sizeof(walk_walked_t));
         }
-    }
 
-    if (copy_cache) {
-        cache = apr_pmemdup(r->pool, copy_cache, sizeof(*cache));
-        cache->walked = apr_array_copy(r->pool, cache->walked);
-        cache->prev = prev_cache;
-        cache->count = count;
+        *note = cache;
     }
-    else {
-        cache = apr_pcalloc(r->pool, sizeof(*cache));
-        cache->walked = apr_array_make(r->pool, 4, sizeof(walk_walked_t));
-    }
-
-    *note = cache;
-
     return cache;
 }
 
@@ -355,8 +355,7 @@ static int resolve_symlink(char *d, apr_finfo_t *lfi, int opts, apr_pool_t *p)
     /* Save the name from the valid bits. */
     savename = (lfi->valid & APR_FINFO_NAME) ? lfi->name : NULL;
 
-    /* if OPT_SYM_OWNER is unset, we only need to check target accessible */
-    if (!(opts & OPT_SYM_OWNER)) {
+    if (opts & OPT_SYM_LINKS) {
         if ((res = apr_stat(&fi, d, lfi->valid & ~(APR_FINFO_NAME
                                                  | APR_FINFO_LINK), p))
                  != APR_SUCCESS) {
@@ -378,7 +377,7 @@ static int resolve_symlink(char *d, apr_finfo_t *lfi, int opts, apr_pool_t *p)
      * owner of the symlink, then get the info of the target.
      */
     if (!(lfi->valid & APR_FINFO_OWNER)) {
-        if ((res = apr_stat(lfi, d,
+        if ((res = apr_stat(&fi, d,
                             lfi->valid | APR_FINFO_LINK | APR_FINFO_OWNER, p))
             != APR_SUCCESS) {
             return HTTP_FORBIDDEN;
@@ -477,7 +476,6 @@ AP_DECLARE(int) ap_directory_walk(request_rec *r)
     walk_cache_t *cache;
     char *entry_dir;
     apr_status_t rv;
-    int cached;
 
     /* XXX: Better (faster) tests needed!!!
      *
@@ -515,7 +513,6 @@ AP_DECLARE(int) ap_directory_walk(request_rec *r)
     r->filename = entry_dir;
 
     cache = prep_walk_cache(AP_NOTE_DIRECTORY_WALK, r);
-    cached = (cache->cached != NULL);
 
     /* If this is not a dirent subrequest with a preconstructed
      * r->finfo value, then we can simply stat the filename to
@@ -559,77 +556,23 @@ AP_DECLARE(int) ap_directory_walk(request_rec *r)
      * and the vhost's list of directory sections hasn't changed,
      * we can skip rewalking the directory_walk entries.
      */
-    if (cached
+    if (cache->cached
         && ((r->finfo.filetype == APR_REG)
             || ((r->finfo.filetype == APR_DIR)
                 && (!r->path_info || !*r->path_info)))
         && (cache->dir_conf_tested == sec_ent)
         && (strcmp(entry_dir, cache->cached) == 0)) {
-        int familiar = 0;
-
         /* Well this looks really familiar!  If our end-result (per_dir_result)
          * didn't change, we have absolutely nothing to do :)
          * Otherwise (as is the case with most dir_merged/file_merged requests)
          * we must merge our dir_conf_merged onto this new r->per_dir_config.
          */
         if (r->per_dir_config == cache->per_dir_result) {
-            familiar = 1;
+            return OK;
         }
 
         if (r->per_dir_config == cache->dir_conf_merged) {
             r->per_dir_config = cache->per_dir_result;
-            familiar = 1;
-        }
-
-        if (familiar) {
-            apr_finfo_t thisinfo;
-            int res;
-            allow_options_t opts;
-            core_dir_config *this_dir;
-
-            this_dir = ap_get_module_config(r->per_dir_config, &core_module);
-            opts = this_dir->opts;
-            /*
-             * If Symlinks are allowed in general we do not need the following
-             * check.
-             */
-            if (!(opts & OPT_SYM_LINKS)) {
-                rv = apr_stat(&thisinfo, r->filename,
-                              APR_FINFO_MIN | APR_FINFO_NAME | APR_FINFO_LINK,
-                              r->pool);
-                /*
-                 * APR_INCOMPLETE is as fine as result as APR_SUCCESS as we
-                 * have added APR_FINFO_NAME to the wanted parameter of
-                 * apr_stat above. On Unix platforms this means that apr_stat
-                 * is always going to return APR_INCOMPLETE in the case that
-                 * the call to the native stat / lstat did not fail.
-                 */
-                if ((rv != APR_INCOMPLETE) && (rv != APR_SUCCESS)) {
-                    /*
-                     * This should never happen, because we did a stat on the
-                     * same file, resolving a possible symlink several lines
-                     * above. Therefore do not make a detailed analysis of rv
-                     * in this case for the reason of the failure, just bail out
-                     * with a HTTP_FORBIDDEN in case we hit a race condition
-                     * here.
-                     */
-                    ap_log_rerror(APLOG_MARK, APLOG_ERR, rv, r,
-                                  "access to %s failed; stat of '%s' failed.",
-                                  r->uri, r->filename);
-                    return r->status = HTTP_FORBIDDEN;
-                }
-                if (thisinfo.filetype == APR_LNK) {
-                    /* Is this a possibly acceptable symlink? */
-                    if ((res = resolve_symlink(r->filename, &thisinfo,
-                                               opts, r->pool)) != OK) {
-                        ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, r,
-                                      "Symbolic link not allowed "
-                                      "or link target not accessible: %s",
-                                      r->filename);
-                        return r->status = res;
-                    }
-                }
-            }
             return OK;
         }
 
@@ -644,7 +587,6 @@ AP_DECLARE(int) ap_directory_walk(request_rec *r)
          */
         int sec_idx;
         int matches = cache->walked->nelts;
-        int cached_matches = matches;
         walk_walked_t *last_walk = (walk_walked_t*)cache->walked->elts;
         core_dir_config *this_dir;
         core_opts_t opts;
@@ -661,8 +603,6 @@ AP_DECLARE(int) ap_directory_walk(request_rec *r)
 #ifdef CASE_BLIND_FILESYSTEM
         apr_size_t canonical_len;
 #endif
-
-        cached &= auth_internal_per_conf;
 
         /*
          * We must play our own mini-merge game here, for the few
@@ -855,7 +795,6 @@ AP_DECLARE(int) ap_directory_walk(request_rec *r)
                      */
                     cache->walked->nelts -= matches;
                     matches = 0;
-                    cached = 0;
                 }
 
                 if (now_merged) {
@@ -923,7 +862,6 @@ AP_DECLARE(int) ap_directory_walk(request_rec *r)
                      */
                     cache->walked->nelts -= matches;
                     matches = 0;
-                    cached = 0;
                 }
 
                 if (now_merged) {
@@ -1136,7 +1074,6 @@ AP_DECLARE(int) ap_directory_walk(request_rec *r)
                  */
                 cache->walked->nelts -= matches;
                 matches = 0;
-                cached = 0;
             }
 
             if (now_merged) {
@@ -1153,16 +1090,11 @@ AP_DECLARE(int) ap_directory_walk(request_rec *r)
             last_walk->merged = now_merged;
         }
 
-        /* Whoops - everything matched in sequence, but either the original
-         * walk found some additional matches (which we need to truncate), or
-         * this walk found some additional matches.
+        /* Whoops - everything matched in sequence, but the original walk
+         * found some additional matches.  Truncate them.
          */
         if (matches) {
             cache->walked->nelts -= matches;
-            cached = 0;
-        }
-        else if (cache->walked->nelts > cached_matches) {
-            cached = 0;
         }
     }
 
@@ -1202,12 +1134,6 @@ AP_DECLARE(int) ap_directory_walk(request_rec *r)
         cache->cached = ap_make_dirstr_parent(r->pool, r->filename);
     }
 
-    if (cached
-        && r->per_dir_config == cache->dir_conf_merged) {
-        r->per_dir_config = cache->per_dir_result;
-        return OK;
-    }
-
     cache->dir_conf_tested = sec_ent;
     cache->dir_conf_merged = r->per_dir_config;
 
@@ -1234,7 +1160,6 @@ AP_DECLARE(int) ap_location_walk(request_rec *r)
     int num_sec = sconf->sec_url->nelts;
     walk_cache_t *cache;
     const char *entry_uri;
-    int cached;
 
     /* No tricks here, there are no <Locations > to parse in this vhost.
      * We won't destroy the cache, just in case _this_ redirect is later
@@ -1245,7 +1170,6 @@ AP_DECLARE(int) ap_location_walk(request_rec *r)
     }
 
     cache = prep_walk_cache(AP_NOTE_LOCATION_WALK, r);
-    cached = (cache->cached != NULL);
 
     /* Location and LocationMatch differ on their behaviour w.r.t. multiple
      * slashes.  Location matches multiple slashes with a single slash,
@@ -1265,7 +1189,7 @@ AP_DECLARE(int) ap_location_walk(request_rec *r)
      * and the vhost's list of locations hasn't changed, we can skip
      * rewalking the location_walk entries.
      */
-    if (cached
+    if (cache->cached
         && (cache->dir_conf_tested == sec_ent)
         && (strcmp(entry_uri, cache->cached) == 0)) {
         /* Well this looks really familiar!  If our end-result (per_dir_result)
@@ -1274,6 +1198,11 @@ AP_DECLARE(int) ap_location_walk(request_rec *r)
          * we must merge our dir_conf_merged onto this new r->per_dir_config.
          */
         if (r->per_dir_config == cache->per_dir_result) {
+            return OK;
+        }
+
+        if (r->per_dir_config == cache->dir_conf_merged) {
+            r->per_dir_config = cache->per_dir_result;
             return OK;
         }
 
@@ -1288,10 +1217,7 @@ AP_DECLARE(int) ap_location_walk(request_rec *r)
          */
         int len, sec_idx;
         int matches = cache->walked->nelts;
-        int cached_matches = matches;
         walk_walked_t *last_walk = (walk_walked_t*)cache->walked->elts;
-
-        cached &= auth_internal_per_conf;
         cache->cached = entry_uri;
 
         /* Go through the location entries, and check for matches.
@@ -1316,8 +1242,7 @@ AP_DECLARE(int) ap_location_walk(request_rec *r)
                 : (entry_core->d_is_fnmatch
                    ? apr_fnmatch(entry_core->d, cache->cached, APR_FNM_PATHNAME)
                    : (strncmp(entry_core->d, cache->cached, len)
-                      || (len > 0
-                          && entry_core->d[len - 1] != '/'
+                      || (entry_core->d[len - 1] != '/'
                           && cache->cached[len] != '/'
                           && cache->cached[len] != '\0')))) {
                 continue;
@@ -1338,7 +1263,6 @@ AP_DECLARE(int) ap_location_walk(request_rec *r)
                  */
                 cache->walked->nelts -= matches;
                 matches = 0;
-                cached = 0;
             }
 
             if (now_merged) {
@@ -1355,23 +1279,12 @@ AP_DECLARE(int) ap_location_walk(request_rec *r)
             last_walk->merged = now_merged;
         }
 
-        /* Whoops - everything matched in sequence, but either the original
-         * walk found some additional matches (which we need to truncate), or
-         * this walk found some additional matches.
+        /* Whoops - everything matched in sequence, but the original walk
+         * found some additional matches.  Truncate them.
          */
         if (matches) {
             cache->walked->nelts -= matches;
-            cached = 0;
         }
-        else if (cache->walked->nelts > cached_matches) {
-            cached = 0;
-        }
-    }
-
-    if (cached
-        && r->per_dir_config == cache->dir_conf_merged) {
-        r->per_dir_config = cache->per_dir_result;
-        return OK;
     }
 
     cache->dir_conf_tested = sec_ent;
@@ -1399,7 +1312,6 @@ AP_DECLARE(int) ap_file_walk(request_rec *r)
     int num_sec = dconf->sec_file->nelts;
     walk_cache_t *cache;
     const char *test_file;
-    int cached;
 
     /* To allow broken modules to proceed, we allow missing filenames to pass.
      * We will catch it later if it's heading for the core handler.
@@ -1410,7 +1322,6 @@ AP_DECLARE(int) ap_file_walk(request_rec *r)
     }
 
     cache = prep_walk_cache(AP_NOTE_FILE_WALK, r);
-    cached = (cache->cached != NULL);
 
     /* No tricks here, there are just no <Files > to parse in this context.
      * We won't destroy the cache, just in case _this_ redirect is later
@@ -1435,7 +1346,7 @@ AP_DECLARE(int) ap_file_walk(request_rec *r)
      * and the directory's list of file sections hasn't changed, we
      * can skip rewalking the file_walk entries.
      */
-    if (cached
+    if (cache->cached
         && (cache->dir_conf_tested == sec_ent)
         && (strcmp(test_file, cache->cached) == 0)) {
         /* Well this looks really familiar!  If our end-result (per_dir_result)
@@ -1444,6 +1355,11 @@ AP_DECLARE(int) ap_file_walk(request_rec *r)
          * we must merge our dir_conf_merged onto this new r->per_dir_config.
          */
         if (r->per_dir_config == cache->per_dir_result) {
+            return OK;
+        }
+
+        if (r->per_dir_config == cache->dir_conf_merged) {
+            r->per_dir_config = cache->per_dir_result;
             return OK;
         }
 
@@ -1458,10 +1374,7 @@ AP_DECLARE(int) ap_file_walk(request_rec *r)
          */
         int sec_idx;
         int matches = cache->walked->nelts;
-        int cached_matches = matches;
         walk_walked_t *last_walk = (walk_walked_t*)cache->walked->elts;
-
-        cached &= auth_internal_per_conf;
         cache->cached = test_file;
 
         /* Go through the location entries, and check for matches.
@@ -1469,24 +1382,16 @@ AP_DECLARE(int) ap_file_walk(request_rec *r)
          * really try them with the most general first.
          */
         for (sec_idx = 0; sec_idx < num_sec; ++sec_idx) {
-            int err = 0;
+
             core_dir_config *entry_core;
             entry_core = ap_get_module_config(sec_ent[sec_idx], &core_module);
 
-            if (entry_core->condition) {
-                if (!ap_expr_eval(r, entry_core->condition, &err, NULL,
-                                  ap_expr_string, NULL)) {
-                    continue;
-                }
-            }
-            else {
-                if (entry_core->r
-                    ? ap_regexec(entry_core->r, cache->cached , 0, NULL, 0)
-                    : (entry_core->d_is_fnmatch
-                       ? apr_fnmatch(entry_core->d, cache->cached, APR_FNM_PATHNAME)
-                       : strcmp(entry_core->d, cache->cached))) {
-                    continue;
-                }
+            if (entry_core->r
+                ? ap_regexec(entry_core->r, cache->cached , 0, NULL, 0)
+                : (entry_core->d_is_fnmatch
+                   ? apr_fnmatch(entry_core->d, cache->cached, APR_FNM_PATHNAME)
+                   : strcmp(entry_core->d, cache->cached))) {
+                continue;
             }
 
             /* If we merged this same section last time, reuse it
@@ -1504,7 +1409,6 @@ AP_DECLARE(int) ap_file_walk(request_rec *r)
                  */
                 cache->walked->nelts -= matches;
                 matches = 0;
-                cached = 0;
             }
 
             if (now_merged) {
@@ -1521,23 +1425,12 @@ AP_DECLARE(int) ap_file_walk(request_rec *r)
             last_walk->merged = now_merged;
         }
 
-        /* Whoops - everything matched in sequence, but either the original
-         * walk found some additional matches (which we need to truncate), or
-         * this walk found some additional matches.
+        /* Whoops - everything matched in sequence, but the original walk
+         * found some additional matches.  Truncate them.
          */
         if (matches) {
             cache->walked->nelts -= matches;
-            cached = 0;
         }
-        else if (cache->walked->nelts > cached_matches) {
-            cached = 0;
-        }
-    }
-
-    if (cached
-        && r->per_dir_config == cache->dir_conf_merged) {
-        r->per_dir_config = cache->per_dir_result;
-        return OK;
     }
 
     cache->dir_conf_tested = sec_ent;
@@ -1643,9 +1536,6 @@ static request_rec *make_sub_request(const request_rec *r,
      * until some module interjects and changes the value.
      */
     rnew->used_path_info = AP_REQ_DEFAULT_PATH_INFO;
-    
-    /* Pass on the kept body (if any) into the new request. */
-    rnew->kept_body = r->kept_body;
 
     return rnew;
 }
@@ -1666,109 +1556,30 @@ AP_CORE_DECLARE_NONSTD(apr_status_t) ap_sub_req_output_filter(ap_filter_t *f,
     return APR_SUCCESS;
 }
 
-extern APR_OPTIONAL_FN_TYPE(authz_some_auth_required) *ap__authz_ap_some_auth_required;
 
 AP_DECLARE(int) ap_some_auth_required(request_rec *r)
 {
     /* Is there a require line configured for the type of *this* req? */
-    if (ap__authz_ap_some_auth_required) {
-        return ap__authz_ap_some_auth_required(r);
-    }
-    else
+
+    const apr_array_header_t *reqs_arr = ap_requires(r);
+    require_line *reqs;
+    int i;
+
+    if (!reqs_arr) {
         return 0;
+    }
+
+    reqs = (require_line *) reqs_arr->elts;
+
+    for (i = 0; i < reqs_arr->nelts; ++i) {
+        if (reqs[i].method_mask & (AP_METHOD_BIT << r->method_number)) {
+            return 1;
+        }
+    }
+
+    return 0;
 }
 
-AP_DECLARE(void) ap_clear_auth_internal(void)
-{
-    auth_internal_per_conf_hooks = 0;
-    auth_internal_per_conf_providers = 0;
-}
-
-AP_DECLARE(void) ap_setup_auth_internal(apr_pool_t *ptemp)
-{
-    int total_auth_hooks = 0;
-    int total_auth_providers = 0;
-
-    auth_internal_per_conf = 0;
-
-    if (_hooks.link_access_checker) {
-        total_auth_hooks += _hooks.link_access_checker->nelts;
-    }
-    if (_hooks.link_check_user_id) {
-        total_auth_hooks += _hooks.link_check_user_id->nelts;
-    }
-    if (_hooks.link_auth_checker) {
-        total_auth_hooks += _hooks.link_auth_checker->nelts;
-    }
-
-    if (total_auth_hooks > auth_internal_per_conf_hooks) {
-        return;
-    }
-
-    total_auth_providers +=
-        ap_list_provider_names(ptemp, AUTHN_PROVIDER_GROUP,
-                               AUTHN_PROVIDER_VERSION)->nelts;
-    total_auth_providers +=
-        ap_list_provider_names(ptemp, AUTHZ_PROVIDER_GROUP,
-                               AUTHZ_PROVIDER_VERSION)->nelts;
-
-    if (total_auth_providers > auth_internal_per_conf_providers) {
-        return;
-    }
-
-    auth_internal_per_conf = 1;
-}
-
-AP_DECLARE(apr_status_t) ap_register_auth_provider(apr_pool_t *pool,
-                                                   const char *provider_group,
-                                                   const char *provider_name,
-                                                   const char *provider_version,
-                                                   const void *provider,
-                                                   int type)
-{
-    if ((type & AP_AUTH_INTERNAL_MASK) == AP_AUTH_INTERNAL_PER_CONF) {
-        ++auth_internal_per_conf_providers;
-    }
-
-    return ap_register_provider(pool, provider_group, provider_name,
-                                provider_version, provider);
-}
-
-AP_DECLARE(void) ap_hook_check_access(ap_HOOK_access_checker_t *pf,
-                                      const char * const *aszPre,
-                                      const char * const *aszSucc,
-                                      int nOrder, int type)
-{
-    if ((type & AP_AUTH_INTERNAL_MASK) == AP_AUTH_INTERNAL_PER_CONF) {
-        ++auth_internal_per_conf_hooks;
-    }
-
-    ap_hook_access_checker(pf, aszPre, aszSucc, nOrder);
-}
-
-AP_DECLARE(void) ap_hook_check_authn(ap_HOOK_check_user_id_t *pf,
-                                     const char * const *aszPre,
-                                     const char * const *aszSucc,
-                                     int nOrder, int type)
-{
-    if ((type & AP_AUTH_INTERNAL_MASK) == AP_AUTH_INTERNAL_PER_CONF) {
-        ++auth_internal_per_conf_hooks;
-    }
-
-    ap_hook_check_user_id(pf, aszPre, aszSucc, nOrder);
-}
-
-AP_DECLARE(void) ap_hook_check_authz(ap_HOOK_auth_checker_t *pf,
-                                     const char * const *aszPre,
-                                     const char * const *aszSucc,
-                                     int nOrder, int type)
-{
-    if ((type & AP_AUTH_INTERNAL_MASK) == AP_AUTH_INTERNAL_PER_CONF) {
-        ++auth_internal_per_conf_hooks;
-    }
-
-    ap_hook_auth_checker(pf, aszPre, aszSucc, nOrder);
-}
 
 AP_DECLARE(request_rec *) ap_sub_req_method_uri(const char *method,
                                                 const char *new_uri,
@@ -2100,4 +1911,3 @@ AP_DECLARE(int) ap_is_initial_req(request_rec *r)
     return (r->main == NULL)       /* otherwise, this is a sub-request */
            && (r->prev == NULL);   /* otherwise, this is an internal redirect */
 }
-

@@ -121,6 +121,8 @@ AP_DECLARE(apr_status_t) ap_replace_stderr_log(apr_pool_t *p,
 int ap_open_logs(apr_pool_t *pconf, apr_pool_t *plog, 
                  apr_pool_t *ptemp, server_rec *s_main);
 
+#ifdef CORE_PRIVATE
+
 /**
  * Perform special processing for piped loggers in MPM child
  * processes.
@@ -130,6 +132,8 @@ int ap_open_logs(apr_pool_t *pconf, apr_pool_t *plog,
  * internal core function
  */
 void ap_logs_child_init(apr_pool_t *p, server_rec *s);
+
+#endif /* CORE_PRIVATE */
 
 /* 
  * The primary logging functions, ap_log_error, ap_log_rerror, ap_log_cerror,
@@ -268,25 +272,33 @@ AP_DECLARE(apr_status_t) ap_read_pid(apr_pool_t *p, const char *filename, pid_t 
 typedef struct piped_log piped_log;
 
 /**
+ * @brief The piped logging structure.  
+ *
+ * Piped logs are used to move functionality out of the main server.  
+ * For example, log rotation is done with piped logs.
+ */
+struct piped_log {
+    /** The pool to use for the piped log */
+    apr_pool_t *p;
+    /** The pipe between the server and the logging process */
+    apr_file_t *fds[2];
+    /* XXX - an #ifdef that needs to be eliminated from public view. Shouldn't
+     * be hard */
+#ifdef AP_HAVE_RELIABLE_PIPED_LOGS
+    /** The name of the program the logging process is running */
+    char *program;
+    /** The pid of the logging process */
+    apr_proc_t *pid;
+#endif
+};
+
+/**
  * Open the piped log process
  * @param p The pool to allocate out of
  * @param program The program to run in the logging process
  * @return The piped log structure
- * @note The log program is invoked as @p APR_PROGRAM_ENV, 
- *      @see ap_open_piped_log_ex to modify this behavior
  */
 AP_DECLARE(piped_log *) ap_open_piped_log(apr_pool_t *p, const char *program);
-
-/**
- * Open the piped log process specifying the execution choice for program
- * @param p The pool to allocate out of
- * @param program The program to run in the logging process
- * @param cmdtype How to invoke program, e.g. APR_PROGRAM, APR_SHELLCMD_ENV, etc
- * @return The piped log structure
- */
-AP_DECLARE(piped_log *) ap_open_piped_log_ex(apr_pool_t *p,
-                                             const char *program,
-                                             apr_cmdtype_e cmdtype);
 
 /**
  * Close the piped log and kill the logging process
@@ -295,18 +307,18 @@ AP_DECLARE(piped_log *) ap_open_piped_log_ex(apr_pool_t *p,
 AP_DECLARE(void) ap_close_piped_log(piped_log *pl);
 
 /**
- * A function to return the read side of the piped log pipe
+ * A macro to access the read side of the piped log pipe
  * @param pl The piped log structure
  * @return The native file descriptor
  */
-AP_DECLARE(apr_file_t *) ap_piped_log_read_fd(piped_log *pl);
+#define ap_piped_log_read_fd(pl)	((pl)->fds[0])
 
 /**
- * A function to return the write side of the piped log pipe
+ * A macro to access the write side of the piped log pipe
  * @param pl The piped log structure
  * @return The native file descriptor
  */
-AP_DECLARE(apr_file_t *) ap_piped_log_write_fd(piped_log *pl);
+#define ap_piped_log_write_fd(pl)	((pl)->fds[1])
 
 /**
  * hook method to log error messages 

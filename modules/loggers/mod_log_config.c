@@ -87,13 +87,10 @@
  * %...A:  local IP-address
  * %...{Foobar}i:  The contents of Foobar: header line(s) in the request
  *                 sent to the client.
- * %...k:  number of keepalive requests served over this connection
  * %...l:  remote logname (from identd, if supplied)
  * %...{Foobar}n:  The contents of note "Foobar" from another module.
  * %...{Foobar}o:  The contents of Foobar: header line(s) in the reply.
- * %...p:  the canonical port for the server
- * %...{format}p: the canonical port for the server, or the actual local
- *                or remote port
+ * %...p:  the port the request was served to
  * %...P:  the process ID of the child that serviced the request.
  * %...{format}P: the process ID or thread ID of the child/thread that
  *                serviced the request
@@ -278,13 +275,18 @@ typedef struct {
     apr_array_header_t *conditions;
 } log_format_item;
 
+static char *format_integer(apr_pool_t *p, int i)
+{
+    return apr_itoa(p, i);
+}
+
 static char *pfmt(apr_pool_t *p, int i)
 {
     if (i <= 0) {
         return "-";
     }
     else {
-        return apr_itoa(p, i);
+        return format_integer(p, i);
     }
 }
 
@@ -374,11 +376,6 @@ static const char *log_request_query(request_rec *r, char *a)
 static const char *log_status(request_rec *r, char *a)
 {
     return pfmt(r->pool, r->status);
-}
-
-static const char *log_handler(request_rec *r, char *a)
-{
-    return ap_escape_logitem(r->pool, r->handler);
 }
 
 static const char *clf_log_bytes_sent(request_rec *r, char *a)
@@ -501,39 +498,20 @@ static const char *log_env_var(request_rec *r, char *a)
 
 static const char *log_cookie(request_rec *r, char *a)
 {
-    const char *cookies_entry;
+    const char *cookies;
+    const char *start_cookie;
 
-    /*
-     * This supports Netscape version 0 cookies while being tolerant to
-     * some properties of RFC2109/2965 version 1 cookies:
-     * - case-insensitive match of cookie names
-     * - white space between the tokens
-     * It does not support the following version 1 features:
-     * - quoted strings as cookie values
-     * - commas to separate cookies
-     */
-
-    if ((cookies_entry = apr_table_get(r->headers_in, "Cookie"))) {
-        char *cookie, *last1, *last2;
-        char *cookies = apr_pstrdup(r->pool, cookies_entry);
-
-        while ((cookie = apr_strtok(cookies, ";", &last1))) {
-            char *name = apr_strtok(cookie, "=", &last2);
-            char *value;
-            apr_collapse_spaces(name, name);
-
-            if (!strcasecmp(name, a) && (value = apr_strtok(NULL, "=", &last2))) {
-                char *last;
-                value += strspn(value, " \t");  /* Move past leading WS */
-                last = value + strlen(value) - 1;
-                while (last >= value && apr_isspace(*last)) {
-                   *last = '\0';
-                   --last;
-                }
-
-                return ap_escape_logitem(r->pool, value);
+    if ((cookies = apr_table_get(r->headers_in, "Cookie"))) {
+        if ((start_cookie = ap_strstr_c(cookies,a))) {
+            char *cookie, *end_cookie;
+            start_cookie += strlen(a) + 1; /* cookie_name + '=' */
+            cookie = apr_pstrdup(r->pool, start_cookie);
+            /* kill everything in cookie after ';' */
+            end_cookie = strchr(cookie, ';');
+            if (end_cookie) {
+                *end_cookie = '\0';
             }
-            cookies = NULL;
+            return ap_escape_logitem(r->pool, cookie);
         }
     }
     return NULL;
@@ -655,22 +633,8 @@ static const char *log_virtual_host(request_rec *r, char *a)
 
 static const char *log_server_port(request_rec *r, char *a)
 {
-    apr_port_t port;
-
-    if (*a == '\0' || !strcasecmp(a, "canonical")) {
-        port = r->server->port ? r->server->port : ap_default_port(r);
-    }
-    else if (!strcasecmp(a, "remote")) {
-        port = r->connection->remote_addr->port;
-    }
-    else if (!strcasecmp(a, "local")) {
-        port = r->connection->local_addr->port;
-    }
-    else {
-        /* bogus format */
-        return a;
-    }
-    return apr_itoa(r->pool, (int)port);
+    return apr_psprintf(r->pool, "%u",
+                        r->server->port ? r->server->port : ap_default_port(r));
 }
 
 /* This respects the setting of UseCanonicalName so that
@@ -683,10 +647,10 @@ static const char *log_server_name(request_rec *r, char *a)
 
 static const char *log_pid_tid(request_rec *r, char *a)
 {
-    if (*a == '\0' || !strcasecmp(a, "pid")) {
+    if (*a == '\0' || !strcmp(a, "pid")) {
         return ap_append_pid(r->pool, "", "");
     }
-    else if (!strcasecmp(a, "tid") || !strcasecmp(a, "hextid")) {
+    else if (!strcmp(a, "tid") || !strcmp(a, "hextid")) {
 #if APR_HAS_THREADS
         apr_os_thread_t tid = apr_os_thread_current();
 #else
@@ -717,12 +681,6 @@ static const char *log_connection_status(request_rec *r, char *a)
         return "+";
     }
     return "-";
-}
-
-static const char *log_requests_on_connection(request_rec *r, char *a)
-{
-    int num = r->connection->keepalives ? r->connection->keepalives - 1 : 0;
-    return apr_itoa(r->pool, num);
 }
 
 /*****************************************************************
@@ -1529,13 +1487,11 @@ static int log_pre_config(apr_pool_t *p, apr_pool_t *plog, apr_pool_t *ptemp)
         log_pfn_register(p, "q", log_request_query, 0);
         log_pfn_register(p, "X", log_connection_status, 0);
         log_pfn_register(p, "C", log_cookie, 0);
-        log_pfn_register(p, "k", log_requests_on_connection, 0);
         log_pfn_register(p, "r", log_request_line, 1);
         log_pfn_register(p, "D", log_request_duration_microseconds, 1);
         log_pfn_register(p, "T", log_request_duration, 1);
         log_pfn_register(p, "U", log_request_uri, 1);
         log_pfn_register(p, "s", log_status, 1);
-        log_pfn_register(p, "R", log_handler, 1);
     }
 
     return OK;

@@ -27,6 +27,7 @@
 #define APR_WANT_STRFUNC
 #include "apr_want.h"
 
+#define CORE_PRIVATE
 #include "ap_config.h"
 #include "httpd.h"
 #include "http_config.h"
@@ -249,9 +250,8 @@ const char *ap_parse_vhost_addrs(apr_pool_t *p,
 }
 
 
-AP_DECLARE_NONSTD(const char *)ap_set_name_virtual_host(cmd_parms *cmd,
-                                                        void *dummy,
-                                                        const char *arg)
+const char *ap_set_name_virtual_host(cmd_parms *cmd, void *dummy,
+                                     const char *arg)
 {
     /* use whatever port the main server has at this point */
     return get_addresses(cmd->pool, arg, &name_vhost_list_tail,
@@ -677,7 +677,7 @@ AP_DECLARE(void) ap_fini_vhost_config(apr_pool_t *p, server_rec *main_s)
 #endif
     if (ap_exists_config_define("DUMP_VHOSTS")) {
         apr_file_t *thefile = NULL;
-        apr_file_open_stdout(&thefile, p);
+        apr_file_open_stderr(&thefile, p);
         dump_vhost_config(thefile);
     }
 }
@@ -706,18 +706,9 @@ static void fix_hostname(request_rec *r)
     char *dst;
     apr_port_t port;
     apr_status_t rv;
-    const char *c;
 
     /* According to RFC 2616, Host header field CAN be blank. */
     if (!*r->hostname) {
-        return;
-    }
-
-    /* apr_parse_addr_port will interpret a bare integer as a port
-     * which is incorrect in this context.  So treat it separately.
-     */
-    for (c = r->hostname; apr_isdigit(*c); ++c);
-    if (!*c) {  /* pure integer */
         return;
     }
 
@@ -726,7 +717,14 @@ static void fix_hostname(request_rec *r)
         goto bad;
     }
 
-    if (port) {
+    if (!host && port) {
+        /* silly looking host ("Host: 123") but that isn't our job
+         * here to judge; apr_parse_addr_port() would think we had a port
+         * but no address
+         */
+        host = apr_itoa(r->pool, (int)port);
+    }
+    else if (port) {
         /* Don't throw the Host: header's port number away:
            save it in parsed_uri -- ap_get_server_port() needs it! */
         /* @@@ XXX there should be a better way to pass the port.

@@ -2,9 +2,11 @@
 #
 # Created by configure
 
-"/root/download/startuppack/httpd/srclib/apr/configure" \
+"/root/download/startuppack/httpd-2.2.8/srclib/apr/configure" \
+"--enable-mods-shared=all proxy proxy-ajp proxy-balancer filter deflate expires ssl rewrite mime-magic mem-cache info disk-cache dav dav-fs dav-lock" \
+"--with-mpm=worker" \
 "--cache-file=/dev/null" \
-"--srcdir=/root/download/startuppack/httpd/srclib/apr" \
+"--srcdir=/root/download/startuppack/httpd-2.2.8/srclib/apr" \
 "--prefix=/usr/local/apache2" \
 "--exec-prefix=/usr/local/apache2" \
 "--libdir=/usr/local/apache2/lib" \

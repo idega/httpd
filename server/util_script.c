@@ -25,6 +25,7 @@
 #include <stdlib.h>
 #endif
 
+#define CORE_PRIVATE
 #include "ap_config.h"
 #include "httpd.h"
 #include "http_config.h"
@@ -121,9 +122,9 @@ AP_DECLARE(void) ap_add_common_vars(request_rec *r)
     server_rec *s = r->server;
     conn_rec *c = r->connection;
     const char *rem_logname;
-    const char *env_path;
-#if defined(WIN32) || defined(OS2)
-    const char *env_temp;
+    char *env_path;
+#if defined(WIN32) || defined(OS2) || defined(BEOS)
+    char *env_temp;
 #endif
     const char *host;
     const apr_array_header_t *hdrs_arr = apr_table_elts(r->headers_in);
@@ -212,6 +213,12 @@ AP_DECLARE(void) ap_add_common_vars(request_rec *r)
     }
     if ((env_temp = getenv("PERLLIB_PREFIX")) != NULL) {
         apr_table_addn(e, "PERLLIB_PREFIX", env_temp);
+    }
+#endif
+
+#ifdef BEOS
+    if ((env_temp = getenv("LIBRARY_PATH")) != NULL) {
+        apr_table_addn(e, "LIBRARY_PATH", env_temp);
     }
 #endif
 
@@ -423,18 +430,11 @@ AP_DECLARE(int) ap_scan_script_header_err_core(request_rec *r, char *buffer,
 
     while (1) {
 
-        int rv = (*getsfunc) (w, MAX_STRING_LEN - 1, getsfunc_data);
-        if (rv == 0) {
+        if ((*getsfunc) (w, MAX_STRING_LEN - 1, getsfunc_data) == 0) {
             ap_log_rerror(APLOG_MARK, APLOG_ERR|APLOG_TOCLIENT, 0, r,
                           "Premature end of script headers: %s",
                           apr_filepath_name_get(r->filename));
             return HTTP_INTERNAL_SERVER_ERROR;
-        }
-        else if (rv == -1) {
-            ap_log_rerror(APLOG_MARK, APLOG_ERR|APLOG_TOCLIENT, 0, r,
-                          "Script timed out before returning headers: %s",
-                          apr_filepath_name_get(r->filename));
-            return HTTP_GATEWAY_TIME_OUT;
         }
 
         /* Delete terminal (CR?)LF */
@@ -468,17 +468,17 @@ AP_DECLARE(int) ap_scan_script_header_err_core(request_rec *r, char *buffer,
         if (w[0] == '\0') {
             int cond_status = OK;
 
-            /* PR#38070: This fails because it gets confused when a
-             * CGI Status header overrides ap_meets_conditions.
-             * 
-             * We can fix that by dropping ap_meets_conditions when
-             * Status has been set.  Since this is the only place
-             * cgi_status gets used, let's test it explicitly.
-             *
-             * The alternative would be to ignore CGI Status when
-             * ap_meets_conditions returns anything interesting.
-             * That would be safer wrt HTTP, but would break CGI.
-             */
+           /* PR#38070: This fails because it gets confused when a
+            * CGI Status header overrides ap_meets_conditions.
+            * 
+            * We can fix that by dropping ap_meets_conditions when
+            * Status has been set.  Since this is the only place
+            * cgi_status gets used, let's test it explicitly.
+            *
+            * The alternative would be to ignore CGI Status when
+            * ap_meets_conditions returns anything interesting.
+            * That would be safer wrt HTTP, but would break CGI.
+            */
             if ((cgi_status == HTTP_UNSET) && (r->method_number == M_GET)) {
                 cond_status = ap_meets_conditions(r);
             }
@@ -580,9 +580,6 @@ AP_DECLARE(int) ap_scan_script_header_err_core(request_rec *r, char *buffer,
         else if (!strcasecmp(w, "Transfer-Encoding")) {
             apr_table_set(r->headers_out, w, l);
         }
-        else if (!strcasecmp(w, "ETag")) {
-            apr_table_set(r->headers_out, w, l);
-        }
         /*
          * If the script gave us a Last-Modified header, we can't just
          * pass it on blindly because of restrictions on future values.
@@ -598,7 +595,7 @@ AP_DECLARE(int) ap_scan_script_header_err_core(request_rec *r, char *buffer,
             apr_table_add(merge, w, l);
         }
     }
-    /* never reached - we leave this function within the while loop above */
+
     return OK;
 }
 
@@ -632,7 +629,7 @@ static int getsfunc_BRIGADE(char *buf, int len, void *arg)
         rv = apr_bucket_read(e, &bucket_data, &bucket_data_len,
                              APR_BLOCK_READ);
         if (rv != APR_SUCCESS || (bucket_data_len == 0)) {
-            return APR_STATUS_IS_TIMEUP(rv) ? -1 : 0;
+            return 0;
         }
         src = bucket_data;
         src_end = bucket_data + bucket_data_len;
@@ -722,119 +719,3 @@ AP_DECLARE_NONSTD(int) ap_scan_script_header_err_strs(request_rec *r,
     va_end(strs.args);
     return res;
 }
-
-
-static void
-argstr_to_table(char *str, apr_table_t *parms)
-{
-    char *key;
-    char *value;
-    char *strtok_state;
-
-    if (str == NULL) {
-        return;
-    }
-    
-    key = apr_strtok(str, "&", &strtok_state);
-    while (key) {
-        value = strchr(key, '=');
-        if (value) {
-            *value = '\0';      /* Split the string in two */
-            value++;            /* Skip passed the = */
-        }
-        else {
-            value = "1";
-        }
-        ap_unescape_url(key);
-        ap_unescape_url(value);
-        apr_table_set(parms, key, value);
-        key = apr_strtok(NULL, "&", &strtok_state);
-    }
-}
-
-AP_DECLARE(void) ap_args_to_table(request_rec *r, apr_table_t **table)
-{
-    apr_table_t *t = apr_table_make(r->pool, 10);
-    argstr_to_table(apr_pstrdup(r->pool, r->args), t);
-    *table = t;
-}
-
-AP_DECLARE(apr_status_t) ap_body_to_table(request_rec *r, apr_table_t **table)
-{
-    apr_bucket_brigade *bb;
-    apr_bucket_brigade *tmpbb;
-    apr_status_t rv = APR_SUCCESS;
-
-    if (r->body_table) {
-        *table = r->body_table;
-        return APR_SUCCESS;
-    }
-    
-    *table = NULL;
-
-    bb = apr_brigade_create(r->pool, r->connection->bucket_alloc);
-    tmpbb = apr_brigade_create(r->pool, r->connection->bucket_alloc);
-
-    do {
-        apr_off_t len;
-
-        rv = ap_get_brigade(r->input_filters, tmpbb, AP_MODE_READBYTES,
-                            APR_BLOCK_READ, AP_IOBUFSIZE);
-        if (rv) {
-            break;
-        }
-
-        rv = apr_brigade_length(tmpbb, 1, &len);
-        if (rv) {
-            break;
-        }
-        
-        if (len == 0) {
-            break;
-        }
-
-        APR_BRIGADE_CONCAT(bb, tmpbb);
-    } while(1);
-
-    if (!rv) {
-        r->body_table = apr_table_make(r->pool, 10);
-        
-        if (!APR_BRIGADE_EMPTY(bb)) {
-            char *buffer;
-            apr_off_t len;
-            apr_pool_t *tpool;
-
-            apr_pool_create(&tpool, r->pool);
-            
-            rv = apr_brigade_length(bb, 1, &len);
-
-            if (!rv) {
-                apr_size_t total;
-                /* XXX where's our test that len fits in memory??? 
-                 * theoretically can be a large file > ram space.
-                 * need to cast len to apr_size_t but it would mask
-                 * this notable mistake
-                 */
-                buffer = apr_palloc(tpool, len+1);
-                
-                total = len+1;
-
-                rv = apr_brigade_flatten(bb, buffer, &total);
-
-                buffer[total] = '\0';
-
-                argstr_to_table(buffer, r->body_table);
-            }
-            apr_pool_destroy(tpool);
-        }
-    }
-
-    apr_brigade_destroy(bb);
-    apr_brigade_destroy(tmpbb);
-
-    *table = r->body_table;
-
-    return rv;
-}
-
-

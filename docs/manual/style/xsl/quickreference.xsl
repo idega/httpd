@@ -68,112 +68,10 @@
                     </span>
                 </td>&lf;
                 <td>
-                    <table>
-                    <tr>
-                        <th>
-                            <xsl:value-of
-                                select="$message[@id='serverconfig']/@letter"/>
-                        </th>
-                        <td>
-                            <xsl:value-of
-                                select="$message[@id='serverconfig']"/>
-                        </td>
-                    </tr>&lf;
-                    <tr>
-                        <th>
-                            <xsl:value-of
-                                select="$message[@id='virtualhost']/@letter"/>
-                        </th>
-                        <td>
-                            <xsl:value-of
-                                select="$message[@id='virtualhost']"/>
-                        </td>
-                    </tr>&lf;
-                    <tr>
-                        <th>
-                            <xsl:value-of
-                                select="$message[@id='directory']/@letter"/>
-                        </th>
-                        <td>
-                            <xsl:value-of
-                                select="$message[@id='directory']"/>
-                        </td>
-                    </tr>&lf;
-                    <tr>
-                        <th>
-                            <xsl:value-of
-                                select="$message[@id='htaccess']/@letter"/>
-                        </th>
-                        <td>
-                            <xsl:value-of
-                                select="$message[@id='htaccess']"/>
-                        </td>
-                    </tr>&lf;
-                    </table>
+                    <xsl:apply-templates select="legend/table[position()=1]" />
                 </td>&lf;
                 <td>
-                    <table>
-                    <tr>
-                        <th>
-                            <xsl:value-of
-                                select="$message[@id='core']/@letter"/>
-                        </th>
-                        <td>
-                            <xsl:value-of
-                                select="$message[@id='core']"/>
-                        </td>
-                    </tr>&lf;
-                    <tr>
-                        <th>
-                            <xsl:value-of
-                                select="$message[@id='mpm']/@letter"/>
-                        </th>
-                        <td>
-                            <xsl:value-of
-                                select="$message[@id='mpm']"/>
-                        </td>
-                    </tr>&lf;
-                    <tr>
-                        <th>
-                            <xsl:value-of
-                                select="$message[@id='base']/@letter"/>
-                        </th>
-                        <td>
-                            <xsl:value-of
-                                select="$message[@id='base']"/>
-                        </td>
-                    </tr>&lf;
-                    <tr>
-                        <th>
-                            <xsl:value-of
-                                select="$message[@id='extension']/@letter"/>
-                        </th>
-                        <td>
-                            <xsl:value-of
-                                select="$message[@id='extension']"/>
-                        </td>
-                    </tr>&lf;
-                    <tr>
-                        <th>
-                            <xsl:value-of
-                                select="$message[@id='experimental']/@letter"/>
-                        </th>
-                        <td>
-                            <xsl:value-of
-                                select="$message[@id='experimental']"/>
-                        </td>
-                    </tr>&lf;
-                    <tr>
-                        <th>
-                            <xsl:value-of
-                                select="$message[@id='external']/@letter"/>
-                        </th>
-                        <td>
-                            <xsl:value-of
-                                select="$message[@id='external']"/>
-                        </td>
-                    </tr>&lf;
-                    </table>
+                    <xsl:apply-templates select="legend/table[position()=2]" />
                 </td>
             </tr>&lf;
             </table>&lf;
@@ -258,42 +156,21 @@
         </td>
         <td>
             <xsl:if test="contextlist/context
-                          [normalize-space(.)='server config']">
-                <xsl:value-of select="$message[@id='serverconfig']/@letter"/>
-            </xsl:if>
+                          [normalize-space(.)='server config']">s</xsl:if>
             <xsl:if test="contextlist/context
-                          [normalize-space(.)='virtual host']">
-                <xsl:value-of select="$message[@id='virtualhost']/@letter"/>
-            </xsl:if>
+                          [normalize-space(.)='virtual host']">v</xsl:if>
             <xsl:if test="contextlist/context
-                          [normalize-space(.)='directory']">
-                <xsl:value-of select="$message[@id='directory']/@letter"/>
-            </xsl:if>
+                          [normalize-space(.)='directory']">d</xsl:if>
             <xsl:if test="contextlist/context
-                          [normalize-space(.)='.htaccess']">
-                <xsl:value-of select="$message[@id='htaccess']/@letter"/>
-            </xsl:if>
+                          [normalize-space(.)='.htaccess']">h</xsl:if>
         </td>
         <td>
             <xsl:choose>
-            <xsl:when test="../status='External'">
-                <xsl:choose>
-                <xsl:when test="../status/@href">
-                    <a href="{../status/@href}">
-                        <xsl:value-of
-                            select="$message[@id='external']/@letter"/>
-                    </a>
-                </xsl:when>
-                <xsl:otherwise>
-                    <xsl:value-of select="$message[@id='external']/@letter"/>
-                </xsl:otherwise>
-                </xsl:choose>
-            </xsl:when>
-            <xsl:otherwise>
-                <xsl:variable name="status" select="translate(
-                    ../status, $uppercase, $lowercase)"/>
-                <xsl:value-of select="$message[@id=$status]/@letter"/>
-            </xsl:otherwise>
+            <xsl:when test="../status='Base'">B</xsl:when>
+            <xsl:when test="../status='MPM'">M</xsl:when>
+            <xsl:when test="../status='Core'">C</xsl:when>
+            <xsl:when test="../status='Extension'">E</xsl:when>
+            <xsl:when test="../status='Experimental'">X</xsl:when>
             </xsl:choose>
         </td>
     </tr>

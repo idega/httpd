@@ -24,6 +24,7 @@
 #define APR_WANT_STRFUNC
 #include "apr_want.h"
 
+#define CORE_PRIVATE
 #include "httpd.h"
 #include "http_config.h"
 #include "http_connection.h"
@@ -49,11 +50,11 @@ apr_status_t ap_http_chunk_filter(ap_filter_t *f, apr_bucket_brigade *b)
 #define ASCII_CRLF  "\015\012"
 #define ASCII_ZERO  "\060"
     conn_rec *c = f->r->connection;
-    apr_bucket_brigade *more, *tmp;
+    apr_bucket_brigade *more;
     apr_bucket *e;
     apr_status_t rv;
 
-    for (more = tmp = NULL; b; b = more, more = NULL) {
+    for (more = NULL; b; b = more, more = NULL) {
         apr_off_t bytes = 0;
         apr_bucket *eos = NULL;
         apr_bucket *flush = NULL;
@@ -85,7 +86,7 @@ apr_status_t ap_http_chunk_filter(ap_filter_t *f, apr_bucket_brigade *b)
             if (APR_BUCKET_IS_FLUSH(e)) {
                 flush = e;
                 if (e != APR_BRIGADE_LAST(b)) {
-                    more = apr_brigade_split_ex(b, APR_BUCKET_NEXT(e), tmp);
+                    more = apr_brigade_split(b, APR_BUCKET_NEXT(e));
                 }
                 break;
             }
@@ -105,7 +106,7 @@ apr_status_t ap_http_chunk_filter(ap_filter_t *f, apr_bucket_brigade *b)
                      * block so we pass down what we have so far.
                      */
                     bytes += len;
-                    more = apr_brigade_split_ex(b, APR_BUCKET_NEXT(e), tmp);
+                    more = apr_brigade_split(b, APR_BUCKET_NEXT(e));
                     break;
                 }
                 else {
@@ -189,8 +190,6 @@ apr_status_t ap_http_chunk_filter(ap_filter_t *f, apr_bucket_brigade *b)
         if (rv != APR_SUCCESS || eos != NULL) {
             return rv;
         }
-        tmp = b;
-        apr_brigade_cleanup(tmp);
     }
     return APR_SUCCESS;
 }

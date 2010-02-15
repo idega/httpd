@@ -26,7 +26,7 @@
 
 #include "httpd.h"
 #include "http_config.h"
-
+#define CORE_PRIVATE
 #include "http_core.h"
 #include "http_log.h"
 #include "http_main.h"
@@ -76,8 +76,6 @@ typedef struct charset_dir_t {
     const char *charset_default; /* how to ship on wire */
     /** module does ap_add_*_filter()? */
     enum {IA_INIT, IA_IMPADD, IA_NOIMPADD} implicit_add;
-    /** treat all mimetypes as text? */
-    enum {FX_INIT, FX_FORCE, FX_NOFORCE} force_xlate;
 } charset_dir_t;
 
 /* charset_filter_ctx_t is created for each filter instance; because the same
@@ -96,7 +94,6 @@ typedef struct charset_filter_ctx_t {
     int noop;               /* should we pass brigades through unchanged? */
     char *tmp;              /* buffer for input filtering */
     apr_bucket_brigade *bb; /* input buckets we couldn't finish translating */
-    apr_bucket_brigade *tmpbb; /* used for passing downstream */
 } charset_filter_ctx_t;
 
 /* charset_req_t is available via r->request_config if any translation is
@@ -141,8 +138,6 @@ static void *merge_charset_dir_conf(apr_pool_t *p, void *basev, void *overridesv
         over->charset_source ? over->charset_source : base->charset_source;
     a->implicit_add =
         over->implicit_add != IA_INIT ? over->implicit_add : base->implicit_add;
-    a->force_xlate=
-        over->force_xlate != FX_INIT ? over->force_xlate : base->force_xlate;
     return a;
 }
 
@@ -180,12 +175,6 @@ static const char *add_charset_options(cmd_parms *cmd, void *in_dc,
     }
     else if (!strcasecmp(flag, "NoImplicitAdd")) {
         dc->implicit_add = IA_NOIMPADD;
-    }
-    else if (!strcasecmp(flag, "TranslateAllMimeTypes")) {
-        dc->force_xlate = FX_FORCE;
-    }
-    else if (!strcasecmp(flag, "NoTranslateAllMimeTypes")) {
-        dc->force_xlate = FX_NOFORCE;
     }
     else if (!strncasecmp(flag, "DebugLevel=", 11)) {
         dc->debug = atoi(flag + 11);
@@ -267,8 +256,6 @@ static int find_code_page(request_rec *r)
 
     reqinfo->dc = dc;
     output_ctx->dc = dc;
-    output_ctx->tmpbb = apr_brigade_create(r->pool, 
-                                           r->connection->bucket_alloc);
     ap_set_module_config(r->request_config, &charset_lite_module, reqinfo);
 
     reqinfo->output_ctx = output_ctx;
@@ -337,15 +324,6 @@ static void xlate_insert_filter(request_rec *r)
     charset_dir_t *dc = ap_get_module_config(r->per_dir_config,
                                              &charset_lite_module);
 
-    if (dc && (dc->implicit_add == IA_NOIMPADD)) { 
-        if (dc->debug >= DBGLVL_GORY) {
-            ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, r,
-                          "xlate output filter not added implicitly because "
-                          "CharsetOptions included 'NoImplicitAdd'");
-        }
-        return;
-    }
-
     if (reqinfo) {
         if (reqinfo->output_ctx && !configured_on_output(r, XLATEOUT_FILTER_NAME)) {
             ap_add_output_filter(XLATEOUT_FILTER_NAME, reqinfo->output_ctx, r,
@@ -385,20 +363,6 @@ static void xlate_insert_filter(request_rec *r)
  *   will be generated
  */
 
-static apr_status_t send_bucket_downstream(ap_filter_t *f, apr_bucket *b)
-{
-    charset_filter_ctx_t *ctx = f->ctx;
-    apr_status_t rv;
-
-    APR_BRIGADE_INSERT_TAIL(ctx->tmpbb, b);
-    rv = ap_pass_brigade(f->next, ctx->tmpbb);
-    if (rv != APR_SUCCESS) {
-        ctx->ees = EES_DOWNSTREAM;
-    }
-    apr_brigade_cleanup(ctx->tmpbb);
-    return rv;
-}
-
 /* send_downstream() is passed the translated data; it puts it in a single-
  * bucket brigade and passes the brigade to the next filter
  */
@@ -406,10 +370,19 @@ static apr_status_t send_downstream(ap_filter_t *f, const char *tmp, apr_size_t 
 {
     request_rec *r = f->r;
     conn_rec *c = r->connection;
+    apr_bucket_brigade *bb;
     apr_bucket *b;
+    charset_filter_ctx_t *ctx = f->ctx;
+    apr_status_t rv;
 
+    bb = apr_brigade_create(r->pool, c->bucket_alloc);
     b = apr_bucket_transient_create(tmp, len, c->bucket_alloc);
-    return send_bucket_downstream(f, b);
+    APR_BRIGADE_INSERT_TAIL(bb, b);
+    rv = ap_pass_brigade(f->next, bb);
+    if (rv != APR_SUCCESS) {
+        ctx->ees = EES_DOWNSTREAM;
+    }
+    return rv;
 }
 
 static apr_status_t send_eos(ap_filter_t *f)
@@ -649,12 +622,12 @@ static void chk_filter_chain(ap_filter_t *f)
  * we'll stop when one of the following occurs:
  * . we run out of buckets
  * . we run out of space in the output buffer
- * . we hit an error or metadata
+ * . we hit an error
  *
  * inputs:
  *   bb:               brigade to process
  *   buffer:           storage to hold the translated characters
- *   buffer_avail:     size of buffer
+ *   buffer_size:      size of buffer
  *   (and a few more uninteresting parms)
  *
  * outputs:
@@ -663,7 +636,7 @@ static void chk_filter_chain(ap_filter_t *f)
  *                     translated characters; the eos bucket, if
  *                     present, will be left in the brigade
  *   buffer:           filled in with translated characters
- *   buffer_avail:     updated with the bytes remaining
+ *   buffer_size:      updated with the bytes remaining
  *   hit_eos:          did we hit an EOS bucket?
  */
 static apr_status_t xlate_brigade(charset_filter_ctx_t *ctx,
@@ -690,7 +663,7 @@ static apr_status_t xlate_brigade(charset_filter_ctx_t *ctx,
             }
             b = APR_BRIGADE_FIRST(bb);
             if (b == APR_BRIGADE_SENTINEL(bb) ||
-                APR_BUCKET_IS_METADATA(b)) {
+                APR_BUCKET_IS_EOS(b)) {
                 break;
             }
             rv = apr_bucket_read(b, &bucket, &bytes_in_bucket, APR_BLOCK_READ);
@@ -812,9 +785,9 @@ static apr_status_t xlate_out_filter(ap_filter_t *f, apr_bucket_brigade *bb)
     /* Check the mime type to see if translation should be performed.
      */
     if (!ctx->noop && ctx->xlate == NULL) {
-        const char *mime_type = f->r->content_type;
+        const char *mime_type = f->r->content_type ? f->r->content_type : ap_default_type(f->r);
 
-        if (mime_type && (strncasecmp(mime_type, "text/", 5) == 0 ||
+        if (strncasecmp(mime_type, "text/", 5) == 0 ||
 #if APR_CHARSET_EBCDIC
         /* On an EBCDIC machine, be willing to translate mod_autoindex-
          * generated output.  Otherwise, it doesn't look too cool.
@@ -830,8 +803,7 @@ static apr_status_t xlate_out_filter(ap_filter_t *f, apr_bucket_brigade *bb)
          */
             strcmp(mime_type, DIR_MAGIC_TYPE) == 0 ||
 #endif
-            strncasecmp(mime_type, "message/", 8) == 0 || 
-            dc->force_xlate == FX_FORCE)) {
+            strncasecmp(mime_type, "message/", 8) == 0) {
 
             rv = apr_xlate_open(&ctx->xlate,
                                 dc->charset_default, dc->charset_source, f->r->pool);
@@ -849,7 +821,7 @@ static apr_status_t xlate_out_filter(ap_filter_t *f, apr_bucket_brigade *bb)
         }
         else {
             ctx->noop = 1;
-            if (mime_type && dc->debug >= DBGLVL_GORY) {
+            if (dc->debug >= DBGLVL_GORY) {
                 ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, f->r,
                               "mime type is %s; no translation selected",
                               mime_type);
@@ -908,17 +880,6 @@ static apr_status_t xlate_out_filter(ap_filter_t *f, apr_bucket_brigade *bb)
                     ctx->ees = EES_INCOMPLETE_CHAR;
                 }
                 break;
-            }
-            if (APR_BUCKET_IS_METADATA(dptr)) {
-                apr_bucket *metadata_bucket;
-                metadata_bucket = dptr;
-                dptr = APR_BUCKET_NEXT(dptr);
-                APR_BUCKET_REMOVE(metadata_bucket);
-                rv = send_bucket_downstream(f, metadata_bucket);
-                if (rv != APR_SUCCESS) {
-                    done = 1;
-                }
-                continue;
             }
             rv = apr_bucket_read(dptr, &cur_str, &cur_len, APR_BLOCK_READ);
             if (rv != APR_SUCCESS) {
@@ -1106,18 +1067,6 @@ static int xlate_in_filter(ap_filter_t *f, apr_bucket_brigade *bb,
              * empty brigade
              */
         }
-        /* If we have any metadata at the head of ctx->bb, go ahead and move it
-         * onto the end of bb to be returned to our caller.
-         */
-        if (!APR_BRIGADE_EMPTY(ctx->bb)) {
-            apr_bucket *b = APR_BRIGADE_FIRST(ctx->bb);
-            while (b != APR_BRIGADE_SENTINEL(ctx->bb)
-                   && APR_BUCKET_IS_METADATA(b)) {
-                APR_BUCKET_REMOVE(b);
-                APR_BRIGADE_INSERT_TAIL(bb, b);
-                b = APR_BRIGADE_FIRST(ctx->bb);
-            }
-        }
     }
     else {
         log_xlate_error(f, rv);
@@ -1142,8 +1091,7 @@ static const command_rec cmds[] =
                     add_charset_options,
                     NULL,
                     OR_FILEINFO,
-                    "valid options: ImplicitAdd, NoImplicitAdd, TranslateAllMimeTypes, "
-                    "NoTranslateAllMimeTypes, DebugLevel=n"),
+                    "valid options: ImplicitAdd, NoImplicitAdd, DebugLevel=n"),
     {NULL}
 };
 

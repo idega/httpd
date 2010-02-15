@@ -25,7 +25,6 @@
 #ifndef APACHE_MPM_WINNT_H
 #define APACHE_MPM_WINNT_H
 
-#include "apr_proc_mutex.h"
 #include "ap_listen.h"
 
 /* From service.c: */
@@ -33,9 +32,10 @@
 #define SERVICE_APACHE_RESTART 128
 
 #ifndef AP_DEFAULT_SERVICE_NAME
-#define AP_DEFAULT_SERVICE_NAME "Apache2.x"
+#define AP_DEFAULT_SERVICE_NAME "Apache2.2"
 #endif
 
+#define SERVICECONFIG9X "Software\\Microsoft\\Windows\\CurrentVersion\\RunServices"
 #define SERVICECONFIG "System\\CurrentControlSet\\Services\\%s"
 #define SERVICEPARAMS "System\\CurrentControlSet\\Services\\%s\\Parameters"
 
@@ -65,18 +65,11 @@ void mpm_start_child_console_handler(void);
 void mpm_nt_eventlog_stderr_open(char *display_name, apr_pool_t *p);
 void mpm_nt_eventlog_stderr_flush(void);
 
-/* From mpm_winnt.c: */
+/* From winnt.c: */
 
-extern int ap_threads_per_child;
-
-extern DWORD my_pid;
-extern apr_proc_mutex_t *start_mutex;
-extern HANDLE exit_event;
-
+extern int use_acceptex;
 extern int winnt_mpm_state;
 extern OSVERSIONINFO osver;
-extern DWORD stack_res_flag;
-
 extern void clean_child_exit(int);
 
 void setup_signal_names(char *prefix);
@@ -88,6 +81,50 @@ typedef enum {
 } ap_signal_parent_e;
 AP_DECLARE(void) ap_signal_parent(ap_signal_parent_e type);
 
+/*
+ * The Windoes MPM uses a queue of completion contexts that it passes
+ * between the accept threads and the worker threads. Declare the
+ * functions to access the queue and the structures passed on the
+ * queue in the header file to enable modules to access them
+ * if necessary. The queue resides in the MPM.
+ */
+#ifdef CONTAINING_RECORD
+#undef CONTAINING_RECORD
+#endif
+#define CONTAINING_RECORD(address, type, field) ((type *)( \
+                                                  (PCHAR)(address) - \
+                                                  (PCHAR)(&((type *)0)->field)))
+#if APR_HAVE_IPV6
+#define PADDED_ADDR_SIZE (sizeof(SOCKADDR_IN6)+16)
+#else
+#define PADDED_ADDR_SIZE (sizeof(SOCKADDR_IN)+16)
+#endif
+
+typedef struct CompContext {
+    struct CompContext *next;
+    OVERLAPPED Overlapped;
+    apr_socket_t *sock;
+    SOCKET accept_socket;
+    char buff[2*PADDED_ADDR_SIZE];
+    struct sockaddr *sa_server;
+    int sa_server_len;
+    struct sockaddr *sa_client;
+    int sa_client_len;
+    apr_pool_t *ptrans;
+    apr_bucket_alloc_t *ba;
+    short socket_family;
+} COMP_CONTEXT, *PCOMP_CONTEXT;
+
+typedef enum {
+    IOCP_CONNECTION_ACCEPTED = 1,
+    IOCP_WAIT_FOR_RECEIVE = 2,
+    IOCP_WAIT_FOR_TRANSMITFILE = 3,
+    IOCP_SHUTDOWN = 4
+} io_state_e;
+
+PCOMP_CONTEXT mpm_get_completion_context(void);
+void          mpm_recycle_completion_context(PCOMP_CONTEXT pCompContext);
+apr_status_t  mpm_post_completion_context(PCOMP_CONTEXT pCompContext, io_state_e state);
 void hold_console_open_on_error(void);
 #endif /* APACHE_MPM_WINNT_H */
 /** @} */

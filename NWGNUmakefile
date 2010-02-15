@@ -1,35 +1,4 @@
 #
-# Define our required macro's if not already done.
-#
-
-ifndef AP_WORK
-export AP_WORK = $(CURDIR)
-endif
-
-ifndef APR_WORK
-ifeq "$(wildcard $(AP_WORK)/srclib/apr)" "$(AP_WORK)/srclib/apr"
-export APR_WORK = $(AP_WORK)/srclib/apr
-endif
-endif
-ifneq "$(wildcard $(APR_WORK)/include/apr_version.h)" "$(APR_WORK)/include/apr_version.h"
-$(error APR_WORK does not point to a valid APR source tree) 
-endif
-
-ifndef APU_WORK
-ifeq "$(wildcard $(AP_WORK)/srclib/apr-util)" "$(AP_WORK)/srclib/apr-util"
-export APU_WORK = $(AP_WORK)/srclib/apr-util
-endif
-endif
-ifndef APU_WORK
-ifeq "$(wildcard $(APR_WORK)/include/apu_version.h)" "$(APR_WORK)/include/apu_version.h"
-export APU_WORK = $(APR_WORK)
-endif
-endif
-ifneq "$(wildcard $(APU_WORK)/include/apu_version.h)" "$(APU_WORK)/include/apu_version.h"
-$(error APU_WORK does not point to a valid APU source tree) 
-endif
-
-#
 # Declare the sub-directories to be built here
 #
 
@@ -62,25 +31,23 @@ XINCDIRS	+= \
 			$(APR)/include \
 			$(APRUTIL)/include \
 			$(AP_WORK)/include \
-			$(AP_WORK)/modules/aaa/ \
-			$(AP_WORK)/modules/core \
 			$(AP_WORK)/modules/filters/ \
 			$(AP_WORK)/modules/generators/ \
 			$(AP_WORK)/modules/http/ \
 			$(AP_WORK)/modules/loggers/ \
 			$(AP_WORK)/modules/mappers/ \
 			$(AP_WORK)/modules/proxy/ \
-			$(AP_WORK)/modules/ssl/ \
-			$(AP_WORK)/server/mpm/netware \
-			$(PCRE) \
+			$(AP_WORK)/os/NetWare \
+			$(AP_WORK)/server/mpm/NetWare \
+			$(AP_WORK)/srclib/pcre \
 			$(NWOS) \
+			$(AP_WORK)/modules/ssl \
 			$(EOLIST)
 
 #
 # These flags will come after CFLAGS
 #
 XCFLAGS		+= \
-			-DHAVE_CONFIG_H \
 			$(EOLIST)
 
 #
@@ -217,7 +184,6 @@ TARGET_nlm = \
 # If there is an LIB target, put it here
 #
 TARGET_lib = \
-	$(OBJDIR)/pcre.lib \
 	$(EOLIST)
 
 #
@@ -231,7 +197,6 @@ FILES_nlm_objs = \
 	$(OBJDIR)/core.o \
 	$(OBJDIR)/core_filters.o \
 	$(OBJDIR)/eoc_bucket.o \
-	$(OBJDIR)/eor_bucket.o \
 	$(OBJDIR)/error_bucket.o \
 	$(OBJDIR)/http_core.o \
 	$(OBJDIR)/http_protocol.o \
@@ -243,8 +208,6 @@ FILES_nlm_objs = \
 	$(OBJDIR)/listen.o \
 	$(OBJDIR)/log.o \
 	$(OBJDIR)/main.o \
-	$(OBJDIR)/mod_authn_core.o \
-	$(OBJDIR)/mod_authz_core.o \
 	$(OBJDIR)/mod_authz_host.o \
 	$(OBJDIR)/mod_alias.o \
 	$(OBJDIR)/mod_dir.o \
@@ -256,10 +219,10 @@ FILES_nlm_objs = \
 	$(OBJDIR)/mod_netware.o \
 	$(OBJDIR)/mod_setenvif.o \
 	$(OBJDIR)/mod_so.o \
-	$(OBJDIR)/mod_watchdog.o \
 	$(OBJDIR)/modules.o \
 	$(OBJDIR)/mpm_common.o \
 	$(OBJDIR)/mpm_netware.o \
+	$(OBJDIR)/pcre.o \
 	$(OBJDIR)/protocol.o \
 	$(OBJDIR)/provider.o \
 	$(OBJDIR)/request.o \
@@ -267,12 +230,9 @@ FILES_nlm_objs = \
 	$(OBJDIR)/util.o \
 	$(OBJDIR)/util_cfgtree.o \
 	$(OBJDIR)/util_charset.o \
-	$(OBJDIR)/util_cookies.o \
 	$(OBJDIR)/util_debug.o \
-	$(OBJDIR)/util_expr.o \
 	$(OBJDIR)/util_filter.o \
 	$(OBJDIR)/util_md5.o \
-	$(OBJDIR)/util_mutex.o \
 	$(OBJDIR)/util_nw.o \
 	$(OBJDIR)/util_pcre.o \
 	$(OBJDIR)/util_script.o \
@@ -292,7 +252,6 @@ endif
 # These will be added as a library command in the link.opt file.
 #
 FILES_nlm_libs = \
-	$(PCRELIB) \
 	libcpre.o \
 	$(EOLIST)
 
@@ -347,28 +306,8 @@ FILES_nlm_exports = \
 # These are the OBJ files needed to create the LIB target above.
 # Paths must all use the '/' character
 #
-ifeq "$(wildcard $(PCRE)/pcre.c)" "$(PCRE)/pcre.c"
-
 FILES_lib_objs = \
-	$(OBJDIR)/pcre.o \
 	$(EOLIST)
-
-else
-
-FILES_lib_objs = \
-	$(OBJDIR)/pcre_compile.o \
-	$(OBJDIR)/pcre_exec.o \
-	$(OBJDIR)/pcre_fullinfo.o \
-	$(OBJDIR)/pcre_globals.o \
-	$(OBJDIR)/pcre_info.o \
-	$(OBJDIR)/pcre_newline.o \
-	$(OBJDIR)/pcre_tables.o \
-	$(OBJDIR)/pcre_try_flipped.o \
-	$(OBJDIR)/pcre_version.o \
-	$(OBJDIR)/chartables.o \
-	$(EOLIST)
-
-endif
 
 #
 # implement targets and dependancies (leave this section alone)
@@ -382,7 +321,7 @@ nlms :: libs $(TARGET_nlm)
 # Updated this target to create necessary directories and copy files to the
 # correct place.  (See $(AP_WORK)\build\NWGNUhead.inc for examples)
 #
-install :: nlms instscripts FORCE
+install :: nlms FORCE
 	-copy $(OBJDIR)\Apache2.nlm     $(INSTALL)\$(BASEDIR)\*.*
 	-copy ABOUT_APACHE              $(INSTALL)\$(BASEDIR)\*.*
 	-copy README                    $(INSTALL)\$(BASEDIR)\*.*
@@ -427,10 +366,10 @@ installdev :: FORCE
 
 prebuild :: FORCE
 	$(MAKE) -C server -f NWGNUMakefile
-	$(MAKE) -C $(PCRE) -f NWGNUMakefile
+	$(MAKE) -C srclib/pcre -f NWGNUMakefile
 	$(CHKNOT) $(PREBUILD_INST)\nul          mkdir $(PREBUILD_INST)
 	-copy $(AP_WORK)\server\$(OBJDIR)\*.nlm $(PREBUILD_INST)\*.*
-	-copy $(PCRE)\$(basename $(OBJDIR))\*.nlm $(PREBUILD_INST)\*.*
+	-copy $(AP_WORK)\srclib\pcre\$(basename $(OBJDIR))\*.nlm $(PREBUILD_INST)\*.*
 
 #
 # Any specialized rules here
@@ -438,7 +377,7 @@ prebuild :: FORCE
 
 vpath %.c server:modules/arch/netware:modules/http:modules/aaa:modules/mappers
 vpath %.c modules/generators:modules/metadata:modules/filters:modules/loggers
-vpath %.c modules/core:os/netware:server/mpm/netware:$(PCRE)
+vpath %.c os/netware:server/mpm/netware:srclib/pcre
 
 #
 # Include the 'tail' makefile that has targets that depend on variables defined
@@ -446,7 +385,5 @@ vpath %.c modules/core:os/netware:server/mpm/netware:$(PCRE)
 #
 
 include $(AP_WORK)\build\NWGNUtail.inc
-
-include $(AP_WORK)\build\NWGNUscripts.inc
 
 

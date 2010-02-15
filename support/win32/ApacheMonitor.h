@@ -18,7 +18,6 @@
  * @file  ApacheMonitor.h
  * @brief Resource definitions for ApacheMonitor.rc and ApacheMonitor.c
  */
-#define BIN_NAME  ApacheMonitor.exe
 
 #define IDD_DLGSERVICES                 101
 #define IDS_APMONITORTITLE              102
@@ -38,6 +37,7 @@
 #define IDC_SSTART                      117
 #define IDC_SSTOP                       118
 #define IDC_SRESTART                    119
+#define IDC_SEXIT                       120
 #define IDC_SMANAGER                    121
 #define IDD_DLGCONNECT                  122
 #define IDC_LREMOTE                     123
@@ -68,8 +68,7 @@
 #define IDS_MSG_SERVICES                275
 #define IDS_MSG_CONNECT                 276
 #define IDS_MSG_ECONNECT                277
-#define IDS_MSG_OK                      278
-#define IDS_MSG_LAST                    278
+#define IDS_MSG_LAST                    277
 #define IDM_SM_SERVICE                  0x1100
 #define IDM_SM_START                    0x1200
 #define IDM_SM_STOP                     0x1400

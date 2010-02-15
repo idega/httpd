@@ -13,19 +13,17 @@
 <body>
 <div id="page-header">
 <p class="menu"><a href="../mod/">Modules</a> | <a href="../mod/directives.html">Directives</a> | <a href="../faq/">FAQ</a> | <a href="../glossary.html">Glossary</a> | <a href="../sitemap.html">Sitemap</a></p>
-<p class="apache">Apache HTTP Server Version 2.3</p>
+<p class="apache">Apache HTTP Server Version 2.2</p>
 <img alt="" src="../images/feather.gif" /></div>
 <div class="up"><a href="./"><img title="&lt;-" alt="&lt;-" src="../images/left.gif" /></a></div>
 <div id="path">
-<a href="http://www.apache.org/">Apache</a> &gt; <a href="http://httpd.apache.org/">HTTP Server</a> &gt; <a href="http://httpd.apache.org/docs/">Documentation</a> &gt; <a href="../">Version 2.3</a> &gt; <a href="./">Modules</a></div>
+<a href="http://www.apache.org/">Apache</a> &gt; <a href="http://httpd.apache.org/">HTTP Server</a> &gt; <a href="http://httpd.apache.org/docs/">Documentation</a> &gt; <a href="../">Version 2.2</a> &gt; <a href="./">Modules</a></div>
 <div id="page-content">
 <div id="preamble"><h1>Apache Module mod_status</h1>
 <div class="toplang">
 <p><span>Available Languages: </span><a href="../en/mod/mod_status.html" title="English">&nbsp;en&nbsp;</a> |
-<a href="../fr/mod/mod_status.html" hreflang="fr" rel="alternate" title="Français">&nbsp;fr&nbsp;</a> |
 <a href="../ja/mod/mod_status.html" hreflang="ja" rel="alternate" title="Japanese">&nbsp;ja&nbsp;</a> |
-<a href="../ko/mod/mod_status.html" hreflang="ko" rel="alternate" title="Korean">&nbsp;ko&nbsp;</a> |
-<a href="../tr/mod/mod_status.html" hreflang="tr" rel="alternate" title="Türkçe">&nbsp;tr&nbsp;</a></p>
+<a href="../ko/mod/mod_status.html" hreflang="ko" rel="alternate" title="Korean">&nbsp;ko&nbsp;</a></p>
 </div>
 <table class="module"><tr><th><a href="module-dict.html#Description">Description:</a></th><td>Provides information on server activity and
 performance</td></tr>
@@ -68,14 +66,14 @@ performance</td></tr>
     </ul>
 
     <p>The lines marked "(*)" are only available if 
-    <code class="directive"><a href="../mod/core.html#extendedstatus">ExtendedStatus</a></code> 
-    is <code>On</code>.  In version 2.3.6, loading mod_status will
-    toggle <code class="directive"><a href="../mod/core.html#extendedstatus">ExtendedStatus</a></code> On
-    by default.</p>
+    <code class="directive"><a href="#extendedstatus">ExtendedStatus</a></code> 
+    is <code>On</code>.</p>
 </div>
 <div id="quickview"><h3 class="directives">Directives</h3>
-<p>This module provides no
-            directives.</p>
+<ul id="toc">
+<li><img alt="" src="../images/down.gif" /> <a href="#extendedstatus">ExtendedStatus</a></li>
+<li><img alt="" src="../images/down.gif" /> <a href="#seerequesttail">SeeRequestTail</a></li>
+</ul>
 <h3>Topics</h3>
 <ul id="topics">
 <li><img alt="" src="../images/down.gif" /> <a href="#enable">Enabling Status Support</a></li>
@@ -87,7 +85,7 @@ performance</td></tr>
 <h2><a name="enable" id="enable">Enabling Status Support</a></h2>
     
 
-    <p>To enable status reports only for browsers from the example.com
+    <p>To enable status reports only for browsers from the foo.com
     domain add this code to your <code>httpd.conf</code>
     configuration file</p>
 <div class="example"><p><code>
@@ -96,7 +94,7 @@ performance</td></tr>
 <br />
     Order Deny,Allow<br />
     Deny from all<br />
-    Allow from .example.com<br />
+    Allow from .foo.com<br />
     &lt;/Location&gt;
 </code></p></div>
 
@@ -135,14 +133,54 @@ performance</td></tr>
     </div>
 
 </div>
+<div class="top"><a href="#page-header"><img alt="top" src="../images/up.gif" /></a></div>
+<div class="directive-section"><h2><a name="ExtendedStatus" id="ExtendedStatus">ExtendedStatus</a> <a name="extendedstatus" id="extendedstatus">Directive</a></h2>
+<table class="directive">
+<tr><th><a href="directive-dict.html#Description">Description:</a></th><td>Keep track of extended status information for each 
+request</td></tr>
+<tr><th><a href="directive-dict.html#Syntax">Syntax:</a></th><td><code>ExtendedStatus On|Off</code></td></tr>
+<tr><th><a href="directive-dict.html#Default">Default:</a></th><td><code>ExtendedStatus Off</code></td></tr>
+<tr><th><a href="directive-dict.html#Context">Context:</a></th><td>server config</td></tr>
+<tr><th><a href="directive-dict.html#Status">Status:</a></th><td>Base</td></tr>
+<tr><th><a href="directive-dict.html#Module">Module:</a></th><td>mod_status</td></tr>
+<tr><th><a href="directive-dict.html#Compatibility">Compatibility:</a></th><td>ExtendedStatus is only available in Apache 1.3.2 and 
+later.</td></tr>
+</table>
+    <p>This setting applies to the entire server, and cannot be
+    enabled or disabled on a virtualhost-by-virtualhost basis.
+    The collection of extended status information can slow down
+    the server.</p>
+
+</div>
+<div class="top"><a href="#page-header"><img alt="top" src="../images/up.gif" /></a></div>
+<div class="directive-section"><h2><a name="SeeRequestTail" id="SeeRequestTail">SeeRequestTail</a> <a name="seerequesttail" id="seerequesttail">Directive</a></h2>
+<table class="directive">
+<tr><th><a href="directive-dict.html#Description">Description:</a></th><td>Determine if mod_status displays the first 63 characters
+of a request or the last 63, assuming the request itself is greater than
+63 chars.</td></tr>
+<tr><th><a href="directive-dict.html#Syntax">Syntax:</a></th><td><code>SeeRequestTail On|Off</code></td></tr>
+<tr><th><a href="directive-dict.html#Default">Default:</a></th><td><code>SeeRequestTail Off</code></td></tr>
+<tr><th><a href="directive-dict.html#Context">Context:</a></th><td>server config</td></tr>
+<tr><th><a href="directive-dict.html#Status">Status:</a></th><td>Base</td></tr>
+<tr><th><a href="directive-dict.html#Module">Module:</a></th><td>mod_status</td></tr>
+<tr><th><a href="directive-dict.html#Compatibility">Compatibility:</a></th><td>SeeRequestTail is only available in Apache 2.2.7 and 
+later.</td></tr>
+</table>
+    <p>mod_status with ExtendedStatus On displays the actual request being
+    handled. For historical purposes, only 63 characters of the request
+    are actually stored for display purposes. This directive
+    controls whether the 1st 63 characters are stored (the previous
+    behavior and the default) or if the last 63 characters are. This
+    is only applicable, of course, if the length of the request is
+    64 characters or greater.</p>
+
+</div>
 </div>
 <div class="bottomlang">
 <p><span>Available Languages: </span><a href="../en/mod/mod_status.html" title="English">&nbsp;en&nbsp;</a> |
-<a href="../fr/mod/mod_status.html" hreflang="fr" rel="alternate" title="Français">&nbsp;fr&nbsp;</a> |
 <a href="../ja/mod/mod_status.html" hreflang="ja" rel="alternate" title="Japanese">&nbsp;ja&nbsp;</a> |
-<a href="../ko/mod/mod_status.html" hreflang="ko" rel="alternate" title="Korean">&nbsp;ko&nbsp;</a> |
-<a href="../tr/mod/mod_status.html" hreflang="tr" rel="alternate" title="Türkçe">&nbsp;tr&nbsp;</a></p>
+<a href="../ko/mod/mod_status.html" hreflang="ko" rel="alternate" title="Korean">&nbsp;ko&nbsp;</a></p>
 </div><div id="footer">
-<p class="apache">Copyright 2010 The Apache Software Foundation.<br />Licensed under the <a href="http://www.apache.org/licenses/LICENSE-2.0">Apache License, Version 2.0</a>.</p>
+<p class="apache">Copyright 2007 The Apache Software Foundation.<br />Licensed under the <a href="http://www.apache.org/licenses/LICENSE-2.0">Apache License, Version 2.0</a>.</p>
 <p class="menu"><a href="../mod/">Modules</a> | <a href="../mod/directives.html">Directives</a> | <a href="../faq/">FAQ</a> | <a href="../glossary.html">Glossary</a> | <a href="../sitemap.html">Sitemap</a></p></div>
 </body></html>

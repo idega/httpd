@@ -46,9 +46,6 @@
 #include <stdio.h>
 #include <stdarg.h>
 #include <stdlib.h>
-#if APR_HAVE_FCNTL_H
-#include <fcntl.h>
-#endif
 
 #ifdef HAVE_PWD_H
 #include <pwd.h>
@@ -56,6 +53,29 @@
 
 #ifdef HAVE_GRP_H
 #include <grp.h>
+#endif
+
+/*
+ ***********************************************************************
+ * There is no initgroups() in QNX, so I believe this is safe :-)
+ * Use cc -osuexec -3 -O -mf -DQNX suexec.c to compile.
+ *
+ * May 17, 1997.
+ * Igor N. Kovalenko -- infoh mail.wplus.net
+ ***********************************************************************
+ */
+
+#if defined(NEED_INITGROUPS)
+int initgroups(const char *name, gid_t basegid)
+{
+    /* QNX and MPE do not appear to support supplementary groups. */
+    return 0;
+}
+#endif
+
+#if defined(SUNOS4)
+extern char *sys_errlist[];
+#define strerror(x) sys_errlist[(x)]
 #endif
 
 #if defined(PATH_MAX)
@@ -375,15 +395,13 @@ int main(int argc, char *argv[])
             log_err("invalid target group name: (%s)\n", target_gname);
             exit(106);
         }
+        gid = gr->gr_gid;
+        actual_gname = strdup(gr->gr_name);
     }
     else {
-        if ((gr = getgrgid(atoi(target_gname))) == NULL) {
-            log_err("invalid target group id: (%s)\n", target_gname);
-            exit(106);
-        }
+        gid = atoi(target_gname);
+        actual_gname = strdup(target_gname);
     }
-    gid = gr->gr_gid;
-    actual_gname = strdup(gr->gr_name);
 
 #ifdef _OSD_POSIX
     /*
@@ -577,27 +595,18 @@ int main(int argc, char *argv[])
     umask(AP_SUEXEC_UMASK);
 #endif /* AP_SUEXEC_UMASK */
 
-    /* Be sure to close the log file so the CGI can't mess with it. */
+    /*
+     * Be sure to close the log file so the CGI can't
+     * mess with it.  If the exec fails, it will be reopened
+     * automatically when log_err is called.  Note that the log
+     * might not actually be open if AP_LOG_EXEC isn't defined.
+     * However, the "log" cell isn't ifdef'd so let's be defensive
+     * and assume someone might have done something with it
+     * outside an ifdef'd AP_LOG_EXEC block.
+     */
     if (log != NULL) {
-#if APR_HAVE_FCNTL_H
-        /*
-         * ask fcntl(2) to set the FD_CLOEXEC flag on the log file,
-         * so it'll be automagically closed if the exec() call succeeds.
-         */
-        fflush(log);
-        setbuf(log, NULL);
-        if ((fcntl(fileno(log), F_SETFD, FD_CLOEXEC) == -1)) {
-            log_err("error: can't set close-on-exec flag");
-            exit(122);
-        }
-#else
-        /*
-         * In this case, exec() errors won't be logged because we have already
-         * dropped privileges and won't be able to reopen the log file.
-         */
         fclose(log);
         log = NULL;
-#endif
     }
 
     /*

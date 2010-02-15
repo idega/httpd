@@ -16,6 +16,7 @@
 
 #ifdef WIN32
 
+#define CORE_PRIVATE
 #include "httpd.h"
 #include "http_main.h"
 #include "http_log.h"
@@ -37,15 +38,13 @@
 #include "mpm_common.h"
 #include <malloc.h>
 #include "apr_atomic.h"
-#include "scoreboard.h"
+
 
 /* scoreboard.c does the heavy lifting; all we do is create the child
  * score by moving a handle down the pipe into the child's stdin.
  */
 extern apr_shm_t *ap_scoreboard_shm;
-
-/* my_generation is returned to the scoreboard code */
-static volatile ap_generation_t my_generation=0;
+server_rec *ap_server_conf;
 
 /* Definitions of WINNT MPM specific config globals */
 static HANDLE shutdown_event;  /* used to signal the parent to shutdown */
@@ -58,28 +57,34 @@ static char const* signal_arg = NULL;
 
 OSVERSIONINFO osver; /* VER_PLATFORM_WIN32_NT */
 
-/* set by child_main to STACK_SIZE_PARAM_IS_A_RESERVATION for NT >= 5.1 (XP/2003) */
-DWORD stack_res_flag;
-
 static DWORD parent_pid;
 DWORD my_pid;
 
-/* used by parent to signal the child to start and exit */
-apr_proc_mutex_t *start_mutex;
-HANDLE exit_event;
-
 int ap_threads_per_child = 0;
-static int thread_limit = 0;
+int use_acceptex = 1;
+static int thread_limit = DEFAULT_THREAD_LIMIT;
 static int first_thread_limit = 0;
+static int changed_limit_at_restart;
 int winnt_mpm_state = AP_MPMQ_STARTING;
+/* ap_my_generation are used by the scoreboard code */
+ap_generation_t volatile ap_my_generation=0;
+
 
 /* shared by service.c as global, although
  * perhaps it should be private.
  */
 apr_pool_t *pconf;
 
+
 /* definitions from child.c */
 void child_main(apr_pool_t *pconf);
+
+/* used by parent to signal the child to start and exit
+ * NOTE: these are not sophisticated enough for multiple children
+ * so they ultimately should not be shared with child.c
+ */
+extern apr_proc_mutex_t *start_mutex;
+extern HANDLE exit_event;
 
 /* Only one of these, the pipe from our parent, ment only for
  * one child worker's consumption (not to be inherited!)
@@ -119,16 +124,75 @@ static const char *set_threads_per_child (cmd_parms *cmd, void *dummy, char *arg
     }
 
     ap_threads_per_child = atoi(arg);
+    if (ap_threads_per_child > thread_limit) {
+        ap_log_error(APLOG_MARK, APLOG_STARTUP, 0, NULL,
+                     "WARNING: ThreadsPerChild of %d exceeds ThreadLimit "
+                     "value of %d threads,", ap_threads_per_child,
+                     thread_limit);
+        ap_log_error(APLOG_MARK, APLOG_STARTUP, 0, NULL,
+                     " lowering ThreadsPerChild to %d. To increase, please"
+                     " see the", thread_limit);
+        ap_log_error(APLOG_MARK, APLOG_STARTUP, 0, NULL,
+                     " ThreadLimit directive.");
+        ap_threads_per_child = thread_limit;
+    }
+    else if (ap_threads_per_child < 1) {
+        ap_log_error(APLOG_MARK, APLOG_STARTUP, 0, NULL,
+                     "WARNING: Require ThreadsPerChild > 0, setting to 1");
+        ap_threads_per_child = 1;
+    }
     return NULL;
 }
 static const char *set_thread_limit (cmd_parms *cmd, void *dummy, const char *arg)
 {
+    int tmp_thread_limit;
+
     const char *err = ap_check_cmd_context(cmd, GLOBAL_ONLY);
     if (err != NULL) {
         return err;
     }
 
-    thread_limit = atoi(arg);
+    tmp_thread_limit = atoi(arg);
+    /* you cannot change ThreadLimit across a restart; ignore
+     * any such attempts
+     */
+    if (first_thread_limit &&
+        tmp_thread_limit != thread_limit) {
+        /* how do we log a message?  the error log is a bit bucket at this
+         * point; we'll just have to set a flag so that ap_mpm_run()
+         * logs a warning later
+         */
+        changed_limit_at_restart = 1;
+        return NULL;
+    }
+    thread_limit = tmp_thread_limit;
+
+    if (thread_limit > MAX_THREAD_LIMIT) {
+       ap_log_error(APLOG_MARK, APLOG_STARTUP, 0, NULL,
+                    "WARNING: ThreadLimit of %d exceeds compile time limit "
+                    "of %d threads,", thread_limit, MAX_THREAD_LIMIT);
+       ap_log_error(APLOG_MARK, APLOG_STARTUP, 0, NULL,
+                    " lowering ThreadLimit to %d.", MAX_THREAD_LIMIT);
+       thread_limit = MAX_THREAD_LIMIT;
+    }
+    else if (thread_limit < 1) {
+        ap_log_error(APLOG_MARK, APLOG_STARTUP, 0, NULL,
+                     "WARNING: Require ThreadLimit > 0, setting to 1");
+        thread_limit = 1;
+    }
+    return NULL;
+}
+static const char *set_disable_acceptex(cmd_parms *cmd, void *dummy, char *arg)
+{
+    const char *err = ap_check_cmd_context(cmd, GLOBAL_ONLY);
+    if (err != NULL) {
+        return err;
+    }
+    if (use_acceptex) {
+        use_acceptex = 0;
+        ap_log_error(APLOG_MARK, APLOG_NOTICE, 0, NULL,
+                     "Disabled use of AcceptEx() WinSock2 API");
+    }
     return NULL;
 }
 
@@ -138,6 +202,9 @@ AP_INIT_TAKE1("ThreadsPerChild", set_threads_per_child, NULL, RSRC_CONF,
   "Number of threads each child creates" ),
 AP_INIT_TAKE1("ThreadLimit", set_thread_limit, NULL, RSRC_CONF,
   "Maximum worker threads in a server for this run of Apache"),
+AP_INIT_NO_ARGS("Win32DisableAcceptEx", set_disable_acceptex, NULL, RSRC_CONF,
+  "Disable use of the high performance AcceptEx WinSock2 API to work around buggy VPN or Firewall software"),
+
 { NULL }
 };
 
@@ -187,6 +254,13 @@ void setup_signal_names(char *prefix)
         "%s_restart", signal_name_prefix);
 }
 
+int volatile is_graceful = 0;
+
+AP_DECLARE(int) ap_graceful_stop_signalled(void)
+{
+    return is_graceful;
+}
+
 AP_DECLARE(void) ap_signal_parent(ap_signal_parent_e type)
 {
     HANDLE e;
@@ -203,6 +277,7 @@ AP_DECLARE(void) ap_signal_parent(ap_signal_parent_e type)
            case SIGNAL_PARENT_RESTART:
            case SIGNAL_PARENT_RESTART_GRACEFUL:
            {
+               is_graceful = 1;
                SetEvent(restart_event);
                break;
            }
@@ -221,6 +296,7 @@ AP_DECLARE(void) ap_signal_parent(ap_signal_parent_e type)
        case SIGNAL_PARENT_RESTART_GRACEFUL:
        {
            signal_name = signal_restart_name;
+           is_graceful = 1;
            break;
        }
        default:
@@ -450,7 +526,6 @@ void get_listeners_from_parent(server_rec *s)
                          "setup_inherited_listeners: Unable to read socket data from parent");
             exit(APEXIT_CHILDINIT);
         }
-
         nsd = WSASocket(FROM_PROTOCOL_INFO, FROM_PROTOCOL_INFO, FROM_PROTOCOL_INFO,
                         &WSAProtocolInfo, 0, 0);
         if (nsd == INVALID_SOCKET) {
@@ -459,9 +534,29 @@ void get_listeners_from_parent(server_rec *s)
             exit(APEXIT_CHILDINIT);
         }
 
-        if (!SetHandleInformation((HANDLE)nsd, HANDLE_FLAG_INHERIT, 0)) {
-            ap_log_error(APLOG_MARK, APLOG_ERR, apr_get_os_error(), ap_server_conf,
-                         "set_listeners_noninheritable: SetHandleInformation failed.");
+        if (osver.dwPlatformId == VER_PLATFORM_WIN32_WINDOWS) {
+            HANDLE hProcess = GetCurrentProcess();
+            HANDLE dup;
+            if (DuplicateHandle(hProcess, (HANDLE) nsd, hProcess, &dup,
+                                0, FALSE, DUPLICATE_SAME_ACCESS)) {
+                closesocket(nsd);
+                nsd = (SOCKET) dup;
+            }
+        }
+        else {
+            /* A different approach.  Many users report errors such as
+             * (32538)An operation was attempted on something that is not
+             * a socket.  : Parent: WSADuplicateSocket failed...
+             *
+             * This appears that the duplicated handle is no longer recognized
+             * as a socket handle.  SetHandleInformation should overcome that
+             * problem by not altering the handle identifier.  But this won't
+             * work on 9x - it's unsupported.
+             */
+            if (!SetHandleInformation((HANDLE)nsd, HANDLE_FLAG_INHERIT, 0)) {
+                ap_log_error(APLOG_MARK, APLOG_ERR, apr_get_os_error(), ap_server_conf,
+                             "set_listeners_noninheritable: SetHandleInformation failed.");
+            }
         }
         apr_os_sock_put(&lr->sd, &nsd, s->process->pool);
     }
@@ -523,23 +618,23 @@ static int create_process(apr_pool_t *p, HANDLE *child_proc, HANDLE *child_exit_
     /* These NEVER change for the lifetime of this parent
      */
     static char **args = NULL;
+    static char **env = NULL;
     static char pidbuf[28];
 
     apr_status_t rv;
     apr_pool_t *ptemp;
     apr_procattr_t *attr;
     apr_proc_t new_child;
+    apr_file_t *child_out, *child_err;
     HANDLE hExitEvent;
     HANDLE waitlist[2];  /* see waitlist_e */
     char *cmd;
     char *cwd;
-    char **env;
-    int envc;
 
     apr_pool_create_ex(&ptemp, p, NULL, NULL);
 
     /* Build the command line. Should look something like this:
-     * C:/apache/bin/httpd.exe -f ap_server_confname
+     * C:/apache/bin/apache.exe -f ap_server_confname
      * First, get the path to the executable...
      */
     apr_procattr_create(&attr, ptemp);
@@ -584,6 +679,22 @@ static int create_process(apr_pool_t *p, HANDLE *child_proc, HANDLE *child_exit_
         return -1;
     }
 
+    /* httpd-2.0/2.2 specific to work around apr_proc_create bugs */
+    if (((rv = apr_file_open_stdout(&child_out, p))
+            != APR_SUCCESS) ||
+        ((rv = apr_procattr_child_out_set(attr, child_out, NULL))
+            != APR_SUCCESS)) {
+        ap_log_error(APLOG_MARK, APLOG_ERR, rv, ap_server_conf,
+                     "Parent: Could not set child process stdout");
+    }
+    if (((rv = apr_file_open_stderr(&child_err, p))
+            != APR_SUCCESS) ||
+        ((rv = apr_procattr_child_err_set(attr, child_err, NULL))
+            != APR_SUCCESS)) {
+        ap_log_error(APLOG_MARK, APLOG_ERR, rv, ap_server_conf,
+                     "Parent: Could not set child process stderr");
+    }
+
     /* Create the child_ready_event */
     waitlist[waitlist_ready] = CreateEvent(NULL, TRUE, FALSE, NULL);
     if (!waitlist[waitlist_ready]) {
@@ -603,15 +714,21 @@ static int create_process(apr_pool_t *p, HANDLE *child_proc, HANDLE *child_exit_
         return -1;
     }
 
-    /* Build the env array */
-    for (envc = 0; _environ[envc]; ++envc) {
-        ;
+    if (!env)
+    {
+        /* Build the env array, only once since it won't change
+         * for the lifetime of this parent process.
+         */
+        int envc;
+        for (envc = 0; _environ[envc]; ++envc) {
+            ;
+        }
+        env = malloc((envc + 2) * sizeof (char*));
+        memcpy(env, _environ, envc * sizeof (char*));
+        apr_snprintf(pidbuf, sizeof(pidbuf), "AP_PARENT_PID=%i", parent_pid);
+        env[envc] = pidbuf;
+        env[envc + 1] = NULL;
     }
-    env = apr_palloc(ptemp, (envc + 2) * sizeof (char*));  
-    memcpy(env, _environ, envc * sizeof (char*));
-    apr_snprintf(pidbuf, sizeof(pidbuf), "AP_PARENT_PID=%i", parent_pid);
-    env[envc] = pidbuf;
-    env[envc + 1] = NULL;
 
     rv = apr_proc_create(&new_child, cmd, args, env, attr, ptemp);
     if (rv != APR_SUCCESS) {
@@ -838,8 +955,8 @@ static int master_main(server_rec *s, HANDLE shutdown_event, HANDLE restart_even
         event_handles[CHILD_HANDLE] = NULL;
     }
     if (restart_pending) {
-        ++my_generation;
-        ap_scoreboard_image->global->running_generation = my_generation;
+        ++ap_my_generation;
+        ap_scoreboard_image->global->running_generation = ap_my_generation;
     }
 die_now:
     if (shutdown_pending)
@@ -893,62 +1010,50 @@ apr_array_header_t *mpm_new_argv;
  * service after we preflight the config.
  */
 
-static int winnt_query(int query_code, int *result, apr_status_t *rv)
+AP_DECLARE(apr_status_t) ap_mpm_query(int query_code, int *result)
 {
-    *rv = APR_SUCCESS;
-    switch (query_code) {
+    switch(query_code){
         case AP_MPMQ_MAX_DAEMON_USED:
             *result = MAXIMUM_WAIT_OBJECTS;
-            break;
+            return APR_SUCCESS;
         case AP_MPMQ_IS_THREADED:
             *result = AP_MPMQ_STATIC;
-            break;
+            return APR_SUCCESS;
         case AP_MPMQ_IS_FORKED:
             *result = AP_MPMQ_NOT_SUPPORTED;
-            break;
+            return APR_SUCCESS;
         case AP_MPMQ_HARD_LIMIT_DAEMONS:
             *result = HARD_SERVER_LIMIT;
-            break;
+            return APR_SUCCESS;
         case AP_MPMQ_HARD_LIMIT_THREADS:
             *result = thread_limit;
-            break;
+            return APR_SUCCESS;
         case AP_MPMQ_MAX_THREADS:
             *result = ap_threads_per_child;
-            break;
+            return APR_SUCCESS;
         case AP_MPMQ_MIN_SPARE_DAEMONS:
             *result = 0;
-            break;
+            return APR_SUCCESS;
         case AP_MPMQ_MIN_SPARE_THREADS:
             *result = 0;
-            break;
+            return APR_SUCCESS;
         case AP_MPMQ_MAX_SPARE_DAEMONS:
             *result = 0;
-            break;
+            return APR_SUCCESS;
         case AP_MPMQ_MAX_SPARE_THREADS:
             *result = 0;
-            break;
+            return APR_SUCCESS;
         case AP_MPMQ_MAX_REQUESTS_DAEMON:
             *result = ap_max_requests_per_child;
-            break;
+            return APR_SUCCESS;
         case AP_MPMQ_MAX_DAEMONS:
             *result = 0;
-            break;
+            return APR_SUCCESS;
         case AP_MPMQ_MPM_STATE:
             *result = winnt_mpm_state;
-            break;
-        case AP_MPMQ_GENERATION:
-            *result = my_generation;
-            break;
-        default:
-            *rv = APR_ENOTIMPL;
-            break;
+            return APR_SUCCESS;
     }
-    return OK;
-}
-
-static const char *winnt_get_name(void)
-{
-    return "WinNT";
+    return APR_ENOTIMPL;
 }
 
 #define SERVICE_UNSET (-1)
@@ -962,7 +1067,7 @@ void winnt_rewrite_args(process_rec *process)
 {
     /* Handle the following SCM aspects in this phase:
      *
-     *   -k runservice [transition in service context only]
+     *   -k runservice [transition for WinNT, nothing for Win9x]
      *   -k install
      *   -k config
      *   -k uninstall
@@ -985,21 +1090,11 @@ void winnt_rewrite_args(process_rec *process)
     apr_getopt_t *opt;
     int running_as_service = 1;
     int errout = 0;
-    apr_file_t *nullfile;
 
     pconf = process->pconf;
 
     osver.dwOSVersionInfoSize = sizeof(OSVERSIONINFO);
     GetVersionEx(&osver);
-
-    /* We wish this was *always* a reservation, but sadly it wasn't so and
-     * we couldn't break a hard limit prior to NT Kernel 5.1
-     */
-    if (osver.dwPlatformId == VER_PLATFORM_WIN32_NT 
-        && ((osver.dwMajorVersion > 5)
-         || ((osver.dwMajorVersion == 5) && (osver.dwMinorVersion > 0)))) {
-        stack_res_flag = STACK_SIZE_PARAM_IS_A_RESERVATION;
-    }
 
     /* AP_PARENT_PID is only valid in the child */
     pid = getenv("AP_PARENT_PID");
@@ -1043,7 +1138,6 @@ void winnt_rewrite_args(process_rec *process)
         /* This child needs the existing stderr opened for logging,
          * already 
          */
-
 
         /* The parent is responsible for providing the
          * COMPLETE ARGUMENTS REQUIRED to the child.
@@ -1189,28 +1283,33 @@ void winnt_rewrite_args(process_rec *process)
          * We hold the return value so that we can die in pre_config
          * after logging begins, and the failure can land in the log.
          */
-        if (!errout) {
-            mpm_nt_eventlog_stderr_open(service_name, process->pool);
-        }
-        service_to_start_success = mpm_service_to_start(&service_name,
-                                                        process->pool);
-        if (service_to_start_success == APR_SUCCESS) {
-            service_set = APR_SUCCESS;
-        }
+        if (osver.dwPlatformId == VER_PLATFORM_WIN32_NT)
+        {
+            apr_file_t *nullfile;
 
-        /* Open a null handle to soak stdout in this process.
-         * Windows service processes are missing any file handle
-         * usable for stdin/out/err.  This was the cause of later 
-         * trouble with invocations of apr_file_open_stdout()
-         */
-        if ((rv = apr_file_open(&nullfile, "NUL",
-                                APR_READ | APR_WRITE, APR_OS_DEFAULT,
-                                process->pool)) == APR_SUCCESS) {
-            apr_file_t *nullstdout;
-            if (apr_file_open_stdout(&nullstdout, process->pool)
-                    == APR_SUCCESS)
-                apr_file_dup2(nullstdout, nullfile, process->pool);
-            apr_file_close(nullfile);
+            if (!errout) {
+                mpm_nt_eventlog_stderr_open(service_name, process->pool);
+            }
+            service_to_start_success = mpm_service_to_start(&service_name,
+                                                            process->pool);
+            if (service_to_start_success == APR_SUCCESS) {
+                service_set = APR_SUCCESS;
+            }
+
+            /* Open a null handle to soak stdout in this process.
+             * Windows service processes are missing any file handle
+             * usable for stdin/out/err.  This was the cause of later 
+             * trouble with invocations of apr_file_open_stdout()
+             */
+            if ((rv = apr_file_open(&nullfile, "NUL",
+                                    APR_READ | APR_WRITE, APR_OS_DEFAULT,
+                                    process->pool)) == APR_SUCCESS) {
+                apr_file_t *nullstdout;
+                if (apr_file_open_stdout(&nullstdout, process->pool)
+                        == APR_SUCCESS)
+                    apr_file_dup2(nullstdout, nullfile, process->pool);
+                apr_file_close(nullfile);
+            }
         }
     }
 
@@ -1328,20 +1427,15 @@ static int winnt_pre_config(apr_pool_t *pconf_, apr_pool_t *plog, apr_pool_t *pt
         ap_exists_config_define("DEBUG"))
         one_process = -1;
 
-    /* XXX: presume proper privilages; one nice thing would be
-     * a loud emit if running as "LocalSystem"/"SYSTEM" to indicate
-     * they should change to a user with write access to logs/ alone.
-     */
-    ap_sys_privileges_handlers(1);
-
     if (!strcasecmp(signal_arg, "runservice")
+            && (osver.dwPlatformId == VER_PLATFORM_WIN32_NT)
             && (service_to_start_success != APR_SUCCESS)) {
         ap_log_error(APLOG_MARK,APLOG_CRIT, service_to_start_success, NULL,
                      "%s: Unable to start the service manager.",
                      service_name);
         exit(APEXIT_INIT);
     }
-    else if (!one_process && !my_generation) {
+    else if (!one_process && !ap_my_generation) {
         /* Open a null handle to soak stdout in this process.
          * We need to emulate apr_proc_detach, unix performs this
          * same check in the pre_config hook (although it is
@@ -1362,108 +1456,25 @@ static int winnt_pre_config(apr_pool_t *pconf_, apr_pool_t *plog, apr_pool_t *pt
         }
     }
 
+    /* Win9x: disable AcceptEx */
+    if (osver.dwPlatformId == VER_PLATFORM_WIN32_WINDOWS) {
+        use_acceptex = 0;
+    }
+
     ap_listen_pre_config();
-    thread_limit = DEFAULT_THREAD_LIMIT;
     ap_threads_per_child = DEFAULT_THREADS_PER_CHILD;
     ap_pid_fname = DEFAULT_PIDLOG;
     ap_max_requests_per_child = DEFAULT_MAX_REQUESTS_PER_CHILD;
-    ap_max_mem_free = APR_ALLOCATOR_MAX_FREE_UNLIMITED;
+#ifdef AP_MPM_WANT_SET_MAX_MEM_FREE
+        ap_max_mem_free = APR_ALLOCATOR_MAX_FREE_UNLIMITED;
+#endif
+    /* use_acceptex which is enabled by default is not available on Win9x.
+     */
+    if (osver.dwPlatformId == VER_PLATFORM_WIN32_WINDOWS) {
+        use_acceptex = 0;
+    }
 
     apr_cpystrn(ap_coredump_dir, ap_server_root, sizeof(ap_coredump_dir));
-
-    return OK;
-}
-
-static int winnt_check_config(apr_pool_t *pconf, apr_pool_t *plog,
-                              apr_pool_t *ptemp, server_rec* s)
-{
-    int is_parent;
-    static int restart_num = 0;
-    int startup = 0;
-
-    /* We want this only in the parent and only the first time around */
-    is_parent = (parent_pid == my_pid);
-    if (is_parent && restart_num++ == 0) {
-        startup = 1;
-    }
-
-    if (thread_limit > MAX_THREAD_LIMIT) {
-        if (startup) {
-            ap_log_error(APLOG_MARK, APLOG_WARNING | APLOG_STARTUP, 0, NULL,
-                         "WARNING: ThreadLimit of %d exceeds compile-time "
-                         "limit of", thread_limit);
-            ap_log_error(APLOG_MARK, APLOG_WARNING | APLOG_STARTUP, 0, NULL,
-                         " %d threads, decreasing to %d.",
-                         MAX_THREAD_LIMIT, MAX_THREAD_LIMIT);
-        } else if (is_parent) {
-            ap_log_error(APLOG_MARK, APLOG_WARNING, 0, s,
-                         "ThreadLimit of %d exceeds compile-time limit "
-                         "of %d, decreasing to match",
-                         thread_limit, MAX_THREAD_LIMIT);
-        }
-        thread_limit = MAX_THREAD_LIMIT;
-    }
-    else if (thread_limit < 1) {
-        if (startup) {
-            ap_log_error(APLOG_MARK, APLOG_WARNING | APLOG_STARTUP, 0, NULL,
-                         "WARNING: ThreadLimit of %d not allowed, "
-                         "increasing to 1.", thread_limit);
-        } else if (is_parent) {
-            ap_log_error(APLOG_MARK, APLOG_WARNING, 0, s,
-                         "ThreadLimit of %d not allowed, increasing to 1",
-                         thread_limit);
-        }
-        thread_limit = 1;
-    }
-
-    /* You cannot change ThreadLimit across a restart; ignore
-     * any such attempts.
-     */
-    if (!first_thread_limit) {
-        first_thread_limit = thread_limit;
-    }
-    else if (thread_limit != first_thread_limit) {
-        /* Don't need a startup console version here */
-        if (is_parent) {
-            ap_log_error(APLOG_MARK, APLOG_WARNING, 0, s,
-                         "changing ThreadLimit to %d from original value "
-                         "of %d not allowed during restart",
-                         thread_limit, first_thread_limit);
-        }
-        thread_limit = first_thread_limit;
-    }
-
-    if (ap_threads_per_child > thread_limit) {
-        if (startup) {
-            ap_log_error(APLOG_MARK, APLOG_WARNING | APLOG_STARTUP, 0, NULL,
-                         "WARNING: ThreadsPerChild of %d exceeds ThreadLimit "
-                         "of", ap_threads_per_child);
-            ap_log_error(APLOG_MARK, APLOG_WARNING | APLOG_STARTUP, 0, NULL,
-                         " %d threads, decreasing to %d.",
-                         thread_limit, thread_limit);
-            ap_log_error(APLOG_MARK, APLOG_WARNING | APLOG_STARTUP, 0, NULL,
-                         " To increase, please see the ThreadLimit "
-                         "directive.");
-        } else if (is_parent) {
-            ap_log_error(APLOG_MARK, APLOG_WARNING, 0, s,
-                         "ThreadsPerChild of %d exceeds ThreadLimit "
-                         "of %d, decreasing to match",
-                         ap_threads_per_child, thread_limit);
-        }
-        ap_threads_per_child = thread_limit;
-    }
-    else if (ap_threads_per_child < 1) {
-        if (startup) {
-            ap_log_error(APLOG_MARK, APLOG_WARNING | APLOG_STARTUP, 0, NULL,
-                         "WARNING: ThreadsPerChild of %d not allowed, "
-                         "increasing to 1.", ap_threads_per_child);
-        } else if (is_parent) {
-            ap_log_error(APLOG_MARK, APLOG_WARNING, 0, s,
-                         "ThreadsPerChild of %d not allowed, increasing to 1",
-                         ap_threads_per_child);
-        }
-        ap_threads_per_child = 1;
-    }
 
     return OK;
 }
@@ -1564,6 +1575,30 @@ static int winnt_post_config(apr_pool_t *pconf, apr_pool_t *plog, apr_pool_t *pt
             }
             CleanNullACL((void *)sa);
 
+            /* Now that we are flying at 15000 feet...
+             * wipe out the Win95 service console,
+             * signal the SCM the WinNT service started, or
+             * if not a service, setup console handlers instead.
+             */
+            if (!strcasecmp(signal_arg, "runservice"))
+            {
+                if (osver.dwPlatformId != VER_PLATFORM_WIN32_NT)
+                {
+                    rv = mpm_service_to_start(&service_name,
+                                              s->process->pool);
+                    if (rv != APR_SUCCESS) {
+                        ap_log_error(APLOG_MARK,APLOG_ERR, rv, ap_server_conf,
+                                     "%s: Unable to start the service manager.",
+                                     service_name);
+                        return HTTP_INTERNAL_SERVER_ERROR;
+                    }
+                }
+            }
+            else /* ! -k runservice */
+            {
+                mpm_start_console_handler();
+            }
+
             /* Create the start mutex, as an unnamed object for security.
              * Ths start mutex is used during a restart to prevent more than
              * one child process from entering the accept loop at once.
@@ -1578,12 +1613,6 @@ static int winnt_post_config(apr_pool_t *pconf, apr_pool_t *plog, apr_pool_t *pt
                 return HTTP_INTERNAL_SERVER_ERROR;
             }
         }
-        /* Always reset our console handler to be the first, even on a restart
-        *  because some modules (e.g. mod_perl) might have set a console 
-        *  handler to terminate the process.
-        */
-        if (strcasecmp(signal_arg, "runservice"))
-            mpm_start_console_handler();
     }
     else /* parent_pid != my_pid */
     {
@@ -1599,6 +1628,8 @@ static int winnt_open_logs(apr_pool_t *p, apr_pool_t *plog, apr_pool_t *ptemp, s
 {
     /* Initialize shared static objects.
      */
+    ap_server_conf = s;
+
     if (parent_pid != my_pid) {
         return OK;
     }
@@ -1640,7 +1671,7 @@ static void winnt_child_init(apr_pool_t *pchild, struct server_rec *s)
         /* Done reading from the parent, close that channel */
         CloseHandle(pipe);
 
-        my_generation = ap_scoreboard_image->global->running_generation;
+        ap_my_generation = ap_scoreboard_image->global->running_generation;
     }
     else {
         /* Single process mode - this lock doesn't even need to exist */
@@ -1659,9 +1690,20 @@ static void winnt_child_init(apr_pool_t *pchild, struct server_rec *s)
 }
 
 
-static int winnt_run(apr_pool_t *_pconf, apr_pool_t *plog, server_rec *s )
+AP_DECLARE(int) ap_mpm_run(apr_pool_t *_pconf, apr_pool_t *plog, server_rec *s )
 {
     static int restart = 0;            /* Default is "not a restart" */
+
+    if (!restart) {
+        first_thread_limit = thread_limit;
+    }
+
+    if (changed_limit_at_restart) {
+        ap_log_error(APLOG_MARK, APLOG_WARNING, APR_SUCCESS, ap_server_conf,
+                     "WARNING: Attempt to change ThreadLimit ignored "
+                     "during restart");
+        changed_limit_at_restart = 0;
+    }
 
     /* ### If non-graceful restarts are ever introduced - we need to rerun
      * the pre_mpm hook on subsequent non-graceful restarts.  But Win32
@@ -1671,7 +1713,7 @@ static int winnt_run(apr_pool_t *_pconf, apr_pool_t *plog, server_rec *s )
     if (!restart && ((parent_pid == my_pid) || one_process)) {
         /* Set up the scoreboard. */
         if (ap_run_pre_mpm(s->process->pool, SB_SHARED) != OK) {
-            return DONE;
+            return 1;
         }
     }
 
@@ -1686,7 +1728,7 @@ static int winnt_run(apr_pool_t *_pconf, apr_pool_t *plog, server_rec *s )
 
         ap_log_error(APLOG_MARK, APLOG_NOTICE, APR_SUCCESS, ap_server_conf,
                      "Child %d: Child process is exiting", my_pid);
-        return DONE;
+        return 1;
     }
     else
     {
@@ -1714,29 +1756,25 @@ static int winnt_run(apr_pool_t *_pconf, apr_pool_t *plog, server_rec *s )
             CloseHandle(restart_event);
             CloseHandle(shutdown_event);
 
-            return DONE;
+            return 1;
         }
     }
 
-    return OK; /* Restart */
+    return 0; /* Restart */
 }
 
 static void winnt_hooks(apr_pool_t *p)
 {
-    /* Our open_logs hook function must run before the core's, or stderr
+    /* The prefork open_logs phase must run before the core's, or stderr
      * will be redirected to a file, and the messages won't print to the
      * console.
      */
     static const char *const aszSucc[] = {"core.c", NULL};
 
     ap_hook_pre_config(winnt_pre_config, NULL, NULL, APR_HOOK_MIDDLE);
-    ap_hook_check_config(winnt_check_config, NULL, NULL, APR_HOOK_MIDDLE);
     ap_hook_post_config(winnt_post_config, NULL, NULL, 0);
     ap_hook_child_init(winnt_child_init, NULL, NULL, APR_HOOK_MIDDLE);
-    ap_hook_open_logs(winnt_open_logs, NULL, aszSucc, APR_HOOK_REALLY_FIRST);
-    ap_hook_mpm(winnt_run, NULL, NULL, APR_HOOK_MIDDLE);
-    ap_hook_mpm_query(winnt_query, NULL, NULL, APR_HOOK_MIDDLE);
-    ap_hook_mpm_get_name(winnt_get_name, NULL, NULL, APR_HOOK_MIDDLE);
+    ap_hook_open_logs(winnt_open_logs, NULL, aszSucc, APR_HOOK_MIDDLE);
 }
 
 AP_MODULE_DECLARE_DATA module mpm_winnt_module = {

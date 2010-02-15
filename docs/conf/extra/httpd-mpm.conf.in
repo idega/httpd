@@ -13,18 +13,19 @@
 </IfModule>
 
 #
+# The accept serialization lock file MUST BE STORED ON A LOCAL DISK.
+#
+<IfModule !mpm_winnt_module>
+<IfModule !mpm_netware_module>
+LockFile "@rel_logfiledir@/accept.lock"
+</IfModule>
+</IfModule>
+
+#
 # Only one of the below sections will be relevant on your
 # installed httpd.  Use "apachectl -l" to find out the
 # active mpm.
 #
-
-# Simple MPM
-# SimpleProcCount: Number of child processes launched at server startup
-# SimpleThreadCount: Set the number of Worker Threads Per-Process
-<IfModule mpm_simple_module>
-    SimpleProcCount 5
-    SimpleThreadCount 5
-</IfModule>
 
 # prefork MPM
 # StartServers: number of server processes to start
@@ -54,6 +55,16 @@
     MaxSpareThreads      75 
     ThreadsPerChild      25
     MaxRequestsPerChild   0
+</IfModule>
+
+# BeOS MPM
+# StartThreads: how many threads do we initially spawn?
+# MaxClients:   max number of threads we can have (1 thread == 1 client)
+# MaxRequestsPerThread: maximum number of requests each thread will process
+<IfModule mpm_beos_module>
+    StartThreads            10
+    MaxClients              50
+    MaxRequestsPerThread 10000
 </IfModule>
 
 # NetWare MPM

@@ -13,18 +13,17 @@
 <body>
 <div id="page-header">
 <p class="menu"><a href="../mod/">Modules</a> | <a href="../mod/directives.html">Directives</a> | <a href="../faq/">FAQ</a> | <a href="../glossary.html">Glossary</a> | <a href="../sitemap.html">Sitemap</a></p>
-<p class="apache">Apache HTTP Server Version 2.3</p>
+<p class="apache">Apache HTTP Server Version 2.2</p>
 <img alt="" src="../images/feather.gif" /></div>
 <div class="up"><a href="./"><img title="&lt;-" alt="&lt;-" src="../images/left.gif" /></a></div>
 <div id="path">
-<a href="http://www.apache.org/">Apache</a> &gt; <a href="http://httpd.apache.org/">HTTP Server</a> &gt; <a href="http://httpd.apache.org/docs/">Documentation</a> &gt; <a href="../">Version 2.3</a> &gt; <a href="./">Modules</a></div>
+<a href="http://www.apache.org/">Apache</a> &gt; <a href="http://httpd.apache.org/">HTTP Server</a> &gt; <a href="http://httpd.apache.org/docs/">Documentation</a> &gt; <a href="../">Version 2.2</a> &gt; <a href="./">Modules</a></div>
 <div id="page-content">
 <div id="preamble"><h1>Apache MPM prefork</h1>
 <div class="toplang">
 <p><span>Available Languages: </span><a href="../de/mod/prefork.html" hreflang="de" rel="alternate" title="Deutsch">&nbsp;de&nbsp;</a> |
 <a href="../en/mod/prefork.html" title="English">&nbsp;en&nbsp;</a> |
-<a href="../ja/mod/prefork.html" hreflang="ja" rel="alternate" title="Japanese">&nbsp;ja&nbsp;</a> |
-<a href="../tr/mod/prefork.html" hreflang="tr" rel="alternate" title="Türkçe">&nbsp;tr&nbsp;</a></p>
+<a href="../ja/mod/prefork.html" hreflang="ja" rel="alternate" title="Japanese">&nbsp;ja&nbsp;</a></p>
 </div>
 <table class="module"><tr><th><a href="module-dict.html#Description">Description:</a></th><td>Implements a non-threaded, pre-forking web server</td></tr>
 <tr><th><a href="module-dict.html#Status">Status:</a></th><td>MPM</td></tr>
@@ -48,11 +47,13 @@
 </div>
 <div id="quickview"><h3 class="directives">Directives</h3>
 <ul id="toc">
+<li><img alt="" src="../images/right.gif" /> <a href="mpm_common.html#acceptmutex">AcceptMutex</a></li>
 <li><img alt="" src="../images/right.gif" /> <a href="mpm_common.html#coredumpdirectory">CoreDumpDirectory</a></li>
 <li><img alt="" src="../images/right.gif" /> <a href="mpm_common.html#enableexceptionhook">EnableExceptionHook</a></li>
-<li><img alt="" src="../images/right.gif" /> <a href="mod_unixd.html#group">Group</a></li>
+<li><img alt="" src="../images/right.gif" /> <a href="mpm_common.html#group">Group</a></li>
 <li><img alt="" src="../images/right.gif" /> <a href="mpm_common.html#listen">Listen</a></li>
 <li><img alt="" src="../images/right.gif" /> <a href="mpm_common.html#listenbacklog">ListenBacklog</a></li>
+<li><img alt="" src="../images/right.gif" /> <a href="mpm_common.html#lockfile">LockFile</a></li>
 <li><img alt="" src="../images/right.gif" /> <a href="mpm_common.html#maxclients">MaxClients</a></li>
 <li><img alt="" src="../images/right.gif" /> <a href="mpm_common.html#maxmemfree">MaxMemFree</a></li>
 <li><img alt="" src="../images/right.gif" /> <a href="mpm_common.html#maxrequestsperchild">MaxRequestsPerChild</a></li>
@@ -64,7 +65,7 @@
 <li><img alt="" src="../images/right.gif" /> <a href="mpm_common.html#sendbuffersize">SendBufferSize</a></li>
 <li><img alt="" src="../images/right.gif" /> <a href="mpm_common.html#serverlimit">ServerLimit</a></li>
 <li><img alt="" src="../images/right.gif" /> <a href="mpm_common.html#startservers">StartServers</a></li>
-<li><img alt="" src="../images/right.gif" /> <a href="mod_unixd.html#user">User</a></li>
+<li><img alt="" src="../images/right.gif" /> <a href="mpm_common.html#user">User</a></li>
 </ul>
 <h3>Topics</h3>
 <ul id="topics">
@@ -101,7 +102,7 @@ uses</a></li>
 
     <p>While the parent process is usually started as <code>root</code>
     under Unix in order to bind to port 80, the child processes are
-    launched by Apache as a less-privileged user. The <code class="directive"><a href="../mod/mod_unixd.html#user">User</a></code> and <code class="directive"><a href="../mod/mod_unixd.html#group">Group</a></code> directives are used to set
+    launched by Apache as a less-privileged user. The <code class="directive"><a href="../mod/mpm_common.html#user">User</a></code> and <code class="directive"><a href="../mod/mpm_common.html#group">Group</a></code> directives are used to set
     the privileges of the Apache child processes. The child processes
     must be able to read all the content that will be served, but
     should have as few privileges beyond that as possible.</p>
@@ -109,13 +110,6 @@ uses</a></li>
     <p><code class="directive"><a href="../mod/mpm_common.html#maxrequestsperchild">MaxRequestsPerChild</a></code>
     controls how frequently the server recycles processes by killing
     old ones and launching new ones.</p>
-
-    <p>This MPM uses the <code>mpm-accept</code> mutex to serialize
-    access to incoming connections when subject to the thundering herd
-    problem (generally, when there are multiple listening sockets).
-    The implementation aspects of this mutex can be configured with the
-    <code class="directive"><a href="../mod/core.html#mutex">Mutex</a></code> directive.  The <a href="../misc/perf-tuning.html">performance hints</a>
-    documentation has additional information about this mutex.</p>
 </div>
 <div class="top"><a href="#page-header"><img alt="top" src="../images/up.gif" /></a></div>
 <div class="directive-section"><h2><a name="MaxSpareServers" id="MaxSpareServers">MaxSpareServers</a> <a name="maxspareservers" id="maxspareservers">Directive</a></h2>
@@ -175,9 +169,8 @@ uses</a></li>
 <div class="bottomlang">
 <p><span>Available Languages: </span><a href="../de/mod/prefork.html" hreflang="de" rel="alternate" title="Deutsch">&nbsp;de&nbsp;</a> |
 <a href="../en/mod/prefork.html" title="English">&nbsp;en&nbsp;</a> |
-<a href="../ja/mod/prefork.html" hreflang="ja" rel="alternate" title="Japanese">&nbsp;ja&nbsp;</a> |
-<a href="../tr/mod/prefork.html" hreflang="tr" rel="alternate" title="Türkçe">&nbsp;tr&nbsp;</a></p>
+<a href="../ja/mod/prefork.html" hreflang="ja" rel="alternate" title="Japanese">&nbsp;ja&nbsp;</a></p>
 </div><div id="footer">
-<p class="apache">Copyright 2010 The Apache Software Foundation.<br />Licensed under the <a href="http://www.apache.org/licenses/LICENSE-2.0">Apache License, Version 2.0</a>.</p>
+<p class="apache">Copyright 2007 The Apache Software Foundation.<br />Licensed under the <a href="http://www.apache.org/licenses/LICENSE-2.0">Apache License, Version 2.0</a>.</p>
 <p class="menu"><a href="../mod/">Modules</a> | <a href="../mod/directives.html">Directives</a> | <a href="../faq/">FAQ</a> | <a href="../glossary.html">Glossary</a> | <a href="../sitemap.html">Sitemap</a></p></div>
 </body></html>

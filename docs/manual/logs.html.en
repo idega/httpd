@@ -12,17 +12,15 @@
 <link href="./images/favicon.ico" rel="shortcut icon" /></head>
 <body id="manual-page"><div id="page-header">
 <p class="menu"><a href="./mod/">Modules</a> | <a href="./mod/directives.html">Directives</a> | <a href="./faq/">FAQ</a> | <a href="./glossary.html">Glossary</a> | <a href="./sitemap.html">Sitemap</a></p>
-<p class="apache">Apache HTTP Server Version 2.3</p>
+<p class="apache">Apache HTTP Server Version 2.2</p>
 <img alt="" src="./images/feather.gif" /></div>
 <div class="up"><a href="./"><img title="&lt;-" alt="&lt;-" src="./images/left.gif" /></a></div>
 <div id="path">
-<a href="http://www.apache.org/">Apache</a> &gt; <a href="http://httpd.apache.org/">HTTP Server</a> &gt; <a href="http://httpd.apache.org/docs/">Documentation</a> &gt; <a href="./">Version 2.3</a></div><div id="page-content"><div id="preamble"><h1>Log Files</h1>
+<a href="http://www.apache.org/">Apache</a> &gt; <a href="http://httpd.apache.org/">HTTP Server</a> &gt; <a href="http://httpd.apache.org/docs/">Documentation</a> &gt; <a href="./">Version 2.2</a></div><div id="page-content"><div id="preamble"><h1>Log Files</h1>
 <div class="toplang">
 <p><span>Available Languages: </span><a href="./en/logs.html" title="English">&nbsp;en&nbsp;</a> |
-<a href="./fr/logs.html" hreflang="fr" rel="alternate" title="Français">&nbsp;fr&nbsp;</a> |
 <a href="./ja/logs.html" hreflang="ja" rel="alternate" title="Japanese">&nbsp;ja&nbsp;</a> |
-<a href="./ko/logs.html" hreflang="ko" rel="alternate" title="Korean">&nbsp;ko&nbsp;</a> |
-<a href="./tr/logs.html" hreflang="tr" rel="alternate" title="Türkçe">&nbsp;tr&nbsp;</a></p>
+<a href="./ko/logs.html" hreflang="ko" rel="alternate" title="Korean">&nbsp;ko&nbsp;</a></p>
 </div>
 
     <p>In order to effectively manage a web server, it is necessary
@@ -154,7 +152,7 @@
     directives to control access logging, including
     mod_log_referer, mod_log_agent, and the
     <code>TransferLog</code> directive. The <code class="directive"><a href="./mod/mod_log_config.html#customlog">CustomLog</a></code> directive now subsumes
-    the functionality of all the older directives.</p>
+	the functionality of all the older directives.</p>
 
     <p>The format of the access log is highly configurable. The format
     is specified using a format string that looks much like a C-style
@@ -186,10 +184,10 @@
       "<code>\t</code>" for tab.</p>
 
       <p>The <code class="directive"><a href="./mod/mod_log_config.html#customlog">CustomLog</a></code>
-      directive sets up a new log file using the defined
-      <em>nickname</em>. The filename for the access log is relative to
-      the <code class="directive"><a href="./mod/core.html#serverroot">ServerRoot</a></code> unless it
-      begins with a slash.</p>
+	  directive sets up a new log file using the defined
+	  <em>nickname</em>. The filename for the access log is relative to
+	  the <code class="directive"><a href="./mod/core.html#serverroot">ServerRoot</a></code> unless it
+	  begins with a slash.</p>
 
       <p>The above configuration will write log entries in a format
       known as the Common Log Format (CLF). This standard format can
@@ -382,8 +380,8 @@
       meets certain conditions. This is usually accomplished with 
       <code class="directive"><a href="./mod/mod_setenvif.html#setenvif">SetEnvIf</a></code>. Then the
       <code>env=</code> clause of the <code class="directive"><a href="./mod/mod_log_config.html#customlog">CustomLog</a></code> directive is used to
-      include or exclude requests where the environment variable is
-      set. Some examples:</p>
+	  include or exclude requests where the environment variable is
+	  set. Some examples:</p>
 
       <div class="example"><p><code>
         # Mark requests from the loop-back interface<br />
@@ -596,11 +594,9 @@
   </div></div>
 <div class="bottomlang">
 <p><span>Available Languages: </span><a href="./en/logs.html" title="English">&nbsp;en&nbsp;</a> |
-<a href="./fr/logs.html" hreflang="fr" rel="alternate" title="Français">&nbsp;fr&nbsp;</a> |
 <a href="./ja/logs.html" hreflang="ja" rel="alternate" title="Japanese">&nbsp;ja&nbsp;</a> |
-<a href="./ko/logs.html" hreflang="ko" rel="alternate" title="Korean">&nbsp;ko&nbsp;</a> |
-<a href="./tr/logs.html" hreflang="tr" rel="alternate" title="Türkçe">&nbsp;tr&nbsp;</a></p>
+<a href="./ko/logs.html" hreflang="ko" rel="alternate" title="Korean">&nbsp;ko&nbsp;</a></p>
 </div><div id="footer">
-<p class="apache">Copyright 2010 The Apache Software Foundation.<br />Licensed under the <a href="http://www.apache.org/licenses/LICENSE-2.0">Apache License, Version 2.0</a>.</p>
+<p class="apache">Copyright 2007 The Apache Software Foundation.<br />Licensed under the <a href="http://www.apache.org/licenses/LICENSE-2.0">Apache License, Version 2.0</a>.</p>
 <p class="menu"><a href="./mod/">Modules</a> | <a href="./mod/directives.html">Directives</a> | <a href="./faq/">FAQ</a> | <a href="./glossary.html">Glossary</a> | <a href="./sitemap.html">Sitemap</a></p></div>
 </body></html>

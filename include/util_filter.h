@@ -35,6 +35,15 @@
 extern "C" {
 #endif
 
+/** Returned by the bottom-most filter if no data was written.
+ *  @see ap_pass_brigade(). */
+#define AP_NOBODY_WROTE         -1
+/** Returned by the bottom-most filter if no data was read.
+ *  @see ap_get_brigade(). */
+#define AP_NOBODY_READ          -2
+/** Returned when?? @bug find out when! */
+#define AP_FILTER_ERROR         -3
+
 /**
  * @brief input filtering modes
  */
@@ -95,8 +104,8 @@ typedef struct ap_filter_t ap_filter_t;
  * @name Filter callbacks
  *
  * This function type is used for filter callbacks. It will be passed a
- * pointer to "this" filter, and a "bucket brigade" containing the content
- * to be filtered.
+ * pointer to "this" filter, and a "bucket" containing the content to be
+ * filtered.
  *
  * In filter->ctx, the callback will find its context. This context is
  * provided here, so that a filter may be installed multiple times, each
@@ -112,15 +121,10 @@ typedef struct ap_filter_t ap_filter_t;
  * or output filter chains and before any data is generated to allow the
  * filter to prepare for processing.
  *
- * The bucket brigade always belongs to the caller, but the filter
- * is free to use the buckets within it as it sees fit. Normally,
- * the brigade will be returned empty. Buckets *may not* be retained
- * between successive calls to the filter unless they have been
- * "set aside" with a call apr_bucket_setaside. Typically this will
- * be done with ap_save_brigade(). Buckets removed from the brigade
- * become the responsibility of the filter, which must arrange for
- * them to be deleted, either by doing so directly or by inserting
- * them in a brigade which will subsequently be destroyed.
+ * The *bucket structure (and all those referenced by ->next and ->prev)
+ * should be considered "const". The filter is allowed to modify the
+ * next/prev to insert/remove/replace elements in the bucket list, but
+ * the types and values of the individual buckets should not be altered.
  *
  * For the input and output filters, the return value of a filter should be
  * an APR status value.  For the init function, the return value should
@@ -270,7 +274,7 @@ struct ap_filter_t {
     request_rec *r;
 
     /** The conn_rec associated with the current filter.  This is analogous
-     *  to the request_rec, except that it is used for connection filters.
+     *  to the request_rec, except that it is used for input filtering.
      */
     conn_rec *c;
 };
@@ -298,13 +302,9 @@ AP_DECLARE(apr_status_t) ap_get_brigade(ap_filter_t *filter,
  * Pass the current bucket brigade down to the next filter on the filter
  * stack.  The filter returns an apr_status_t value.  If the bottom-most 
  * filter doesn't write to the network, then ::AP_NOBODY_WROTE is returned.
+ * The caller relinquishes ownership of the brigade.
  * @param filter The next filter in the chain
  * @param bucket The current bucket brigade
- *
- * @remark Ownership of the brigade is retained by the caller. On return,
- *         the contents of the brigade are UNDEFINED, and the caller must
- *         either call apr_brigade_cleanup or apr_brigade_destroy on
- *         the brigade.
  */
 AP_DECLARE(apr_status_t) ap_pass_brigade(ap_filter_t *filter,
                                          apr_bucket_brigade *bucket);
@@ -328,13 +328,28 @@ AP_DECLARE(ap_filter_rec_t *) ap_register_input_filter(const char *name,
                                           ap_init_filter_func filter_init,
                                           ap_filter_type ftype);
 
-/** @deprecated @see ap_register_output_filter_protocol */
+/**
+ * This function is used to register an output filter with the system. 
+ * After this registration is performed, then a filter may be added 
+ * into the filter chain by using ap_add_output_filter() and simply 
+ * specifying the name.  It may also be used as a provider under mod_filter.
+ * This is (equivalent to) ap_register_output_filter_protocol with
+ * proto_flags=0, and is retained for back-compatibility with 2.0 modules.
+ *
+ * @param name The name to attach to the filter function
+ * @param filter_func The filter function to name
+ * @param filter_init The function to call before the filter handlers 
+ *                    are invoked
+ * @param ftype The type of filter function, either ::AP_FTYPE_CONTENT or
+ *              ::AP_FTYPE_CONNECTION
+ * @see ap_add_output_filter()
+ */
 AP_DECLARE(ap_filter_rec_t *) ap_register_output_filter(const char *name,
                                             ap_out_filter_func filter_func,
                                             ap_init_filter_func filter_init,
                                             ap_filter_type ftype);
 
-/* For httpd-?.? I suggest replacing the above with
+/* For httpd-2.2 I suggest replacing the above with
 #define ap_register_output_filter(name,ffunc,init,ftype) \
              ap_register_output_filter_protocol(name,ffunc,init,ftype,0)
 */
@@ -342,8 +357,8 @@ AP_DECLARE(ap_filter_rec_t *) ap_register_output_filter(const char *name,
 /**
  * This function is used to register an output filter with the system. 
  * After this registration is performed, then a filter may be added 
- * directly to the filter chain by using ap_add_output_filter() and
- * simply specifying the name, or as a provider under mod_filter.
+ * into the filter chain by using ap_add_output_filter() and simply 
+ * specifying the name.  It may also be used as a provider under mod_filter.
  *
  * @param name The name to attach to the filter function
  * @param filter_func The filter function to name
@@ -352,7 +367,6 @@ AP_DECLARE(ap_filter_rec_t *) ap_register_output_filter(const char *name,
  * @param ftype The type of filter function, either ::AP_FTYPE_CONTENT or
  *              ::AP_FTYPE_CONNECTION
  * @param proto_flags Protocol flags: logical OR of AP_FILTER_PROTO_* bits
- * @return the filter rec
  * @see ap_add_output_filter()
  */
 AP_DECLARE(ap_filter_rec_t *) ap_register_output_filter_protocol(
@@ -411,10 +425,6 @@ AP_DECLARE(ap_filter_rec_t *) ap_get_input_filter_handle(const char *name);
  * @param ctx Context data to set in the filter
  * @param r The request to add this filter for (or NULL if it isn't associated with a request)
  * @param c The connection to add this filter for
- * @note If adding a connection-level output filter (i.e. where the type
- * is >= AP_FTYPE_CONNECTION) during processing of a request, the request
- * object r must be passed in to ensure the filter chains are modified
- * correctly.  f->r will still be initialized as NULL in the new filter.
  */
 AP_DECLARE(ap_filter_t *) ap_add_output_filter(const char *name, void *ctx, 
                                                request_rec *r, conn_rec *c);
@@ -424,13 +434,8 @@ AP_DECLARE(ap_filter_t *) ap_add_output_filter(const char *name, void *ctx,
  * (as returned by ap_register_output_filter()) rather than a filter name
  *
  * @param f The filter handle to add
- * @param ctx Context data to set in the filter
  * @param r The request to add this filter for (or NULL if it isn't associated with a request)
- * @param c The connection to add the filter for
- * @note If adding a connection-level output filter (i.e. where the type
- * is >= AP_FTYPE_CONNECTION) during processing of a request, the request
- * object r must be passed in to ensure the filter chains are modified
- * correctly.  f->r will still be initialized as NULL in the new filter.
+ * @param c The connection to add the fillter for
  */
 AP_DECLARE(ap_filter_t *) ap_add_output_filter_handle(ap_filter_rec_t *f,
                                                       void *ctx,
@@ -541,11 +546,7 @@ AP_DECLARE(apr_status_t) ap_fflush(ap_filter_t *f, apr_bucket_brigade *bb);
  */
 AP_DECLARE_NONSTD(apr_status_t) ap_fputstrs(ap_filter_t *f,
                                             apr_bucket_brigade *bb,
-                                            ...)
-#if defined(__GNUC__) && __GNUC__ >= 4
-    __attribute__((sentinel))
-#endif
-;
+                                            ...);
 
 /**
  * Output data to the filter in printf format

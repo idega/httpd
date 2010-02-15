@@ -29,6 +29,7 @@
 #define APR_WANT_MEMFUNC
 #include "apr_want.h"
 
+#define CORE_PRIVATE
 #include "util_filter.h"
 #include "ap_config.h"
 #include "httpd.h"
@@ -192,7 +193,7 @@ AP_CORE_DECLARE_NONSTD(apr_status_t) ap_byterange_filter(ap_filter_t *f,
                                            "byteranges; boundary=",
                                            ctx->boundary, NULL));
 
-        if (orig_ct) {
+        if (strcasecmp(orig_ct, NO_CONTENT_TYPE)) {
             ctx->bound_head = apr_pstrcat(r->pool,
                                           CRLF "--", ctx->boundary,
                                           CRLF "Content-type: ",
@@ -307,7 +308,7 @@ AP_CORE_DECLARE_NONSTD(apr_status_t) ap_byterange_filter(ap_filter_t *f,
     APR_BRIGADE_INSERT_TAIL(bsend, e);
 
     /* we're done with the original content - all of our data is in bsend. */
-    apr_brigade_cleanup(bb);
+    apr_brigade_destroy(bb);
 
     /* send our multipart output */
     return ap_pass_brigade(f->next, bsend);

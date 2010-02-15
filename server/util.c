@@ -42,6 +42,8 @@
 #include <netdb.h>              /* for gethostbyname() */
 #endif
 
+#define CORE_PRIVATE
+
 #include "ap_config.h"
 #include "apr_base64.h"
 #include "httpd.h"
@@ -376,13 +378,15 @@ AP_DECLARE(char *) ap_pregsub(apr_pool_t *p, const char *input,
     len = 0;
 
     while ((c = *src++) != '\0') {
-        if (c == '$' && apr_isdigit(*src))
+        if (c == '&')
+            no = 0;
+        else if (c == '$' && apr_isdigit(*src))
             no = *src++ - '0';
         else
             no = 10;
 
         if (no > 9) {                /* Ordinary character. */
-            if (c == '\\' && *src)
+            if (c == '\\' && (*src == '$' || *src == '&'))
                 c = *src++;
             len++;
         }
@@ -576,8 +580,9 @@ AP_DECLARE(char *) ap_make_dirstr_parent(apr_pool_t *p, const char *s)
         return apr_pstrdup(p, "");
     }
     l = (last_slash - s) + 1;
-    d = apr_pstrmemdup(p, s, l);
-
+    d = apr_palloc(p, l + 1);
+    memcpy(d, s, l);
+    d[l] = 0;
     return (d);
 }
 
@@ -608,7 +613,9 @@ AP_DECLARE(char *) ap_getword(apr_pool_t *atrans, const char **line, char stop)
     }
 
     len = pos - *line;
-    res = apr_pstrmemdup(atrans, *line, len);
+    res = (char *)apr_palloc(atrans, len + 1);
+    memcpy(res, *line, len);
+    res[len] = 0;
 
     if (stop) {
         while (*pos == stop) {
@@ -636,7 +643,9 @@ AP_DECLARE(char *) ap_getword_white(apr_pool_t *atrans, const char **line)
     }
 
     len = pos - *line;
-    res = apr_pstrmemdup(atrans, *line, len);
+    res = (char *)apr_palloc(atrans, len + 1);
+    memcpy(res, *line, len);
+    res[len] = 0;
 
     while (apr_isspace(*pos)) {
         ++pos;
@@ -1533,15 +1542,54 @@ static char x2c(const char *what)
 }
 
 /*
- * Unescapes a URL, leaving reserved characters intact.
+ * Unescapes a URL.
  * Returns 0 on success, non-zero on error
  * Failure is due to
  *   bad % escape       returns HTTP_BAD_REQUEST
  *
- *   decoding %00 or a forbidden character returns HTTP_NOT_FOUND
+ *   decoding %00 -> \0  (the null character)
+ *   decoding %2f -> /   (a special character)
+ *                      returns HTTP_NOT_FOUND
  */
+AP_DECLARE(int) ap_unescape_url(char *url)
+{
+    register int badesc, badpath;
+    char *x, *y;
 
-static int unescape_url(char *url, const char *forbid, const char *reserved)
+    badesc = 0;
+    badpath = 0;
+    /* Initial scan for first '%'. Don't bother writing values before
+     * seeing a '%' */
+    y = strchr(url, '%');
+    if (y == NULL) {
+        return OK;
+    }
+    for (x = y; *y; ++x, ++y) {
+        if (*y != '%')
+            *x = *y;
+        else {
+            if (!apr_isxdigit(*(y + 1)) || !apr_isxdigit(*(y + 2))) {
+                badesc = 1;
+                *x = '%';
+            }
+            else {
+                *x = x2c(y + 1);
+                y += 2;
+                if (IS_SLASH(*x) || *x == '\0')
+                    badpath = 1;
+            }
+        }
+    }
+    *x = '\0';
+    if (badesc)
+        return HTTP_BAD_REQUEST;
+    else if (badpath)
+        return HTTP_NOT_FOUND;
+    else
+        return OK;
+}
+
+AP_DECLARE(int) ap_unescape_url_keep2f(char *url)
 {
     register int badesc, badpath;
     char *x, *y;
@@ -1566,16 +1614,8 @@ static int unescape_url(char *url, const char *forbid, const char *reserved)
             else {
                 char decoded;
                 decoded = x2c(y + 1);
-                if ((decoded == '\0')
-                    || (forbid && ap_strchr_c(forbid, decoded))) {
+                if (decoded == '\0') {
                     badpath = 1;
-                    *x = decoded;
-                    y += 2;
-                }
-                else if (reserved && ap_strchr_c(reserved, decoded)) {
-                    *x++ = *y++;
-                    *x++ = *y++;
-                    *x = *y;
                 }
                 else {
                     *x = decoded;
@@ -1595,36 +1635,6 @@ static int unescape_url(char *url, const char *forbid, const char *reserved)
         return OK;
     }
 }
-AP_DECLARE(int) ap_unescape_url(char *url)
-{
-    /* Traditional */
-#ifdef CASE_BLIND_FILESYSTEM
-    return unescape_url(url, "/\\", NULL);
-#else
-    return unescape_url(url, "/", NULL);
-#endif
-}
-AP_DECLARE(int) ap_unescape_url_keep2f(char *url)
-{
-    /* AllowEncodedSlashes (corrected) */
-    return unescape_url(url, NULL, "/");
-}
-#ifdef NEW_APIS
-/* IFDEF these out until they've been thought through.
- * Just a germ of an API extension for now
- */
-AP_DECLARE(int) ap_unescape_url_proxy(char *url)
-{
-    /* leave RFC1738 reserved characters intact, * so proxied URLs
-     * don't get mangled.  Where does that leave encoded '&' ?
-     */
-    return unescape_url(url, NULL, "/;?");
-}
-AP_DECLARE(int) ap_unescape_url_reserved(char *url, const char *reserved)
-{
-    return unescape_url(url, NULL, reserved);
-}
-#endif
 
 AP_DECLARE(char *) ap_construct_server(apr_pool_t *p, const char *hostname,
                                        apr_port_t port, const request_rec *r)
@@ -1635,11 +1645,6 @@ AP_DECLARE(char *) ap_construct_server(apr_pool_t *p, const char *hostname,
     else {
         return apr_psprintf(p, "%s:%u", hostname, port);
     }
-}
-
-AP_DECLARE(int) ap_unescape_all(char *url)
-{
-    return unescape_url(url, NULL, NULL);
 }
 
 /* c2x takes an unsigned, and expects the caller has guaranteed that
@@ -1681,8 +1686,9 @@ static APR_INLINE unsigned char *c2x(unsigned what, unsigned char prefix,
  * something with a '/' in it (and thus does not prefix "./").
  */
 
-AP_DECLARE(char *) ap_escape_path_segment_buffer(char *copy, const char *segment)
+AP_DECLARE(char *) ap_escape_path_segment(apr_pool_t *p, const char *segment)
 {
+    char *copy = apr_palloc(p, 3 * strlen(segment) + 1);
     const unsigned char *s = (const unsigned char *)segment;
     unsigned char *d = (unsigned char *)copy;
     unsigned c;
@@ -1698,11 +1704,6 @@ AP_DECLARE(char *) ap_escape_path_segment_buffer(char *copy, const char *segment
     }
     *d = '\0';
     return copy;
-}
-
-AP_DECLARE(char *) ap_escape_path_segment(apr_pool_t *p, const char *segment)
-{
-    return ap_escape_path_segment_buffer(apr_palloc(p, 3 * strlen(segment) + 1), segment);
 }
 
 AP_DECLARE(char *) ap_os_escape_path(apr_pool_t *p, const char *path, int partial)
@@ -1736,7 +1737,7 @@ AP_DECLARE(char *) ap_os_escape_path(apr_pool_t *p, const char *path, int partia
 
 /* ap_escape_uri is now a macro for os_escape_path */
 
-AP_DECLARE(char *) ap_escape_html2(apr_pool_t *p, const char *s, int toasc)
+AP_DECLARE(char *) ap_escape_html(apr_pool_t *p, const char *s)
 {
     int i, j;
     char *x;
@@ -1748,8 +1749,6 @@ AP_DECLARE(char *) ap_escape_html2(apr_pool_t *p, const char *s, int toasc)
         else if (s[i] == '&')
             j += 4;
         else if (s[i] == '"')
-            j += 5;
-        else if (toasc && !apr_isascii(s[i]))
             j += 5;
 
     if (j == 0)
@@ -1773,17 +1772,13 @@ AP_DECLARE(char *) ap_escape_html2(apr_pool_t *p, const char *s, int toasc)
             memcpy(&x[j], "&quot;", 6);
             j += 5;
         }
-        else if (toasc && !apr_isascii(s[i])) {
-            char *esc = apr_psprintf(p, "&#%3.3d;", (unsigned char)s[i]);
-            memcpy(&x[j], esc, 6);
-            j += 5;
-        }
         else
             x[j] = s[i];
 
     x[j] = '\0';
     return x;
 }
+
 AP_DECLARE(char *) ap_escape_logitem(apr_pool_t *p, const char *str)
 {
     char *ret;
@@ -2151,71 +2146,3 @@ AP_DECLARE(char *) ap_append_pid(apr_pool_t *p, const char *string,
                         delim, getpid());
 
 }
-
-/**
- * Parse a given timeout parameter string into an apr_interval_time_t value.
- * The unit of the time interval is given as postfix string to the numeric
- * string. Currently the following units are understood:
- *
- * ms    : milliseconds
- * s     : seconds
- * mi[n] : minutes
- * h     : hours
- *
- * If no unit is contained in the given timeout parameter the default_time_unit
- * will be used instead.
- * @param timeout_parameter The string containing the timeout parameter.
- * @param timeout The timeout value to be returned.
- * @param default_time_unit The default time unit to use if none is specified
- * in timeout_parameter.
- * @return Status value indicating whether the parsing was successful or not.
- */
-AP_DECLARE(apr_status_t) ap_timeout_parameter_parse(
-                                               const char *timeout_parameter,
-                                               apr_interval_time_t *timeout,
-                                               const char *default_time_unit)
-{
-    char *endp;
-    const char *time_str;
-    apr_int64_t tout;
-
-    tout = apr_strtoi64(timeout_parameter, &endp, 10);
-    if (errno) {
-        return errno;
-    }
-    if (!endp || !*endp) {
-        time_str = default_time_unit;
-    }
-    else {
-        time_str = endp;
-    }
-
-    switch (*time_str) {
-        /* Time is in seconds */
-    case 's':
-        *timeout = (apr_interval_time_t) apr_time_from_sec(tout);
-        break;
-    case 'h':
-        /* Time is in hours */
-        *timeout = (apr_interval_time_t) apr_time_from_sec(tout * 3600);
-        break;
-    case 'm':
-        switch (*(++time_str)) {
-        /* Time is in milliseconds */
-        case 's':
-            *timeout = (apr_interval_time_t) tout * 1000;
-            break;
-        /* Time is in minutes */
-        case 'i':
-            *timeout = (apr_interval_time_t) apr_time_from_sec(tout * 60);
-            break;
-        default:
-            return APR_EGENERAL;
-        }
-        break;
-    default:
-        return APR_EGENERAL;
-    }
-    return APR_SUCCESS;
-}
-

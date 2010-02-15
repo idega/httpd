@@ -13,28 +13,27 @@
 <body>
 <div id="page-header">
 <p class="menu"><a href="../mod/">Modules</a> | <a href="../mod/directives.html">Directives</a> | <a href="../faq/">FAQ</a> | <a href="../glossary.html">Glossary</a> | <a href="../sitemap.html">Sitemap</a></p>
-<p class="apache">Apache HTTP Server Version 2.3</p>
+<p class="apache">Apache HTTP Server Version 2.2</p>
 <img alt="" src="../images/feather.gif" /></div>
 <div class="up"><a href="./"><img title="&lt;-" alt="&lt;-" src="../images/left.gif" /></a></div>
 <div id="path">
-<a href="http://www.apache.org/">Apache</a> &gt; <a href="http://httpd.apache.org/">HTTP Server</a> &gt; <a href="http://httpd.apache.org/docs/">Documentation</a> &gt; <a href="../">Version 2.3</a> &gt; <a href="./">Modules</a></div>
+<a href="http://www.apache.org/">Apache</a> &gt; <a href="http://httpd.apache.org/">HTTP Server</a> &gt; <a href="http://httpd.apache.org/docs/">Documentation</a> &gt; <a href="../">Version 2.2</a> &gt; <a href="./">Modules</a></div>
 <div id="page-content">
 <div id="preamble"><h1>Apache Module mod_auth_digest</h1>
 <div class="toplang">
 <p><span>Available Languages: </span><a href="../en/mod/mod_auth_digest.html" title="English">&nbsp;en&nbsp;</a> |
-<a href="../fr/mod/mod_auth_digest.html" hreflang="fr" rel="alternate" title="Français">&nbsp;fr&nbsp;</a> |
 <a href="../ko/mod/mod_auth_digest.html" hreflang="ko" rel="alternate" title="Korean">&nbsp;ko&nbsp;</a></p>
 </div>
 <table class="module"><tr><th><a href="module-dict.html#Description">Description:</a></th><td>User authentication using MD5
-    Digest Authentication</td></tr>
-<tr><th><a href="module-dict.html#Status">Status:</a></th><td>Extension</td></tr>
+    Digest Authentication.</td></tr>
+<tr><th><a href="module-dict.html#Status">Status:</a></th><td>Experimental</td></tr>
 <tr><th><a href="module-dict.html#ModuleIdentifier">Module Identifier:</a></th><td>auth_digest_module</td></tr>
 <tr><th><a href="module-dict.html#SourceFile">Source File:</a></th><td>mod_auth_digest.c</td></tr></table>
 <h3>Summary</h3>
 
-    <p>This module implements HTTP Digest Authentication
-    (<a href="http://www.faqs.org/rfcs/rfc2617.html">RFC2617</a>), and
-    provides a more secure alternative to <code class="module"><a href="../mod/mod_auth_basic.html">mod_auth_basic</a></code>.</p>
+    <p>This module implements HTTP Digest Authentication. However, it
+    has not been extensively tested and is therefore marked
+    experimental.</p>
 </div>
 <div id="quickview"><h3 class="directives">Directives</h3>
 <ul id="toc">
@@ -53,23 +52,22 @@
 <li><img alt="" src="../images/down.gif" /> <a href="#msie">Working with MS Internet Explorer</a></li>
 </ul><h3>See also</h3>
 <ul class="seealso">
-<li><code class="directive"><a href="../mod/mod_authn_core.html#authname">AuthName</a></code></li>
-<li><code class="directive"><a href="../mod/mod_authn_core.html#authtype">AuthType</a></code></li>
-<li><code class="directive"><a href="../mod/mod_authz_core.html#require">Require</a></code></li>
-<li><code class="directive"><a href="../mod/mod_authz_core.html#match">Match</a></code></li>
+<li><code class="directive"><a href="../mod/core.html#authname">AuthName</a></code></li>
+<li><code class="directive"><a href="../mod/core.html#authtype">AuthType</a></code></li>
+<li><code class="directive"><a href="../mod/core.html#require">Require</a></code></li>
+<li><code class="directive"><a href="../mod/core.html#satisfy">Satisfy</a></code></li>
 <li><a href="../howto/auth.html">Authentication howto</a></li>
 </ul></div>
 <div class="top"><a href="#page-header"><img alt="top" src="../images/up.gif" /></a></div>
 <div class="section">
 <h2><a name="using" id="using">Using Digest Authentication</a></h2>
 
-    <p>To use MD5 Digest authentication, simply 
-    change the normal <code>AuthType Basic</code> and
-    <code class="directive"><a href="../mod/mod_auth_basic.html#authbasicprovider">AuthBasicProvider</a></code>
-    to <code>AuthType Digest</code> and
-    <code class="directive"><a href="#authdigestprovider">AuthDigestProvider</a></code>,
-    when setting up authentication, then add a 
-    <code class="directive"><a href="#authdigestdomain">AuthDigestDomain</a></code> directive containing at least the root
+    <p>Using MD5 Digest authentication is very simple. Simply set
+    up authentication normally, using <code>AuthType Digest</code> and
+    <code class="directive"><a href="#authdigestprovider">AuthDigestProvider</a></code>
+    instead of the normal <code>AuthType Basic</code> and
+    <code class="directive"><a href="../mod/mod_auth_basic.html#authbasicprovider">AuthBasicProvider</a></code>.
+    Then add a <code class="directive"><a href="#authdigestdomain">AuthDigestDomain</a></code> directive containing at least the root
     URI(s) for this protection space.</p>
 
     <p>Appropriate user (text) files can be created using the
@@ -81,8 +79,8 @@
         AuthType Digest<br />
         AuthName "private area"<br />
         AuthDigestDomain /private/ http://mirror.my.dom/private2/<br />
-        <br />
-        AuthDigestProvider file<br />
+	<br />
+	AuthDigestProvider file<br />
         AuthUserFile /web/auth/.digest_pw<br />
         Require valid-user<br />
       </span>
@@ -100,8 +98,6 @@
     support digest authentication. Since digest authentication is not as
     widely implemented as basic authentication, you should use it only
     in environments where all users will have supporting browsers.</p>
-    <p><code class="module"><a href="../mod/mod_auth_digest.html">mod_auth_digest</a></code> only works properly on platforms
-      where APR supports shared memory.</p>
     </div>
 </div><div class="top"><a href="#page-header"><img alt="top" src="../images/up.gif" /></a></div>
 <div class="section">
@@ -134,7 +130,7 @@
 
     <p>See the <code class="directive"><a href="../mod/mod_setenvif.html#browsermatch">BrowserMatch</a></code>
     directive for more details on conditionally setting environment
-    variables.</p>
+    variables</p>
 </div>
 <div class="top"><a href="#page-header"><img alt="top" src="../images/up.gif" /></a></div>
 <div class="directive-section"><h2><a name="AuthDigestAlgorithm" id="AuthDigestAlgorithm">AuthDigestAlgorithm</a> <a name="authdigestalgorithm" id="authdigestalgorithm">Directive</a></h2>
@@ -145,7 +141,7 @@ response hashes in digest authentication</td></tr>
 <tr><th><a href="directive-dict.html#Default">Default:</a></th><td><code>AuthDigestAlgorithm MD5</code></td></tr>
 <tr><th><a href="directive-dict.html#Context">Context:</a></th><td>directory, .htaccess</td></tr>
 <tr><th><a href="directive-dict.html#Override">Override:</a></th><td>AuthConfig</td></tr>
-<tr><th><a href="directive-dict.html#Status">Status:</a></th><td>Extension</td></tr>
+<tr><th><a href="directive-dict.html#Status">Status:</a></th><td>Experimental</td></tr>
 <tr><th><a href="directive-dict.html#Module">Module:</a></th><td>mod_auth_digest</td></tr>
 </table>
     <p>The <code class="directive">AuthDigestAlgorithm</code> directive
@@ -166,7 +162,7 @@ authentication</td></tr>
 <tr><th><a href="directive-dict.html#Syntax">Syntax:</a></th><td><code>AuthDigestDomain <var>URI</var> [<var>URI</var>] ...</code></td></tr>
 <tr><th><a href="directive-dict.html#Context">Context:</a></th><td>directory, .htaccess</td></tr>
 <tr><th><a href="directive-dict.html#Override">Override:</a></th><td>AuthConfig</td></tr>
-<tr><th><a href="directive-dict.html#Status">Status:</a></th><td>Extension</td></tr>
+<tr><th><a href="directive-dict.html#Status">Status:</a></th><td>Experimental</td></tr>
 <tr><th><a href="directive-dict.html#Module">Module:</a></th><td>mod_auth_digest</td></tr>
 </table>
     <p>The <code class="directive">AuthDigestDomain</code> directive allows
@@ -198,7 +194,7 @@ server</td></tr>
 <tr><th><a href="directive-dict.html#Syntax">Syntax:</a></th><td><code>AuthDigestNcCheck On|Off</code></td></tr>
 <tr><th><a href="directive-dict.html#Default">Default:</a></th><td><code>AuthDigestNcCheck Off</code></td></tr>
 <tr><th><a href="directive-dict.html#Context">Context:</a></th><td>server config</td></tr>
-<tr><th><a href="directive-dict.html#Status">Status:</a></th><td>Extension</td></tr>
+<tr><th><a href="directive-dict.html#Status">Status:</a></th><td>Experimental</td></tr>
 <tr><th><a href="directive-dict.html#Module">Module:</a></th><td>mod_auth_digest</td></tr>
 </table>
     <div class="note">
@@ -214,7 +210,7 @@ server</td></tr>
 <tr><th><a href="directive-dict.html#Syntax">Syntax:</a></th><td><code>AuthDigestNonceFormat <var>format</var></code></td></tr>
 <tr><th><a href="directive-dict.html#Context">Context:</a></th><td>directory, .htaccess</td></tr>
 <tr><th><a href="directive-dict.html#Override">Override:</a></th><td>AuthConfig</td></tr>
-<tr><th><a href="directive-dict.html#Status">Status:</a></th><td>Extension</td></tr>
+<tr><th><a href="directive-dict.html#Status">Status:</a></th><td>Experimental</td></tr>
 <tr><th><a href="directive-dict.html#Module">Module:</a></th><td>mod_auth_digest</td></tr>
 </table>
     <div class="note">Not implemented yet.</div>
@@ -229,7 +225,7 @@ server</td></tr>
 <tr><th><a href="directive-dict.html#Default">Default:</a></th><td><code>AuthDigestNonceLifetime 300</code></td></tr>
 <tr><th><a href="directive-dict.html#Context">Context:</a></th><td>directory, .htaccess</td></tr>
 <tr><th><a href="directive-dict.html#Override">Override:</a></th><td>AuthConfig</td></tr>
-<tr><th><a href="directive-dict.html#Status">Status:</a></th><td>Extension</td></tr>
+<tr><th><a href="directive-dict.html#Status">Status:</a></th><td>Experimental</td></tr>
 <tr><th><a href="directive-dict.html#Module">Module:</a></th><td>mod_auth_digest</td></tr>
 </table>
     <p>The <code class="directive">AuthDigestNonceLifetime</code> directive
@@ -252,7 +248,7 @@ server</td></tr>
 <tr><th><a href="directive-dict.html#Default">Default:</a></th><td><code>AuthDigestProvider file</code></td></tr>
 <tr><th><a href="directive-dict.html#Context">Context:</a></th><td>directory, .htaccess</td></tr>
 <tr><th><a href="directive-dict.html#Override">Override:</a></th><td>AuthConfig</td></tr>
-<tr><th><a href="directive-dict.html#Status">Status:</a></th><td>Extension</td></tr>
+<tr><th><a href="directive-dict.html#Status">Status:</a></th><td>Experimental</td></tr>
 <tr><th><a href="directive-dict.html#Module">Module:</a></th><td>mod_auth_digest</td></tr>
 </table>
     <p>The <code class="directive">AuthDigestProvider</code> directive sets 
@@ -274,7 +270,7 @@ authentication</td></tr>
 <tr><th><a href="directive-dict.html#Default">Default:</a></th><td><code>AuthDigestQop auth</code></td></tr>
 <tr><th><a href="directive-dict.html#Context">Context:</a></th><td>directory, .htaccess</td></tr>
 <tr><th><a href="directive-dict.html#Override">Override:</a></th><td>AuthConfig</td></tr>
-<tr><th><a href="directive-dict.html#Status">Status:</a></th><td>Extension</td></tr>
+<tr><th><a href="directive-dict.html#Status">Status:</a></th><td>Experimental</td></tr>
 <tr><th><a href="directive-dict.html#Module">Module:</a></th><td>mod_auth_digest</td></tr>
 </table>
     <p>The <code class="directive">AuthDigestQop</code> directive determines
@@ -301,7 +297,7 @@ of clients</td></tr>
 <tr><th><a href="directive-dict.html#Syntax">Syntax:</a></th><td><code>AuthDigestShmemSize <var>size</var></code></td></tr>
 <tr><th><a href="directive-dict.html#Default">Default:</a></th><td><code>AuthDigestShmemSize 1000</code></td></tr>
 <tr><th><a href="directive-dict.html#Context">Context:</a></th><td>server config</td></tr>
-<tr><th><a href="directive-dict.html#Status">Status:</a></th><td>Extension</td></tr>
+<tr><th><a href="directive-dict.html#Status">Status:</a></th><td>Experimental</td></tr>
 <tr><th><a href="directive-dict.html#Module">Module:</a></th><td>mod_auth_digest</td></tr>
 </table>
     <p>The <code class="directive">AuthDigestShmemSize</code> directive defines
@@ -315,7 +311,7 @@ of clients</td></tr>
     server.</p>
 
     <p>The <var>size</var> is normally expressed in Bytes, but you
-    may follow the number with a <code>K</code> or an <code>M</code> to
+    may let the number follow a <code>K</code> or an <code>M</code> to
     express your value as KBytes or MBytes. For example, the following
     directives are all equivalent:</p>
 
@@ -329,9 +325,8 @@ of clients</td></tr>
 </div>
 <div class="bottomlang">
 <p><span>Available Languages: </span><a href="../en/mod/mod_auth_digest.html" title="English">&nbsp;en&nbsp;</a> |
-<a href="../fr/mod/mod_auth_digest.html" hreflang="fr" rel="alternate" title="Français">&nbsp;fr&nbsp;</a> |
 <a href="../ko/mod/mod_auth_digest.html" hreflang="ko" rel="alternate" title="Korean">&nbsp;ko&nbsp;</a></p>
 </div><div id="footer">
-<p class="apache">Copyright 2010 The Apache Software Foundation.<br />Licensed under the <a href="http://www.apache.org/licenses/LICENSE-2.0">Apache License, Version 2.0</a>.</p>
+<p class="apache">Copyright 2007 The Apache Software Foundation.<br />Licensed under the <a href="http://www.apache.org/licenses/LICENSE-2.0">Apache License, Version 2.0</a>.</p>
 <p class="menu"><a href="../mod/">Modules</a> | <a href="../mod/directives.html">Directives</a> | <a href="../faq/">FAQ</a> | <a href="../glossary.html">Glossary</a> | <a href="../sitemap.html">Sitemap</a></p></div>
 </body></html>

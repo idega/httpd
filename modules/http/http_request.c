@@ -31,6 +31,7 @@
 #define APR_WANT_STRFUNC
 #include "apr_want.h"
 
+#define CORE_PRIVATE
 #include "ap_config.h"
 #include "httpd.h"
 #include "http_config.h"
@@ -79,31 +80,7 @@ AP_DECLARE(void) ap_die(int type, request_rec *r)
     request_rec *r_1st_err = r;
 
     if (type == AP_FILTER_ERROR) {
-        ap_filter_t *next;
-
-        /*
-         * Check if we still have the ap_http_header_filter in place. If
-         * this is the case we should not ignore AP_FILTER_ERROR here because
-         * it means that we have not sent any response at all and never
-         * will. This is bad. Sent an internal server error instead.
-         */
-        next = r->output_filters;
-        while (next && (next->frec != ap_http_header_filter_handle)) {
-               next = next->next;
-        }
-
-        /*
-         * If next != NULL then we left the while above because of
-         * next->frec == ap_http_header_filter
-         */
-        if (next) {
-            ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, r,
-                          "Custom error page caused AP_FILTER_ERROR");
-            type = HTTP_INTERNAL_SERVER_ERROR;
-        }
-        else {
-            return;
-        }
+        return;
     }
 
     if (type == DONE) {
@@ -214,61 +191,48 @@ AP_DECLARE(void) ap_die(int type, request_rec *r)
     ap_send_error_response(r_1st_err, recursive_error);
 }
 
-static void check_pipeline(conn_rec *c)
+static void check_pipeline_flush(request_rec *r)
 {
-    if (c->keepalive != AP_CONN_CLOSE) {
-        apr_status_t rv;
-        apr_bucket_brigade *bb = apr_brigade_create(c->pool, c->bucket_alloc);
+    apr_bucket *e;
+    apr_bucket_brigade *bb;
+    conn_rec *c = r->connection;
+    /* ### if would be nice if we could PEEK without a brigade. that would
+       ### allow us to defer creation of the brigade to when we actually
+       ### need to send a FLUSH. */
+    bb = apr_brigade_create(r->pool, c->bucket_alloc);
 
-        rv = ap_get_brigade(c->input_filters, bb, AP_MODE_SPECULATIVE,
-                            APR_NONBLOCK_READ, 1);
-        if (rv != APR_SUCCESS || APR_BRIGADE_EMPTY(bb)) {
-            /*
-             * Error or empty brigade: There is no data present in the input
-             * filter
-             */
-            c->data_in_input_filters = 0;
+    /* Flush the filter contents if:
+     *
+     *   1) the connection will be closed
+     *   2) there isn't a request ready to be read
+     */
+    /* ### shouldn't this read from the connection input filters? */
+    /* ### is zero correct? that means "read one line" */
+    if (r->connection->keepalive != AP_CONN_CLOSE) {
+        if (ap_get_brigade(r->input_filters, bb, AP_MODE_EATCRLF,
+                       APR_NONBLOCK_READ, 0) != APR_SUCCESS) {
+            c->data_in_input_filters = 0;  /* we got APR_EOF or an error */
         }
         else {
             c->data_in_input_filters = 1;
+            return;    /* don't flush */
         }
-        apr_brigade_destroy(bb);
     }
+
+        e = apr_bucket_flush_create(c->bucket_alloc);
+
+        /* We just send directly to the connection based filters.  At
+         * this point, we know that we have seen all of the data
+         * (request finalization sent an EOS bucket, which empties all
+         * of the request filters). We just want to flush the buckets
+         * if something hasn't been sent to the network yet.
+         */
+        APR_BRIGADE_INSERT_HEAD(bb, e);
+        ap_pass_brigade(r->connection->output_filters, bb);
 }
 
-
-AP_DECLARE(void) ap_process_request_after_handler(request_rec *r)
+void ap_process_request(request_rec *r)
 {
-    apr_bucket_brigade *bb;
-    apr_bucket *b;
-    conn_rec *c = r->connection;
-
-    /* Send an EOR bucket through the output filter chain.  When
-     * this bucket is destroyed, the request will be logged and
-     * its pool will be freed
-     */
-    bb = apr_brigade_create(r->connection->pool, r->connection->bucket_alloc);
-    b = ap_bucket_eor_create(r->connection->bucket_alloc, r);
-    APR_BRIGADE_INSERT_HEAD(bb, b);
-    
-    ap_pass_brigade(r->connection->output_filters, bb);
-    
-    /* From here onward, it is no longer safe to reference r
-     * or r->pool, because r->pool may have been destroyed
-     * already by the EOR bucket's cleanup function.
-     */
-    
-    c->cs->state = CONN_STATE_WRITE_COMPLETION;
-    check_pipeline(c);
-    AP_PROCESS_REQUEST_RETURN((uintptr_t)r, r->uri, r->status);
-    if (ap_extended_status) {
-        ap_time_process_request(c->sbh, STOP_PREQUEST);
-    }
-}
-
-void ap_process_async_request(request_rec *r)
-{
-    conn_rec *c = r->connection;
     int access_status;
 
     /* Give quick handlers a shot at serving the request on the fast
@@ -285,15 +249,8 @@ void ap_process_async_request(request_rec *r)
      * Use this hook with extreme care and only if you know what you are
      * doing.
      */
-    AP_PROCESS_REQUEST_ENTRY((uintptr_t)r, r->uri);
-    if (ap_extended_status) {
+    if (ap_extended_status)
         ap_time_process_request(r->connection->sbh, START_PREQUEST);
-    }
-
-#if APR_HAS_THREADS
-    apr_thread_mutex_create(&r->invoke_mtx, APR_THREAD_MUTEX_DEFAULT, r->pool);
-    apr_thread_mutex_lock(r->invoke_mtx);
-#endif
     access_status = ap_run_quick_handler(r, 0);  /* Not a look-up request */
     if (access_status == DECLINED) {
         access_status = ap_process_request_internal(r);
@@ -301,24 +258,6 @@ void ap_process_async_request(request_rec *r)
             access_status = ap_invoke_handler(r);
         }
     }
-
-    if (access_status == SUSPENDED) {
-        /* TODO: Should move these steps into a generic function, so modules
-         * working on a suspended request can also call _ENTRY again.
-         */
-        AP_PROCESS_REQUEST_RETURN((uintptr_t)r, r->uri, access_status);
-        if (ap_extended_status) {
-            ap_time_process_request(c->sbh, STOP_PREQUEST);
-        }
-        c->cs->state = CONN_STATE_SUSPENDED;
-#if APR_HAS_THREADS
-        apr_thread_mutex_unlock(r->invoke_mtx);
-#endif
-        return;
-    }
-#if APR_HAS_THREADS
-    apr_thread_mutex_unlock(r->invoke_mtx);
-#endif
 
     if (access_status == DONE) {
         /* e.g., something not in storage like TRACE */
@@ -333,40 +272,18 @@ void ap_process_async_request(request_rec *r)
         ap_die(access_status, r);
     }
 
-    ap_process_request_after_handler(r);
-}
-
-void ap_process_request(request_rec *r)
-{
-    apr_bucket_brigade *bb;
-    apr_bucket *b;
-    conn_rec *c = r->connection;
-    apr_status_t rv;
-
-    ap_process_async_request(r);
-
-    if (!c->data_in_input_filters) {
-        bb = apr_brigade_create(c->pool, c->bucket_alloc);
-        b = apr_bucket_flush_create(c->bucket_alloc);
-        APR_BRIGADE_INSERT_HEAD(bb, b);
-        rv = ap_pass_brigade(c->output_filters, bb);
-        if (APR_STATUS_IS_TIMEUP(rv)) {
-            /*
-             * Notice a timeout as an error message. This might be
-             * valuable for detecting clients with broken network
-             * connections or possible DoS attacks.
-             *
-             * It is still save to use r / r->pool here as the eor bucket
-             * could not have been destroyed in the event of a timeout.
-             */
-            ap_log_rerror(APLOG_MARK, APLOG_ERR, rv, r,
-                          "Timeout while writing data for URI %s to the"
-                          " client", r->unparsed_uri);
-        }
-    }
-    if (ap_extended_status) {
-        ap_time_process_request(c->sbh, STOP_PREQUEST);
-    }
+    /*
+     * We want to flush the last packet if this isn't a pipelining connection
+     * *before* we start into logging.  Suppose that the logging causes a DNS
+     * lookup to occur, which may have a high latency.  If we hold off on
+     * this packet, then it'll appear like the link is stalled when really
+     * it's the application that's stalled.
+     */
+    check_pipeline_flush(r);
+    ap_update_child_status(r->connection->sbh, SERVER_BUSY_LOG, r);
+    ap_run_log_transaction(r);
+    if (ap_extended_status)
+        ap_time_process_request(r->connection->sbh, STOP_PREQUEST);
 }
 
 static apr_table_t *rename_original_env(apr_pool_t *p, apr_table_t *t)
@@ -412,8 +329,6 @@ static request_rec *internal_internal_redirect(const char *new_uri,
     new->method_number   = r->method_number;
     new->allowed_methods = ap_make_method_list(new->pool, 2);
     ap_parse_uri(new, new_uri);
-    new->parsed_uri.port_str = r->parsed_uri.port_str;
-    new->parsed_uri.port = r->parsed_uri.port;
 
     new->request_config = ap_create_request_config(r->pool);
 
@@ -447,6 +362,7 @@ static request_rec *internal_internal_redirect(const char *new_uri,
     new->err_headers_out = r->err_headers_out;
     new->subprocess_env  = rename_original_env(r->pool, r->subprocess_env);
     new->notes           = apr_table_make(r->pool, 5);
+    new->allowed_methods = ap_make_method_list(new->pool, 2);
 
     new->htaccess        = r->htaccess;
     new->no_cache        = r->no_cache;
@@ -525,6 +441,15 @@ AP_DECLARE(void) ap_internal_fast_redirect(request_rec *rr, request_rec *r)
     r->output_filters = rr->output_filters;
     r->input_filters = rr->input_filters;
 
+    if (r->main) {
+        ap_add_output_filter_handle(ap_subreq_core_filter_handle,
+                                    NULL, r, r->connection);
+    }
+    else if (r->output_filters->frec == ap_subreq_core_filter_handle) {
+        ap_remove_output_filter(r->output_filters);
+        r->output_filters = r->output_filters->next;
+    }
+
     /* If any filters pointed at the now-defunct rr, we must point them
      * at our "new" instance of r.  In particular, some of rr's structures
      * will now be bogus (say rr->headers_out).  If a filter tried to modify
@@ -533,40 +458,12 @@ AP_DECLARE(void) ap_internal_fast_redirect(request_rec *rr, request_rec *r)
      */
     update_r_in_filters(r->input_filters, rr, r);
     update_r_in_filters(r->output_filters, rr, r);
-
-    if (r->main) {
-        ap_add_output_filter_handle(ap_subreq_core_filter_handle,
-                                    NULL, r, r->connection);
-    }
-    else {
-        /*
-         * We need to check if we now have the SUBREQ_CORE filter in our filter
-         * chain. If this is the case we need to remove it since we are NO
-         * subrequest. But we need to keep in mind that the SUBREQ_CORE filter
-         * does not necessarily need to be the first filter in our chain. So we
-         * need to go through the chain. But we only need to walk up the chain
-         * until the proto_output_filters as the SUBREQ_CORE filter is below the
-         * protocol filters.
-         */
-        ap_filter_t *next;
-
-        next = r->output_filters;
-        while (next && (next->frec != ap_subreq_core_filter_handle)
-               && (next != r->proto_output_filters)) {
-                next = next->next;
-        }
-        if (next && (next->frec == ap_subreq_core_filter_handle)) {
-            ap_remove_output_filter(next);
-        }
-    }
 }
 
 AP_DECLARE(void) ap_internal_redirect(const char *new_uri, request_rec *r)
 {
     request_rec *new = internal_internal_redirect(new_uri, r);
     int access_status;
-
-    AP_INTERNAL_REDIRECT(r->uri, new_uri);
 
     /* ap_die was already called, if an error occured */
     if (!new) {

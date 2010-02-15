@@ -75,7 +75,6 @@ my $opt_A = 0;
 my $opt_q = 0;
 my $opt_h = 0;
 my $opt_p = 0;
-my $opt_v = 0;
 
 #   this subroutine is derived from Perl's getopts.pl with the enhancement of
 #   the "+" metacharacter at the format string to allow a list to be built by
@@ -143,7 +142,7 @@ sub Getopts {
 
 sub usage {
     print STDERR "Usage: apxs -g [-S <var>=<val>] -n <modname>\n";
-    print STDERR "       apxs -q [-v] [-S <var>=<val>] [<query> ...]\n";
+    print STDERR "       apxs -q [-S <var>=<val>] <query> ...\n";
     print STDERR "       apxs -c [-S <var>=<val>] [-o <dsofile>] [-D <name>[=<value>]]\n";
     print STDERR "               [-I <incdir>] [-L <libdir>] [-l <libname>] [-Wc,<flags>]\n";
     print STDERR "               [-Wl,<flags>] [-p] <files> ...\n";
@@ -154,9 +153,9 @@ sub usage {
 
 #   option handling
 my $rc;
-($rc, @ARGV) = &Getopts("qn:gco:I+D+L+l+W+S+eiaApv", @ARGV);
+($rc, @ARGV) = &Getopts("qn:gco:I+D+L+l+W+S+eiaAp", @ARGV);
 &usage if ($rc == 0);
-&usage if ($#ARGV == -1 and not $opt_g and not $opt_q);
+&usage if ($#ARGV == -1 and not $opt_g);
 &usage if (not $opt_q and not ($opt_g and $opt_n) and not $opt_i and not $opt_c and not $opt_e);
 
 #   argument handling
@@ -188,11 +187,28 @@ if (@opt_S) {
 ##
 ##  Initial shared object support check
 ##
-unless ("@MOD_SO_ENABLED@" eq "yes") {
+my $httpd = get_vars("sbindir") . "/" . get_vars("progname");
+$httpd = eval qq("$httpd");
+$httpd = eval qq("$httpd");
+my $envvars = get_vars("sbindir") . "/envvars";
+$envvars = eval qq("$envvars");
+$envvars = eval qq("$envvars");
+
+#allow apxs to be run from the source tree, before installation
+if ($0 =~ m:support/apxs$:) {
+    ($httpd = $0) =~ s:support/apxs$::;
+}
+
+unless (-x "$httpd") {
+	error("$httpd not found or not executable");
+	exit 1;
+}
+
+unless (grep /mod_so/, `. $envvars && $httpd -l`) {
     error("Sorry, no shared object support for Apache");
     error("available under your platform. Make sure");
     error("the Apache module mod_so is compiled into");
-    error("the server binary.");
+    error("your server binary `$httpd'.");
     exit 1;
 }
 
@@ -304,35 +320,8 @@ if ($opt_q) {
     ##
     ##  QUERY INFORMATION 
     ##
-    my $result;
-    if ($#args >= 0) { 
-        $result = get_vars(@args);
-        print "$result\n";
-    } else {
-        # -q without var name prints all variables and their values
-        
-        # Additional -v pretty-prints output
-        if ($opt_v) {
-            # Variable names in alphabetic order
-            my @vars = sort {uc($a) cmp uc($b)} keys %config_vars;
-            
-            # Make the left column as wide as the longest variable name
-            my $width = 0;
-            foreach (@vars) {
-                my $l = length $_; 
-                $width = $l unless ($l <= $width);
-            }
-    
-            foreach (@vars) {
-                printf "%-${width}s = %s\n", $_, $config_vars{$_};
-            }
-        } else {
-            # Unprettified name=value list
-            foreach (keys %config_vars) {
-                print "$_=$config_vars{$_}\n";
-            }
-        }
-    }
+    my $result = get_vars(@args);
+    print "$result\n";
 }
 
 my $apr_config = get_vars("APR_CONFIG");
@@ -342,16 +331,11 @@ if (! -x "$apr_config") {
     exit(1);
 }
 
-my $apr_major_version = (split /\./, `$apr_config --version`)[0];
+my $apu_config = get_vars("APU_CONFIG");
 
-my $apu_config = "";
-if ($apr_major_version < 2) {
-    $apu_config = get_vars("APU_CONFIG");
-
-    if (! -x "$apu_config") {
-        error("$apu_config not found!");
-        exit(1);
-    }
+if (! -x "$apu_config") {
+    error("$apu_config not found!");
+    exit(1);
 }
 
 my $libtool = `$apr_config --apr-libtool`;
@@ -359,11 +343,8 @@ chomp($libtool);
 
 my $apr_includedir = `$apr_config --includes`;
 chomp($apr_includedir);
-my $apu_includedir = "";
-if ($apr_major_version < 2) {
-    $apu_includedir = `$apu_config --includes`;
-    chomp($apu_includedir);
-}
+my $apu_includedir = `$apu_config --includes`;
+chomp($apu_includedir);
 
 if ($opt_c) {
     ##
@@ -454,11 +435,8 @@ if ($opt_c) {
         
         my $apr_libs=`$apr_config --cflags --ldflags --link-libtool --libs`;
         chomp($apr_libs);
-        my $apu_libs="";
-        if ($apr_major_version < 2) {
-            $apu_libs=`$apu_config --ldflags --link-libtool --libs`;
-            chomp($apu_libs);
-        }
+        my $apu_libs=`$apu_config --ldflags --link-libtool --libs`;
+        chomp($apu_libs);
         
         $opt .= " ".$apu_libs." ".$apr_libs;
     }

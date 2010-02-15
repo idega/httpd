@@ -86,6 +86,8 @@
 #include <sys/types.h>
 #endif
 
+#define CORE_PRIVATE
+
 #include "httpd.h"
 #include "http_config.h"
 #include "http_log.h"
@@ -295,8 +297,9 @@ static int sendfile_handler(request_rec *r, a_file *file)
     apr_bucket *b;
     apr_bucket_brigade *bb = apr_brigade_create(r->pool, c->bucket_alloc);
 
-    apr_brigade_insert_file(bb, file->file, 0, file->finfo.size, r->pool);
-
+    b = apr_bucket_file_create(file->file, 0, (apr_size_t)file->finfo.size,
+                               r->pool, c->bucket_alloc);
+    APR_BRIGADE_INSERT_TAIL(bb, b);
     b = apr_bucket_eos_create(c->bucket_alloc);
     APR_BRIGADE_INSERT_TAIL(bb, b);
 
@@ -358,16 +361,16 @@ static int file_cache_handler(request_rec *r)
         apr_table_setn(r->headers_out, "Last-Modified", datestr);
     }
 
+    ap_set_etag(r);
+    if ((errstatus = ap_meets_conditions(r)) != OK) {
+       return errstatus;
+    }
+
     /* ap_set_content_length() always converts the same number and never
      * returns an error.  Accelerate it.
      */
     r->clength = match->finfo.size;
     apr_table_setn(r->headers_out, "Content-Length", match->sizestr);
-
-    ap_set_etag(r);
-    if ((errstatus = ap_meets_conditions(r)) != OK) {
-       return errstatus;
-    }
 
     /* Call appropriate handler */
     if (!r->header_only) {

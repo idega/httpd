@@ -41,15 +41,11 @@
 
 #include <pwd.h>
 #include <grp.h>
-#if APR_HAVE_SYS_TYPES_H
+#ifdef APR_HAVE_SYS_TYPES_H
 #include <sys/types.h>
 #endif
 #ifdef HAVE_SYS_IPC_H
 #include <sys/ipc.h>
-#endif
-
-#ifdef __cplusplus
-extern "C" {
 #endif
 
 typedef struct {
@@ -76,14 +72,18 @@ typedef struct {
     uid_t user_id;
     gid_t group_id;
     int suexec_enabled;
-    const char *chroot_dir;
 } unixd_config_rec;
-AP_DECLARE_DATA extern unixd_config_rec ap_unixd_config;
+AP_DECLARE_DATA extern unixd_config_rec unixd_config;
 
+AP_DECLARE(int) unixd_setup_child(void);
+AP_DECLARE(void) unixd_pre_config(apr_pool_t *ptemp);
+AP_DECLARE(const char *) unixd_set_user(cmd_parms *cmd, void *dummy, 
+                                        const char *arg);
+AP_DECLARE(const char *) unixd_set_group(cmd_parms *cmd, void *dummy, 
+                                         const char *arg);
 #if defined(RLIMIT_CPU) || defined(RLIMIT_DATA) || defined(RLIMIT_VMEM) || defined(RLIMIT_NPROC) || defined(RLIMIT_AS)
-AP_DECLARE(void) ap_unixd_set_rlimit(cmd_parms *cmd, struct rlimit **plimit,
-                                     const char *arg, 
-                                     const char * arg2, int type);
+AP_DECLARE(void) unixd_set_rlimit(cmd_parms *cmd, struct rlimit **plimit,
+                           const char *arg, const char * arg2, int type);
 #endif
 
 /**
@@ -95,15 +95,15 @@ AP_DECLARE(void) ap_unixd_set_rlimit(cmd_parms *cmd, struct rlimit **plimit,
  * for SysV semaphores.  Otherwise, it is safe to call it for all
  * mutex types.
  */
-AP_DECLARE(apr_status_t) ap_unixd_set_proc_mutex_perms(apr_proc_mutex_t *pmutex);
-AP_DECLARE(apr_status_t) ap_unixd_set_global_mutex_perms(apr_global_mutex_t *gmutex);
-AP_DECLARE(apr_status_t) ap_unixd_accept(void **accepted, ap_listen_rec *lr, apr_pool_t *ptrans);
+AP_DECLARE(apr_status_t) unixd_set_proc_mutex_perms(apr_proc_mutex_t *pmutex);
+AP_DECLARE(apr_status_t) unixd_set_global_mutex_perms(apr_global_mutex_t *gmutex);
+AP_DECLARE(apr_status_t) unixd_accept(void **accepted, ap_listen_rec *lr, apr_pool_t *ptrans);
 
 #ifdef HAVE_KILLPG
-#define ap_unixd_killpg(x, y)	(killpg ((x), (y)))
+#define unixd_killpg(x, y)	(killpg ((x), (y)))
 #define ap_os_killpg(x, y)      (killpg ((x), (y)))
 #else /* HAVE_KILLPG */
-#define ap_unixd_killpg(x, y)	(kill (-(x), (y)))
+#define unixd_killpg(x, y)	(kill (-(x), (y)))
 #define ap_os_killpg(x, y)      (kill (-(x), (y)))
 #endif /* HAVE_KILLPG */
 
@@ -111,13 +111,7 @@ AP_DECLARE(apr_status_t) ap_unixd_accept(void **accepted, ap_listen_rec *lr, apr
 AP_INIT_TAKE1("User", unixd_set_user, NULL, RSRC_CONF, \
   "Effective user id for this server"), \
 AP_INIT_TAKE1("Group", unixd_set_group, NULL, RSRC_CONF, \
-  "Effective group id for this server"), \
-AP_INIT_TAKE1("ChrootDir", unixd_set_chroot_dir, NULL, RSRC_CONF, \
-    "The directory to chroot(2) into")
-
-#ifdef __cplusplus
-}
-#endif
+  "Effective group id for this server")
 
 #endif
 /** @} */

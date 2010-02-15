@@ -35,7 +35,6 @@
 # When multiple arguments are given, only the error from the _last_
 # one is reported.  Run "apachectl help" for usage info
 #
-ACMD="$1"
 ARGV="$@"
 #
 # |||||||||||||||||||| START CONFIGURATION SECTION  ||||||||||||||||||||
@@ -76,7 +75,7 @@ if [ "x$ARGV" = "x" ] ; then
     ARGV="-h"
 fi
 
-case $ACMD in
+case $ARGV in
 start|stop|restart|graceful|graceful-stop)
     $HTTPD -k $ARGV
     ERROR=$?
@@ -98,7 +97,7 @@ fullstatus)
     $LYNX $STATUSURL
     ;;
 *)
-    $HTTPD "$@"
+    $HTTPD $ARGV
     ERROR=$?
 esac
 

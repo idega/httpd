@@ -39,6 +39,8 @@
 #define APR_WANT_STRFUNC
 #include "apr_want.h"
 
+#define CORE_PRIVATE
+
 #include "ap_config.h"
 #include "httpd.h"
 #include "http_config.h"
@@ -49,11 +51,12 @@
 #include "http_main.h"
 #include "http_vhost.h"
 #include "util_cfgtree.h"
+#include "mpm.h"
+
 
 AP_DECLARE_DATA const char *ap_server_argv0 = NULL;
+
 AP_DECLARE_DATA const char *ap_server_root = NULL;
-AP_DECLARE_DATA server_rec *ap_server_conf = NULL;
-AP_DECLARE_DATA apr_pool_t *ap_pglobal = NULL;
 
 AP_DECLARE_DATA apr_array_header_t *ap_server_pre_read_config = NULL;
 AP_DECLARE_DATA apr_array_header_t *ap_server_post_read_config = NULL;
@@ -64,7 +67,6 @@ AP_DECLARE_DATA ap_directive_t *ap_conftree = NULL;
 APR_HOOK_STRUCT(
            APR_HOOK_LINK(header_parser)
            APR_HOOK_LINK(pre_config)
-           APR_HOOK_LINK(check_config)
            APR_HOOK_LINK(post_config)
            APR_HOOK_LINK(open_logs)
            APR_HOOK_LINK(child_init)
@@ -81,11 +83,6 @@ AP_IMPLEMENT_HOOK_RUN_ALL(int, pre_config,
                           (apr_pool_t *pconf, apr_pool_t *plog,
                            apr_pool_t *ptemp),
                           (pconf, plog, ptemp), OK, DECLINED)
-
-AP_IMPLEMENT_HOOK_RUN_ALL(int, check_config,
-                          (apr_pool_t *pconf, apr_pool_t *plog,
-                           apr_pool_t *ptemp, server_rec *s),
-                          (pconf, plog, ptemp, s), OK, DECLINED)
 
 AP_IMPLEMENT_HOOK_VOID(test_config,
                        (apr_pool_t *pconf, server_rec *s),
@@ -323,12 +320,6 @@ static int ap_invoke_filter_init(ap_filter_t *filters)
     return OK;
 }
 
-/*
- * TODO: Move this to an appropriate include file and possibly prefix it
- * with AP_.
- */
-#define DEFAULT_HANDLER_NAME ""
-
 AP_CORE_DECLARE(int) ap_invoke_handler(request_rec *r)
 {
     const char *handler;
@@ -361,23 +352,18 @@ AP_CORE_DECLARE(int) ap_invoke_handler(request_rec *r)
     }
 
     if (!r->handler) {
-        if (r->content_type) {
-            handler = r->content_type;
-            if ((p=ap_strchr_c(handler, ';')) != NULL) {
-                char *new_handler = (char *)apr_pmemdup(r->pool, handler,
-                                                        p - handler + 1);
-                char *p2 = new_handler + (p - handler);
-                handler = new_handler;
+        handler = r->content_type ? r->content_type : ap_default_type(r);
+        if ((p=ap_strchr_c(handler, ';')) != NULL) {
+            char *new_handler = (char *)apr_pmemdup(r->pool, handler,
+                                                    p - handler + 1);
+            char *p2 = new_handler + (p - handler);
+            handler = new_handler;
 
-                /* exclude media type arguments */
-                while (p2 > handler && p2[-1] == ' ')
-                    --p2; /* strip trailing spaces */
+            /* MIME type arguments */
+            while (p2 > handler && p2[-1] == ' ')
+                --p2; /* strip trailing spaces */
 
-                *p2='\0';
-            }
-        }
-        else {
-            handler = DEFAULT_HANDLER_NAME;
+            *p2='\0';
         }
 
         r->handler = handler;
@@ -391,8 +377,7 @@ AP_CORE_DECLARE(int) ap_invoke_handler(request_rec *r)
         ap_log_rerror(APLOG_MARK, APLOG_WARNING, 0, r,
             "handler \"%s\" not found for: %s", r->handler, r->filename);
     }
-    if ((result != OK) && (result != DONE) && (result != DECLINED) && (result != SUSPENDED)
-        && (result != AP_FILTER_ERROR) /* ap_die() knows about this specifically */
+    if ((result != OK) && (result != DONE) && (result != DECLINED)
         && !ap_is_HTTP_VALID_RESPONSE(result)) {
         /* If a module is deliberately returning something else
          * (request_rec in non-HTTP or proprietary extension?)
@@ -1524,7 +1509,7 @@ static const char *process_command_config(server_rec *s,
     parms.temp_pool = ptemp;
     parms.server = s;
     parms.override = (RSRC_CONF | OR_ALL) & ~(OR_AUTHCFG | OR_LIMIT);
-    parms.override_opts = OPT_ALL | OPT_SYM_OWNER | OPT_MULTI;
+    parms.override_opts = OPT_ALL | OPT_INCNOEXEC | OPT_SYM_OWNER | OPT_MULTI;
 
     parms.config_file = ap_pcfg_open_custom(p, "-c/-C directives",
                                             &arr_parms, NULL,
@@ -1631,7 +1616,7 @@ static const char *process_resource_config_nofnmatch(server_rec *s,
     parms.temp_pool = ptemp;
     parms.server = s;
     parms.override = (RSRC_CONF | OR_ALL) & ~(OR_AUTHCFG | OR_LIMIT);
-    parms.override_opts = OPT_ALL | OPT_SYM_OWNER | OPT_MULTI;
+    parms.override_opts = OPT_ALL | OPT_INCNOEXEC | OPT_SYM_OWNER | OPT_MULTI;
 
     rv = ap_pcfg_openfile(&cfp, p, fname);
     if (rv != APR_SUCCESS) {
@@ -1648,100 +1633,6 @@ static const char *process_resource_config_nofnmatch(server_rec *s,
         return apr_psprintf(p, "Syntax error on line %d of %s: %s",
                             parms.err_directive->line_num,
                             parms.err_directive->filename, error);
-    }
-
-    return NULL;
-}
-
-static const char *process_resource_config_fnmatch(server_rec *s,
-                                                   const char *path,
-                                                   const char *fname,
-                                                   ap_directive_t **conftree,
-                                                   apr_pool_t *p,
-                                                   apr_pool_t *ptemp,
-                                                   unsigned depth)
-{
-    char *rest;
-    apr_status_t rv;
-    apr_dir_t *dirp;
-    apr_finfo_t dirent;
-    apr_array_header_t *candidates = NULL;
-    fnames *fnew;
-    int current;
-
-    /* find the first part of the filename */
-    rest = ap_strchr(fname, '/');
-    if (rest) {
-        fname = apr_pstrndup(ptemp, fname, rest - fname);
-        rest++;
-    }
-
-    /* optimisation - if the filename isn't a wildcard, process it directly */
-    if (!apr_fnmatch_test(fname)) {
-        path = ap_make_full_path(ptemp, path, fname);
-        if (!rest) {
-            return process_resource_config_nofnmatch(s, path,
-                                                     conftree, p,
-                                                     ptemp, 0);
-        }
-        else {
-            return process_resource_config_fnmatch(s, path, rest,
-                                                   conftree, p,
-                                                   ptemp, 0);
-        }
-    }
-
-    /*
-     * first course of business is to grok all the directory
-     * entries here and store 'em away. Recall we need full pathnames
-     * for this.
-     */
-    rv = apr_dir_open(&dirp, path, ptemp);
-    if (rv != APR_SUCCESS) {
-        char errmsg[120];
-        return apr_psprintf(p, "Could not open config directory %s: %s",
-                            path, apr_strerror(rv, errmsg, sizeof errmsg));
-    }
-
-    candidates = apr_array_make(ptemp, 1, sizeof(fnames));
-    while (apr_dir_read(&dirent, APR_FINFO_DIRENT, dirp) == APR_SUCCESS) {
-        /* strip out '.' and '..' */
-        if (strcmp(dirent.name, ".")
-            && strcmp(dirent.name, "..")
-            && (apr_fnmatch(fname, dirent.name,
-                            APR_FNM_PERIOD) == APR_SUCCESS)) {
-            fnew = (fnames *) apr_array_push(candidates);
-            fnew->fname = ap_make_full_path(ptemp, path, dirent.name);
-        }
-    }
-
-    apr_dir_close(dirp);
-    if (candidates->nelts != 0) {
-        const char *error;
-
-        qsort((void *) candidates->elts, candidates->nelts,
-              sizeof(fnames), fname_alphasort);
-
-        /*
-         * Now recurse these... we handle errors and subdirectories
-         * via the recursion, which is nice
-         */
-        for (current = 0; current < candidates->nelts; ++current) {
-            fnew = &((fnames *) candidates->elts)[current];
-            if (!rest) {
-                error = process_resource_config_nofnmatch(s, fnew->fname,
-                                                          conftree, p,
-                                                          ptemp, 0);
-            }
-            else {
-                error = process_resource_config_fnmatch(s, fnew->fname, rest,
-                                                        conftree, p,
-                                                        ptemp, 0);
-            }
-            if (error) {
-                return error;
-            }
-        }
     }
 
     return NULL;
@@ -1771,24 +1662,80 @@ AP_DECLARE(const char *) ap_process_resource_config(server_rec *s,
                                                  0);
     }
     else {
-        apr_status_t status;
-        const char *rootpath, *filepath = fname;
+        apr_dir_t *dirp;
+        apr_finfo_t dirent;
+        int current;
+        apr_array_header_t *candidates = NULL;
+        fnames *fnew;
+        apr_status_t rv;
+        char *path = apr_pstrdup(p, fname), *pattern = NULL;
 
-        /* locate the start of the directories proper */
-        status = apr_filepath_root(&rootpath, &filepath, APR_FILEPATH_TRUENAME, ptemp);
+        pattern = ap_strrchr(path, '/');
 
-        /* we allow APR_SUCCESS and APR_EINCOMPLETE */
-        if (APR_ERELATIVE == status) {
-            return apr_pstrcat(p, "Include must have an absolute path, ", fname, NULL);
+        AP_DEBUG_ASSERT(pattern != NULL); /* path must be absolute. */
+
+        *pattern++ = '\0';
+
+        if (apr_fnmatch_test(path)) {
+            return apr_pstrcat(p, "Wildcard patterns not allowed in Include ",
+                               fname, NULL);
         }
-        else if (APR_EBADPATH == status) {
-            return apr_pstrcat(p, "Include has a bad path, ", fname, NULL);
+
+        if (!ap_is_directory(p, path)){
+            return apr_pstrcat(p, "Include directory '", path, "' not found",
+                               NULL);
         }
 
-        /* walk the filepath */
-        return process_resource_config_fnmatch(s, rootpath, filepath, conftree, p, ptemp,
-                                                 0);
+        if (!apr_fnmatch_test(pattern)) {
+            return apr_pstrcat(p, "Must include a wildcard pattern for "
+                               "Include ", fname, NULL);
+        }
 
+        /*
+         * first course of business is to grok all the directory
+         * entries here and store 'em away. Recall we need full pathnames
+         * for this.
+         */
+        rv = apr_dir_open(&dirp, path, p);
+        if (rv != APR_SUCCESS) {
+            char errmsg[120];
+            return apr_psprintf(p, "Could not open config directory %s: %s",
+                                path, apr_strerror(rv, errmsg, sizeof errmsg));
+        }
+
+        candidates = apr_array_make(p, 1, sizeof(fnames));
+        while (apr_dir_read(&dirent, APR_FINFO_DIRENT, dirp) == APR_SUCCESS) {
+            /* strip out '.' and '..' */
+            if (strcmp(dirent.name, ".")
+                && strcmp(dirent.name, "..")
+                && (apr_fnmatch(pattern, dirent.name,
+                                APR_FNM_PERIOD) == APR_SUCCESS)) {
+                fnew = (fnames *) apr_array_push(candidates);
+                fnew->fname = ap_make_full_path(p, path, dirent.name);
+            }
+        }
+
+        apr_dir_close(dirp);
+        if (candidates->nelts != 0) {
+            const char *error;
+
+            qsort((void *) candidates->elts, candidates->nelts,
+                  sizeof(fnames), fname_alphasort);
+
+            /*
+             * Now recurse these... we handle errors and subdirectories
+             * via the recursion, which is nice
+             */
+            for (current = 0; current < candidates->nelts; ++current) {
+                fnew = &((fnames *) candidates->elts)[current];
+                error = process_resource_config_nofnmatch(s, fnew->fname,
+                                                          conftree, p,
+                                                          ptemp, 0);
+                if (error) {
+                    return error;
+                }
+            }
+        }
     }
 
     return NULL;
@@ -1807,7 +1754,7 @@ AP_DECLARE(int) ap_process_config_tree(server_rec *s,
     parms.temp_pool = ptemp;
     parms.server = s;
     parms.override = (RSRC_CONF | OR_ALL) & ~(OR_AUTHCFG | OR_LIMIT);
-    parms.override_opts = OPT_ALL | OPT_SYM_OWNER | OPT_MULTI;
+    parms.override_opts = OPT_ALL | OPT_INCNOEXEC | OPT_SYM_OWNER | OPT_MULTI;
     parms.limited = -1;
 
     errmsg = ap_walk_config(conftree, &parms, s->lookup_defaults);
@@ -2232,19 +2179,7 @@ AP_DECLARE(void) ap_show_modules(void)
         printf("  %s\n", ap_loaded_modules[n]->name);
 }
 
-AP_DECLARE(void *) ap_retained_data_get(const char *key)
+AP_DECLARE(const char *) ap_show_mpm(void)
 {
-    void *retained;
-
-    apr_pool_userdata_get((void *)&retained, key, ap_pglobal);
-    return retained;
-}
-
-AP_DECLARE(void *) ap_retained_data_create(const char *key, apr_size_t size)
-{
-    void *retained;
-
-    retained = apr_pcalloc(ap_pglobal, size);
-    apr_pool_userdata_set((const void *)retained, key, apr_pool_cleanup_null, ap_pglobal);
-    return retained;
+    return MPM_NAME;
 }

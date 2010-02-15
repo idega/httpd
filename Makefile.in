@@ -19,7 +19,6 @@ INSTALL_TARGETS = install-conf install-htdocs install-error install-icons \
 	install-man
 
 DISTCLEAN_TARGETS  = include/ap_config_auto.h include/ap_config_layout.h \
-	include/apache_probes.h \
 	modules.c config.cache config.log config.status build/config_vars.mk \
 	build/rules.mk docs/conf/httpd.conf docs/conf/extra/*.conf shlibtool \
 	build/pkg/pkginfo build/config_vars.sh
@@ -48,14 +47,12 @@ install-conf:
 	    		if test $$n_lm -eq 0 -o "x$(DSO_MODULES)" = "x"; then \
 	    			sed -e 's#@@ServerRoot@@#$(prefix)#g' \
 	    				-e 's#@@Port@@#$(PORT)#g' \
-	    				-e 's#@@SSLPort@@#$(SSLPORT)#g' \
 	    				-e '/@@LoadModule@@/d' \
 	    				< $$i; \
 	    		else \
 	    			sed -n -e '/@@LoadModule@@/q' \
 	    				-e 's#@@ServerRoot@@#$(prefix)#g' \
 	    				-e 's#@@Port@@#$(PORT)#g' \
-	    				-e 's#@@SSLPort@@#$(SSLPORT)#g' \
 	    				-e 'p' \
 	    				< $$i; \
 	    			for j in $(DSO_MODULES) "^EOL^"; do \
@@ -67,7 +64,6 @@ install-conf:
 	    				-e '/@@LoadModule@@/d' \
 	    				-e 's#@@ServerRoot@@#$(prefix)#g' \
 	    				-e 's#@@Port@@#$(PORT)#g' \
-	    				-e 's#@@SSLPort@@#$(SSLPORT)#g' \
 	    				< $$i; \
 	    		fi \
 	    	) > $(DESTDIR)$(sysconfdir)/original/$$i; \
@@ -182,20 +178,16 @@ INSTALL_HEADERS = \
 	include/*.h \
 	$(srcdir)/include/*.h \
 	$(srcdir)/os/$(OS_DIR)/os.h \
-	$(srcdir)/modules/arch/unix/mod_unixd.h \
-	$(srcdir)/modules/core/mod_so.h \
-	$(srcdir)/modules/core/mod_watchdog.h \
-	$(srcdir)/modules/cache/mod_cache.h \
+	$(srcdir)/server/mpm/$(MPM_SUBDIR_NAME)/*.h \
+	$(srcdir)/modules/aaa/mod_auth.h \
 	$(srcdir)/modules/database/mod_dbd.h \
 	$(srcdir)/modules/dav/main/mod_dav.h \
 	$(srcdir)/modules/filters/mod_include.h \
 	$(srcdir)/modules/generators/mod_cgi.h \
 	$(srcdir)/modules/generators/mod_status.h \
 	$(srcdir)/modules/loggers/mod_log_config.h \
-	$(srcdir)/modules/mappers/mod_rewrite.h \
+	$(srcdir)/modules/http/mod_core.h \
 	$(srcdir)/modules/proxy/mod_proxy.h \
-	$(srcdir)/modules/proxy/mod_serf.h \
-        ${srcdir}/modules/session/mod_session.h \
 	$(srcdir)/modules/ssl/mod_ssl.h \
 	$(srcdir)/os/$(OS_DIR)/*.h
 
@@ -234,5 +226,4 @@ suexec:
 x-local-distclean:
 	@rm -rf autom4te.cache
 
-# XXX: This looks awfully platform-specific [read: bad form and style]
 include $(top_srcdir)/os/os2/core.mk

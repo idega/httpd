@@ -13,19 +13,17 @@
 <body>
 <div id="page-header">
 <p class="menu"><a href="../mod/">Modules</a> | <a href="../mod/directives.html">Directives</a> | <a href="../faq/">FAQ</a> | <a href="../glossary.html">Glossary</a> | <a href="../sitemap.html">Sitemap</a></p>
-<p class="apache">Apache HTTP Server Version 2.3</p>
+<p class="apache">Apache HTTP Server Version 2.2</p>
 <img alt="" src="../images/feather.gif" /></div>
 <div class="up"><a href="./"><img title="&lt;-" alt="&lt;-" src="../images/left.gif" /></a></div>
 <div id="path">
-<a href="http://www.apache.org/">Apache</a> &gt; <a href="http://httpd.apache.org/">HTTP Server</a> &gt; <a href="http://httpd.apache.org/docs/">Documentation</a> &gt; <a href="../">Version 2.3</a> &gt; <a href="./">Modules</a></div>
+<a href="http://www.apache.org/">Apache</a> &gt; <a href="http://httpd.apache.org/">HTTP Server</a> &gt; <a href="http://httpd.apache.org/docs/">Documentation</a> &gt; <a href="../">Version 2.2</a> &gt; <a href="./">Modules</a></div>
 <div id="page-content">
 <div id="preamble"><h1>Apache Module mod_autoindex</h1>
 <div class="toplang">
 <p><span>Available Languages: </span><a href="../en/mod/mod_autoindex.html" title="English">&nbsp;en&nbsp;</a> |
-<a href="../fr/mod/mod_autoindex.html" hreflang="fr" rel="alternate" title="Français">&nbsp;fr&nbsp;</a> |
 <a href="../ja/mod/mod_autoindex.html" hreflang="ja" rel="alternate" title="Japanese">&nbsp;ja&nbsp;</a> |
-<a href="../ko/mod/mod_autoindex.html" hreflang="ko" rel="alternate" title="Korean">&nbsp;ko&nbsp;</a> |
-<a href="../tr/mod/mod_autoindex.html" hreflang="tr" rel="alternate" title="Türkçe">&nbsp;tr&nbsp;</a></p>
+<a href="../ko/mod/mod_autoindex.html" hreflang="ko" rel="alternate" title="Korean">&nbsp;ko&nbsp;</a></p>
 </div>
 <table class="module"><tr><th><a href="module-dict.html#Description">Description:</a></th><td>Generates directory indexes,
     automatically, similar to the Unix <code>ls</code> command or the
@@ -34,7 +32,7 @@
 <tr><th><a href="module-dict.html#ModuleIdentifier">Module Identifier:</a></th><td>autoindex_module</td></tr>
 <tr><th><a href="module-dict.html#SourceFile">Source File:</a></th><td>mod_autoindex.c</td></tr></table>
 <h3>Summary</h3>
-
+ 
       <p>The index of a directory can come from one of two
       sources:</p>
 
@@ -54,10 +52,10 @@
     </ul>
     <p>The two functions are separated so that you can completely
     remove (or replace) automatic index generation should you want
-    to.</p>
+    to.</p> 
 
     <p>Automatic index generation is enabled with using
-    <code>Options +Indexes</code>. See the
+    <code>Options +Indexes</code>. See the 
     <code class="directive"><a href="../mod/core.html#options">Options</a></code> directive for
     more details.</p>
 
@@ -66,7 +64,7 @@
     display. If you select a header link, the listing will be
     regenerated, sorted by the values in that column. Selecting the
     same header repeatedly toggles between ascending and descending
-    order. These column header links are suppressed with the
+    order. These column header links are suppressed with
     <code class="directive"><a href="#indexoptions">IndexOptions</a></code> directive's
     <code>SuppressColumnSorting</code> option.</p>
 
@@ -87,7 +85,6 @@
 <li><img alt="" src="../images/down.gif" /> <a href="#addiconbytype">AddIconByType</a></li>
 <li><img alt="" src="../images/down.gif" /> <a href="#defaulticon">DefaultIcon</a></li>
 <li><img alt="" src="../images/down.gif" /> <a href="#headername">HeaderName</a></li>
-<li><img alt="" src="../images/down.gif" /> <a href="#indexheadinsert">IndexHeadInsert</a></li>
 <li><img alt="" src="../images/down.gif" /> <a href="#indexignore">IndexIgnore</a></li>
 <li><img alt="" src="../images/down.gif" /> <a href="#indexoptions">IndexOptions</a></li>
 <li><img alt="" src="../images/down.gif" /> <a href="#indexorderdefault">IndexOrderDefault</a></li>
@@ -303,15 +300,6 @@ icon selected by MIME content-type</td></tr>
     Therefore, the widest default the description column is ever
     assigned is 55 bytes.</p>
 
-    <p>Since the <var>File</var> argument may be a partial file name,
-    please remember that a too-short partial filename may match
-    unintended files. For example, <code>le.html</code> will match the
-    file <code>le.html</code> but will also match the file
-    <code>example.html</code>. In the event that there may be ambiguity,
-    use as complete a filename as you can, but keep in mind that the
-    first match encountered will be used, and order your list of
-    <code>AddDescription</code> directives accordingly.</p>
-
     <p>See the <a href="#indexoptions.descriptionwidth">DescriptionWidth</a> <code class="directive"><a href="#indexoptions">IndexOptions</a></code> keyword for details on overriding the size
     of this column, or allowing descriptions of unlimited length.</p>
 
@@ -351,7 +339,7 @@ icon selected by MIME content-type</td></tr>
       AddIcon /icons/dir.xbm ^^DIRECTORY^^<br />
       AddIcon /icons/backup.xbm *~
     </code></p></div>
-
+    
     <p><code class="directive"><a href="#addiconbytype">AddIconByType</a></code>
     should be used in preference to <code class="directive">AddIcon</code>,
     when possible.</p>
@@ -360,7 +348,7 @@ icon selected by MIME content-type</td></tr>
 <div class="top"><a href="#page-header"><img alt="top" src="../images/up.gif" /></a></div>
 <div class="directive-section"><h2><a name="AddIconByEncoding" id="AddIconByEncoding">AddIconByEncoding</a> <a name="addiconbyencoding" id="addiconbyencoding">Directive</a></h2>
 <table class="directive">
-<tr><th><a href="directive-dict.html#Description">Description:</a></th><td>Icon to display next to files selected by MIME
+<tr><th><a href="directive-dict.html#Description">Description:</a></th><td>Icon to display next to files selected by MIME 
 content-encoding</td></tr>
 <tr><th><a href="directive-dict.html#Syntax">Syntax:</a></th><td><code>AddIconByEncoding <var>icon</var> <var>MIME-encoding</var>
 [<var>MIME-encoding</var>] ...</code></td></tr>
@@ -375,8 +363,8 @@ content-encoding</td></tr>
     where <var>alttext</var> is the text tag given for an icon for
     non-graphical browsers.</p>
 
-    <p><var>MIME-encoding</var> is a valid content-encoding, such as
-    <code>x-compress</code>.</p>
+    <p><var>MIME-encoding</var> is a wildcard expression matching
+    required the content-encoding.</p>
 
     <div class="example"><h3>Example</h3><p><code>
       AddIconByEncoding /icons/compress.xbm x-compress
@@ -386,7 +374,7 @@ content-encoding</td></tr>
 <div class="top"><a href="#page-header"><img alt="top" src="../images/up.gif" /></a></div>
 <div class="directive-section"><h2><a name="AddIconByType" id="AddIconByType">AddIconByType</a> <a name="addiconbytype" id="addiconbytype">Directive</a></h2>
 <table class="directive">
-<tr><th><a href="directive-dict.html#Description">Description:</a></th><td>Icon to display next to files selected by MIME
+<tr><th><a href="directive-dict.html#Description">Description:</a></th><td>Icon to display next to files selected by MIME 
 content-type</td></tr>
 <tr><th><a href="directive-dict.html#Syntax">Syntax:</a></th><td><code>AddIconByType <var>icon</var> <var>MIME-type</var>
 [<var>MIME-type</var>] ...</code></td></tr>
@@ -458,7 +446,7 @@ of the index listing</td></tr>
       <div class="example"><h3>Example</h3><p><code>
         HeaderName /include/HEADER.html
       </code></p></div>
-
+      
       <p><var>Filename</var> must resolve to a document with a major
       content type of <code>text/*</code> (<em>e.g.</em>,
       <code>text/html</code>, <code>text/plain</code>, etc.). This means
@@ -488,28 +476,9 @@ of the index listing</td></tr>
 
 </div>
 <div class="top"><a href="#page-header"><img alt="top" src="../images/up.gif" /></a></div>
-<div class="directive-section"><h2><a name="IndexHeadInsert" id="IndexHeadInsert">IndexHeadInsert</a> <a name="indexheadinsert" id="indexheadinsert">Directive</a></h2>
-<table class="directive">
-<tr><th><a href="directive-dict.html#Description">Description:</a></th><td>Inserts text in the HEAD section of an index page.</td></tr>
-<tr><th><a href="directive-dict.html#Syntax">Syntax:</a></th><td><code>IndexHeadInsert <var>"markup ..."</var></code></td></tr>
-<tr><th><a href="directive-dict.html#Context">Context:</a></th><td>server config, virtual host, directory, .htaccess</td></tr>
-<tr><th><a href="directive-dict.html#Override">Override:</a></th><td>Indexes</td></tr>
-<tr><th><a href="directive-dict.html#Status">Status:</a></th><td>Base</td></tr>
-<tr><th><a href="directive-dict.html#Module">Module:</a></th><td>mod_autoindex</td></tr>
-</table>
-    <p>The <code class="directive">IndexHeadInsert</code> directive specifies a
-    string to insert in the <var>&lt;head&gt;</var> section of the HTML
-    generated for the index page.</p>
-    <div class="example"><h3>Example</h3><p><code>
-      
-      IndexHeadInsert "&lt;link rel=\"sitemap\" href=\"/sitemap.html\"&gt;"
-    </code></p></div>
-
-</div>
-<div class="top"><a href="#page-header"><img alt="top" src="../images/up.gif" /></a></div>
 <div class="directive-section"><h2><a name="IndexIgnore" id="IndexIgnore">IndexIgnore</a> <a name="indexignore" id="indexignore">Directive</a></h2>
 <table class="directive">
-<tr><th><a href="directive-dict.html#Description">Description:</a></th><td>Adds to the list of files to hide when listing
+<tr><th><a href="directive-dict.html#Description">Description:</a></th><td>Adds to the list of files to hide when listing 
 a directory</td></tr>
 <tr><th><a href="directive-dict.html#Syntax">Syntax:</a></th><td><code>IndexIgnore <var>file</var> [<var>file</var>] ...</code></td></tr>
 <tr><th><a href="directive-dict.html#Context">Context:</a></th><td>server config, virtual host, directory, .htaccess</td></tr>
@@ -533,7 +502,7 @@ a directory</td></tr>
 <div class="top"><a href="#page-header"><img alt="top" src="../images/up.gif" /></a></div>
 <div class="directive-section"><h2><a name="IndexOptions" id="IndexOptions">IndexOptions</a> <a name="indexoptions" id="indexoptions">Directive</a></h2>
 <table class="directive">
-<tr><th><a href="directive-dict.html#Description">Description:</a></th><td>Various configuration settings for directory
+<tr><th><a href="directive-dict.html#Description">Description:</a></th><td>Various configuration settings for directory 
 indexing</td></tr>
 <tr><th><a href="directive-dict.html#Syntax">Syntax:</a></th><td><code>IndexOptions  [+|-]<var>option</var> [[+|-]<var>option</var>]
 ...</code></td></tr>
@@ -547,19 +516,6 @@ indexing</td></tr>
     of</p>
 
     <dl>
-      <dt><a name="indexoptions.addaltclass" id="indexoptions.addaltclass">AddAltClass</a></dt>
-      <dd>Adds an additional CSS class declaration to each row of the
-      directory listing table when <code>IndexOptions HTMLTable</code> 
-      is in effect and an <code>IndexStyleSheet</code> is defined.
-      Rather than the standard <code>even</code> and <code>odd</code>
-      classes that would otherwise be applied to each row of the table,
-      a class of <code>even-<em>ALT</em></code> or
-      <code>odd-<em>ALT</em></code> where <em>ALT</em> is either the
-      standard alt text associated with the file style (eg. <em>snd</em>,
-      <em>txt</em>, <em>img</em>, etc) or the alt text defined by one of
-      the various <code>AddAlt*</code> directives.
-      </dd>
-
       <dt><a name="indexoptions.charset" id="indexoptions.charset">Charset=<var>character-set</var></a> (<em>Apache 2.0.61 and
       later</em>)</dt>
 
@@ -573,7 +529,19 @@ indexing</td></tr>
         IndexOptions Charset=UTF-8
       </code></p></div>
       </dd>
+      
+      <dt><a name="indexoptions.type" id="indexoptions.type">Type=<var>MIME content-type</var></a> (<em>Apache 2.0.61 and
+      later</em>)</dt>
 
+      <dd>The <code>Type</code> keyword allows you to
+      specify the MIME content-type of the generated page. The default
+      is <var>text/html</var>.
+
+      <div class="example"><h3>Example:</h3><p><code>
+        IndexOptions Type=text/plain
+      </code></p></div>
+      </dd>
+      
       <dt><a name="indexoptions.descriptionwidth" id="indexoptions.descriptionwidth">DescriptionWidth=[<var>n</var> | *]</a> (<em>Apache 2.0.23 and
       later</em>)</dt>
 
@@ -616,8 +584,8 @@ indexing</td></tr>
       <dt><a name="indexoptions.htmltable" id="indexoptions.htmltable">HTMLTable</a> (<em>Experimental,
       Apache 2.0.23 and later</em>)</dt>
 
-      <dd>This experimental option with <code>FancyIndexing</code> constructs
-      a simple table for the fancy directory listing. Note this will
+      <dd>This experimental option with FancyIndexing constructs a
+      simple table for the fancy directory listing. Note this will
       confuse older browsers. It is particularly necessary if file
       names or description text will alternate between
       left-to-right and right-to-left reading order, as can happen
@@ -630,13 +598,13 @@ indexing</td></tr>
 
       <dt><a name="indexoptions.iconheight" id="indexoptions.iconheight">IconHeight[=<var>pixels</var>]</a></dt>
 
-      <dd>Presence of this option, when used with <code>IconWidth</code>,
-      will cause the server to include <code>height</code> and
-      <code>width</code> attributes in the <code>img</code> tag for the file
-      icon. This allows browser to precalculate the page layout without having
-      to wait until all the images have been loaded. If no value is given for
-      the option, it defaults to the standard height of the icons supplied
-      with the Apache software.</dd>
+      <dd>Presence of this option, when used with IconWidth, will cause
+      the server to include <code>height</code> and <code>width</code>
+      attributes in the <code>img</code> tag for the file icon. This allows
+      browser to precalculate the page layout without having to wait until
+      all the images have been loaded. If no value is given for the option,
+      it defaults to the standard height of the icons supplied with the Apache
+      software.</dd>
 
       <dt><a name="indexoptions.iconwidth" id="indexoptions.iconwidth">IconWidth[=<var>pixels</var>]</a></dt>
 
@@ -651,11 +619,10 @@ indexing</td></tr>
 
       <dt><a name="indexoptions.ignorecase" id="indexoptions.ignorecase">IgnoreCase</a></dt>
 
-      <dd>If this option is enabled, names are sorted in a case-insensitive
-      manner.  For instance, if the sort order is ascending by name, and
-      <code>IgnoreCase</code> is enabled, file Zeta  will be listed after
-      file alfa (Note: file GAMMA will always be listed before file gamma).
-      </dd>
+      <dd>If this option is enabled, names are sorted in a case-insensitive 
+      manner.  For instance, if the sort order is ascending by name, and 
+      IgnoreCase is enabled, file Zeta  will be listed after file alfa 
+      (Note: file GAMMA will always be listed before file gamma). </dd>
 
       <dt><a name="indexoptions.ignoreclient" id="indexoptions.ignoreclient">IgnoreClient</a></dt>
 
@@ -669,8 +636,7 @@ indexing</td></tr>
       <dd>The <code>NameWidth</code> keyword allows you to specify the width
       of the filename column in bytes.</dd>
 
-      <dd><code>-NameWidth</code> (or unset) allows <code class="module"><a href="../mod/mod_autoindex.html">mod_autoindex</a></code> to calculate the best width, but only up
-      to 20 bytes wide.</dd>
+      <dd><code>-NameWidth</code> (or unset) allows <code class="module"><a href="../mod/mod_autoindex.html">mod_autoindex</a></code> to calculate the best width.</dd>
 
       <dd><code>NameWidth=<var>n</var></code> fixes the column width to
       <var>n</var> bytes wide.</dd>
@@ -689,8 +655,7 @@ indexing</td></tr>
       <dt><a name="indexoptions.showforbidden" id="indexoptions.showforbidden">ShowForbidden</a></dt>
 
       <dd>If specified, Apache will show files normally hidden because
-      the subrequest returned <code>HTTP_UNAUTHORIZED</code> or
-      <code>HTTP_FORBIDDEN</code></dd>
+      the subrequest returned HTTP_UNAUTHORIZED or HTTP_FORBIDDEN</dd>
 
       <dt><a name="indexoptions.suppresscolumnsorting" id="indexoptions.suppresscolumnsorting">SuppressColumnSorting</a></dt>
 
@@ -700,8 +665,8 @@ indexing</td></tr>
       column heading will sort the directory listing by the values
       in that column. <strong>Prior to Apache 2.0.23, this also
       disabled parsing the Query Arguments for the sort
-      string.</strong> That behavior is now controlled by <a href="#indexoptions.ignoreclient"><code>IndexOptions
-      IgnoreClient</code></a> in Apache 2.0.23.</dd>
+      string.</strong> That behavior is now controlled by <a href="#indexoptions.ignoreclient">IndexOptions
+      IgnoreClient</a> in Apache 2.0.23.</dd>
 
       <dt><a name="indexoptions.suppressdescription" id="indexoptions.suppressdescription">SuppressDescription</a></dt>
 
@@ -757,9 +722,9 @@ indexing</td></tr>
       <dt><a name="indexoptions.trackmodified" id="indexoptions.trackmodified">TrackModified</a> (<em>Apache
       2.0.23 and later</em>)</dt>
 
-      <dd>This returns the <code>Last-Modified</code> and <code>ETag</code>
-      values for the listed directory in the HTTP header. It is only valid
-      if the operating system and file system return appropriate stat()
+      <dd>This returns the Last-Modified and ETag values for the listed
+      directory in the HTTP header. It is only valid if the
+      operating system and file system return appropriate stat()
       results. Some Unix systems do so, as do OS2's JFS and Win32's
       NTFS volumes. OS2 and Win32 FAT volumes, for example, do not.
       Once this feature is enabled, the client or proxy can track
@@ -768,20 +733,8 @@ indexing</td></tr>
       removed files, but do not track changes for sizes or dates of
       the files within the directory. <strong>Changes to the size
       or date stamp of an existing file will not update the
-      <code>Last-Modified</code> header on all Unix platforms.</strong>
-      If this is a concern, leave this option disabled.</dd>
-
-      <dt><a name="indexoptions.type" id="indexoptions.type">Type=<var>MIME content-type</var></a> (<em>Apache 2.0.61 and
-      later</em>)</dt>
-
-      <dd>The <code>Type</code> keyword allows you to
-      specify the MIME content-type of the generated page. The default
-      is <var>text/html</var>.
-
-      <div class="example"><h3>Example:</h3><p><code>
-        IndexOptions Type=text/plain
-      </code></p></div>
-      </dd>
+      Last-Modified header on all Unix platforms.</strong> If this
+      is a concern, leave this option disabled.</dd>
 
       <dt><a name="indexoptions.versionsort" id="indexoptions.versionsort">VersionSort</a>
       (<em>Apache 2.0a3 and later</em>)</dt>
@@ -816,7 +769,6 @@ indexing</td></tr>
 
       <dd>The <code>XHTML</code> keyword forces <code class="module"><a href="../mod/mod_autoindex.html">mod_autoindex</a></code>
       to emit XHTML 1.0 code instead of HTML 3.2.</dd>
-
     </dl>
 
    
@@ -924,25 +876,6 @@ Name|Date|Size|Description</code></td></tr>
       IndexStyleSheet "/css/style.css"
     </code></p></div>
 
-    <p>Using this directive in conjunction with <code>IndexOptions
-    HTMLTable</code> adds a number of CSS classes to the resulting HTML.
-    The entire table is given a CSS id of <code>indexlist</code> and the
-    following classes are associated with the various parts of the
-    listing:</p>
-
-    <table>
-    <tr><th>Class</th><th>Definition</th></tr>
-    <tr><td>tr.indexhead</td><td>Header row of listing</td></tr>
-    <tr><td>th.indexcolicon and td.indexcolicon</td> <td>Icon column</td></tr>
-    <tr><td>th.indexcolname and td.indexcolname</td> <td>File name column</td></tr>
-    <tr><td>th.indexcollastmod and td.indexcollastmod</td> <td>Last modified column</td></tr>
-    <tr><td>th.indexcolsize and td.indexcolsize</td> <td>File size column</td></tr>
-    <tr><td>th.indexcoldesc and td.indexcoldesc</td> <td>Description column</td></tr>
-    <tr><td>tr.breakrow</td> <td>Horizontal rule at the bottom of the table</td></tr>
-    <tr><td>tr.odd and tr.even</td> <td>Alternating even and odd rows</td></tr>
-    </table>
-
-
 </div>
 <div class="top"><a href="#page-header"><img alt="top" src="../images/up.gif" /></a></div>
 <div class="directive-section"><h2><a name="ReadmeName" id="ReadmeName">ReadmeName</a> <a name="readmename" id="readmename">Directive</a></h2>
@@ -978,11 +911,9 @@ of the index listing</td></tr>
 </div>
 <div class="bottomlang">
 <p><span>Available Languages: </span><a href="../en/mod/mod_autoindex.html" title="English">&nbsp;en&nbsp;</a> |
-<a href="../fr/mod/mod_autoindex.html" hreflang="fr" rel="alternate" title="Français">&nbsp;fr&nbsp;</a> |
 <a href="../ja/mod/mod_autoindex.html" hreflang="ja" rel="alternate" title="Japanese">&nbsp;ja&nbsp;</a> |
-<a href="../ko/mod/mod_autoindex.html" hreflang="ko" rel="alternate" title="Korean">&nbsp;ko&nbsp;</a> |
-<a href="../tr/mod/mod_autoindex.html" hreflang="tr" rel="alternate" title="Türkçe">&nbsp;tr&nbsp;</a></p>
+<a href="../ko/mod/mod_autoindex.html" hreflang="ko" rel="alternate" title="Korean">&nbsp;ko&nbsp;</a></p>
 </div><div id="footer">
-<p class="apache">Copyright 2010 The Apache Software Foundation.<br />Licensed under the <a href="http://www.apache.org/licenses/LICENSE-2.0">Apache License, Version 2.0</a>.</p>
+<p class="apache">Copyright 2007 The Apache Software Foundation.<br />Licensed under the <a href="http://www.apache.org/licenses/LICENSE-2.0">Apache License, Version 2.0</a>.</p>
 <p class="menu"><a href="../mod/">Modules</a> | <a href="../mod/directives.html">Directives</a> | <a href="../faq/">FAQ</a> | <a href="../glossary.html">Glossary</a> | <a href="../sitemap.html">Sitemap</a></p></div>
 </body></html>

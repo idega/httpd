@@ -129,7 +129,7 @@ AP_DECLARE(apr_time_t) ap_rationalize_mtime(request_rec *r, apr_time_t mtime);
 /**
  * Build the content-type that should be sent to the client from the
  * content-type specified.  The following rules are followed:
- *    - if type is NULL or "", return NULL (do not set content-type).
+ *    - if type is NULL, type is set to ap_default_type(r)
  *    - if charset adding is disabled, stop processing and return type.
  *    - then, if there are no parameters on type, add the default charset
  *    - return type
@@ -140,11 +140,13 @@ AP_DECLARE(apr_time_t) ap_rationalize_mtime(request_rec *r, apr_time_t mtime);
 AP_DECLARE(const char *) ap_make_content_type(request_rec *r,
                                               const char *type);
 
+#ifdef CORE_PRIVATE
 /**
  * Precompile metadata structures used by ap_make_content_type()
  * @param pool The pool to use for allocations
  */
 AP_DECLARE(void) ap_setup_make_content_type(apr_pool_t *pool);
+#endif /* CORE_PRIVATE */
 
 /**
  * Construct an entity tag from the resource information.  If it's a real
@@ -265,7 +267,7 @@ AP_DECLARE(void) ap_copy_method_list(ap_method_list_t *dest,
  * return true if found.
  *
  * @param   method  String containing the name of the method to check.
- * @param   l       Pointer to a method list, such as r->allowed_methods.
+ * @param   l       Pointer to a method list, such as cmd->methods_limited.
  * @return  1 if method is in the list, otherwise 0
  */
 AP_DECLARE(int) ap_method_in_list(ap_method_list_t *l, const char *method);
@@ -275,7 +277,7 @@ AP_DECLARE(int) ap_method_in_list(ap_method_list_t *l, const char *method);
  * already listed.
  *
  * @param   method  String containing the name of the method to check.
- * @param   l       Pointer to a method list, such as r->allowed_methods.
+ * @param   l       Pointer to a method list, such as cmd->methods_limited.
  * @return  None.
  */
 AP_DECLARE(void) ap_method_list_add(ap_method_list_t *l, const char *method);
@@ -283,7 +285,7 @@ AP_DECLARE(void) ap_method_list_add(ap_method_list_t *l, const char *method);
 /**
  * Remove an HTTP method name from an ap_method_list_t structure.
  *
- * @param   l       Pointer to a method list, such as r->allowed_methods.
+ * @param   l       Pointer to a method list, such as cmd->methods_limited.
  * @param   method  String containing the name of the method to remove.
  * @return  None.
  */
@@ -293,7 +295,7 @@ AP_DECLARE(void) ap_method_list_remove(ap_method_list_t *l,
 /**
  * Reset a method list to be completely empty.
  *
- * @param   l       Pointer to a method list, such as r->allowed_methods.
+ * @param   l       Pointer to a method list, such as cmd->methods_limited.
  * @return  None.
  */
 AP_DECLARE(void) ap_clear_method_list(ap_method_list_t *l);
@@ -669,7 +671,7 @@ AP_DECLARE(void) ap_finalize_sub_req_protocol(request_rec *sub_r);
  * @param send_headers Whether to send&clear headers in r->headers_out
  */
 AP_DECLARE(void) ap_send_interim_response(request_rec *r, int send_headers);
-
+                                                                                
 #ifdef __cplusplus
 }
 #endif

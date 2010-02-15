@@ -30,9 +30,6 @@
 #include "apr_hash.h"
 #include "apr_optional.h"
 #include "util_filter.h"
-#include "ap_expr.h"
-
-#include "http_config.h"
 
 #if APR_HAVE_STRUCT_RLIMIT
 #include <sys/time.h>
@@ -68,7 +65,7 @@ extern "C" {
 #define OPT_NONE 0
 /** Indexes directive */
 #define OPT_INDEXES 1
-/** SSI is enabled without exec= permission  */
+/**  Includes directive */
 #define OPT_INCLUDES 2
 /**  FollowSymLinks directive */
 #define OPT_SYM_LINKS 4
@@ -76,14 +73,14 @@ extern "C" {
 #define OPT_EXECCGI 8
 /**  directive unset */
 #define OPT_UNSET 16
-/**  SSI exec= permission is permitted, iff OPT_INCLUDES is also set */
-#define OPT_INC_WITH_EXEC 32
+/**  IncludesNOEXEC directive */
+#define OPT_INCNOEXEC 32
 /** SymLinksIfOwnerMatch directive */
 #define OPT_SYM_OWNER 64
 /** MultiViews directive */
 #define OPT_MULTI 128
 /**  All directives */
-#define OPT_ALL (OPT_INDEXES|OPT_INCLUDES|OPT_INC_WITH_EXEC|OPT_SYM_LINKS|OPT_EXECCGI)
+#define OPT_ALL (OPT_INDEXES|OPT_INCLUDES|OPT_SYM_LINKS|OPT_EXECCGI)
 /** @} */
 
 /**
@@ -149,6 +146,13 @@ AP_DECLARE(int) ap_allow_options(request_rec *r);
 AP_DECLARE(int) ap_allow_overrides(request_rec *r);
 
 /**
+ * Retrieve the value of the DefaultType directive, or text/plain if not set
+ * @param r The current request
+ * @return The default type
+ */
+AP_DECLARE(const char *) ap_default_type(request_rec *r);     
+
+/**
  * Retrieve the document root for this server
  * @param r The current request
  * @warning Don't use this!  If your request went through a Userdir, or 
@@ -209,15 +213,6 @@ AP_DECLARE(char *) ap_construct_url(apr_pool_t *p, const char *uri, request_rec 
  * @return the server name
  */
 AP_DECLARE(const char *) ap_get_server_name(request_rec *r);
-
-/**
- * Get the current server name from the request for the purposes
- * of using in a URL.  If the server name is an IPv6 literal
- * address, it will be returned in URL format (e.g., "[fe80::1]").
- * @param r The current request
- * @return the server name
- */
-AP_DECLARE(const char *) ap_get_server_name_for_url(request_rec *r);
 
 /**
  * Get the current server port
@@ -310,6 +305,15 @@ AP_DECLARE(const char *) ap_auth_name(request_rec *r);
  * </pre>
  */
 AP_DECLARE(int) ap_satisfies(request_rec *r);
+
+/**
+ * Retrieve information about all of the requires directives for this request
+ * @param r The current request
+ * @return An array of all requires directives for this request
+ */
+AP_DECLARE(const apr_array_header_t *) ap_requires(request_rec *r);    
+
+#ifdef CORE_PRIVATE
 
 /**
  * Core is also unlike other modules in being implemented in more than
@@ -440,6 +444,20 @@ typedef struct {
     overrides_t override;
     allow_options_t override_opts;
     
+    /* MIME typing --- the core doesn't do anything at all with this,
+     * but it does know what to slap on a request for a document which
+     * goes untyped by other mechanisms before it slips out the door...
+     */
+    
+    char *ap_default_type;
+  
+    /* Authentication stuff.  Groan... */
+    
+    int *satisfy; /* for every method one */
+    char *ap_auth_type;
+    char *ap_auth_name;
+    apr_array_header_t *ap_requires;
+
     /* Custom response config. These can contain text or a URL to redirect to.
      * if response_code_strings is NULL then there are none in the config,
      * if it's not null then it's allocated to sizeof(char*)*RESPONSE_CODES.
@@ -456,7 +474,7 @@ typedef struct {
 #define HOSTNAME_LOOKUP_UNSET	3
     unsigned int hostname_lookups : 4;
 
-    unsigned int content_md5 : 2;  /* calculate Content-MD5? */
+    signed int content_md5 : 2;  /* calculate Content-MD5? */
 
 #define USE_CANONICAL_NAME_OFF   (0)
 #define USE_CANONICAL_NAME_ON    (1)
@@ -537,14 +555,15 @@ typedef struct {
 #define USE_CANONICAL_PHYS_PORT_UNSET (2)
     unsigned use_canonical_phys_port : 2;
 
-    ap_parse_node_t *condition;   /* Conditionally merge <If> sections */
 } core_dir_config;
 
 /* Per-server core configuration */
 
 typedef struct {
   
+#ifdef GPROF
     char *gprof_dir;
+#endif
 
     /* Name translations --- we want the core to be able to do *something*
      * so it's at least a minimally functional web server on its own (and
@@ -592,6 +611,7 @@ int ap_core_input_filter(ap_filter_t *f, apr_bucket_brigade *b,
                          apr_off_t readbytes);
 apr_status_t ap_core_output_filter(ap_filter_t *f, apr_bucket_brigade *b);
 
+#endif /* CORE_PRIVATE */
 
 AP_DECLARE(const char*) ap_get_server_protocol(server_rec* s);
 AP_DECLARE(void) ap_set_server_protocol(server_rec* s, const char* proto);
@@ -652,11 +672,6 @@ AP_DECLARE_HOOK(int, get_mgmt_items,
 APR_DECLARE_OPTIONAL_FN(void, ap_logio_add_bytes_out,
                         (conn_rec *c, apr_off_t bytes));
 
-APR_DECLARE_OPTIONAL_FN(void, ap_logio_add_bytes_in,
-                        (conn_rec *c, apr_off_t bytes));
-
-APR_DECLARE_OPTIONAL_FN(apr_off_t, ap_logio_get_last_bytes, (conn_rec *c));
-
 /* ----------------------------------------------------------------------
  *
  * ident lookups with mod_ident
@@ -664,22 +679,6 @@ APR_DECLARE_OPTIONAL_FN(apr_off_t, ap_logio_get_last_bytes, (conn_rec *c));
 
 APR_DECLARE_OPTIONAL_FN(const char *, ap_ident_lookup,
                         (request_rec *r));
-
-/* ----------------------------------------------------------------------
- *
- * authorization values with mod_authz_core
- */
-
-APR_DECLARE_OPTIONAL_FN(int, authz_some_auth_required, (request_rec *r));
-APR_DECLARE_OPTIONAL_FN(const char *, authn_ap_auth_type, (request_rec *r));
-APR_DECLARE_OPTIONAL_FN(const char *, authn_ap_auth_name, (request_rec *r));
-
-/* ----------------------------------------------------------------------
- *
- * authorization values with mod_access_compat
- */
-
-APR_DECLARE_OPTIONAL_FN(int, access_compat_ap_satisfies, (request_rec *r));
 
 /* ---------------------------------------------------------------------- */
 

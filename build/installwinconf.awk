@@ -85,27 +85,26 @@ BEGIN {
 	  print "#" > dstfl;
 	  print "# NOTE: Where filenames are specified, you must use forward slashes" > dstfl;
 	  print "# instead of backslashes (e.g., \"c:/apache\" instead of \"c:\\apache\")." > dstfl;
-	  print "# If a drive letter is omitted, the drive on which httpd.exe is located" > dstfl;
+	  print "# If a drive letter is omitted, the drive on which Apache.exe is located" > dstfl;
 	  print "# will be used by default.  It is recommended that you always supply" > dstfl;
 	  print "# an explicit drive letter in absolute paths to avoid confusion." > dstfl;
 	  bswarning = 0;
         }
 	if ( /@@LoadModule@@/ ) {
-	  print "LoadModule access_compat_module modules/mod_access_compat.so" > dstfl;
 	  print "LoadModule actions_module modules/mod_actions.so" > dstfl;
 	  print "LoadModule alias_module modules/mod_alias.so" > dstfl;
 	  print "LoadModule asis_module modules/mod_asis.so" > dstfl;
 	  print "LoadModule auth_basic_module modules/mod_auth_basic.so" > dstfl;
 	  print "#LoadModule auth_digest_module modules/mod_auth_digest.so" > dstfl;
+	  print "#LoadModule authn_alias_module modules/mod_authn_alias.so" > dstfl;
 	  print "#LoadModule authn_anon_module modules/mod_authn_anon.so" > dstfl;
-	  print "LoadModule authn_core_module modules/mod_authn_core.so" > dstfl;
 	  print "#LoadModule authn_dbd_module modules/mod_authn_dbd.so" > dstfl;
 	  print "#LoadModule authn_dbm_module modules/mod_authn_dbm.so" > dstfl;
+	  print "LoadModule authn_default_module modules/mod_authn_default.so" > dstfl;
 	  print "LoadModule authn_file_module modules/mod_authn_file.so" > dstfl;
 	  print "#LoadModule authnz_ldap_module modules/mod_authnz_ldap.so" > dstfl;
-	  print "LoadModule authz_core_module modules/mod_authz_core.so" > dstfl;
-	  print "#LoadModule authz_dbd_module modules/mod_authz_dbd.so" > dstfl;
 	  print "#LoadModule authz_dbm_module modules/mod_authz_dbm.so" > dstfl;
+	  print "LoadModule authz_default_module modules/mod_authz_default.so" > dstfl;
 	  print "LoadModule authz_groupfile_module modules/mod_authz_groupfile.so" > dstfl;
 	  print "LoadModule authz_host_module modules/mod_authz_host.so" > dstfl;
 	  print "#LoadModule authz_owner_module modules/mod_authz_owner.so" > dstfl;
@@ -138,6 +137,7 @@ BEGIN {
 	  print "#LoadModule logio_module modules/mod_logio.so" > dstfl;
 	  print "LoadModule log_config_module modules/mod_log_config.so" > dstfl;
 	  print "#LoadModule log_forensic_module modules/mod_log_forensic.so" > dstfl;
+	  print "#LoadModule mem_cache_module modules/mod_mem_cache.so" > dstfl;
 	  print "LoadModule mime_module modules/mod_mime.so" > dstfl;
 	  print "#LoadModule mime_magic_module modules/mod_mime_magic.so" > dstfl;
 	  print "LoadModule negotiation_module modules/mod_negotiation.so" > dstfl;
@@ -145,7 +145,6 @@ BEGIN {
 	  print "#LoadModule proxy_ajp_module modules/mod_proxy_ajp.so" > dstfl;
 	  print "#LoadModule proxy_balancer_module modules/mod_proxy_balancer.so" > dstfl;
 	  print "#LoadModule proxy_connect_module modules/mod_proxy_connect.so" > dstfl;
-	  print "#LoadModule proxy_fcgi_module modules/mod_proxy_fcgi.so" > dstfl;
 	  print "#LoadModule proxy_ftp_module modules/mod_proxy_ftp.so" > dstfl;
 	  print "#LoadModule proxy_http_module modules/mod_proxy_http.so" > dstfl;
 	  print "#LoadModule rewrite_module modules/mod_rewrite.so" > dstfl;

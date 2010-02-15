@@ -54,6 +54,7 @@
  *          [Jim J.]
  */
 
+#define CORE_PRIVATE
 #include "httpd.h"
 #include "http_config.h"
 #include "http_core.h"
@@ -71,6 +72,18 @@
 #define APR_WANT_STRFUNC
 #include "apr_want.h"
 #include "apr_strings.h"
+
+#ifdef NEXT
+#if (NX_CURRENT_COMPILER_RELEASE == 410)
+#ifdef m68k
+#define HZ 64
+#else
+#define HZ 100
+#endif
+#else
+#include <machine/param.h>
+#endif
+#endif /* NEXT */
 
 #define STATUS_MAXLINE 64
 
@@ -101,6 +114,41 @@ APR_IMPLEMENT_OPTIONAL_HOOK_RUN_ALL(ap, STATUS, int, status_hook,
  */
 static pid_t child_pid;
 #endif
+
+/*
+ * command-related code. This is here to prevent use of ExtendedStatus
+ * without status_module included.
+ */
+static const char *set_extended_status(cmd_parms *cmd, void *dummy, int arg)
+{
+    const char *err = ap_check_cmd_context(cmd, GLOBAL_ONLY);
+    if (err != NULL) {
+        return err;
+    }
+    ap_extended_status = arg;
+    return NULL;
+}
+
+static const char *set_reqtail(cmd_parms *cmd, void *dummy, int arg)
+{
+    const char *err = ap_check_cmd_context(cmd, GLOBAL_ONLY);
+    if (err != NULL) {
+        return err;
+    }
+    ap_mod_status_reqtail = arg;
+    return NULL;
+}
+
+
+static const command_rec status_module_cmds[] =
+{
+    AP_INIT_FLAG("ExtendedStatus", set_extended_status, NULL, RSRC_CONF,
+      "\"On\" to enable extended status information, \"Off\" to disable"),
+    AP_INIT_FLAG("SeeRequestTail", set_reqtail, NULL, RSRC_CONF,
+      "For verbose requests, \"On\" to see the last 63 chars of the request, "
+      "\"Off\" (default) to see the first 63 in extended status display"),
+    {NULL}
+};
 
 /* Format the number of bytes nicely */
 static void format_byte_out(request_rec *r, apr_off_t bytes)
@@ -198,14 +246,12 @@ static int status_handler(request_rec *r)
     char *stat_buffer;
     pid_t *pid_buffer, worker_pid;
     clock_t tu, ts, tcu, tcs;
-    ap_generation_t mpm_generation, worker_generation;
+    ap_generation_t worker_generation;
 
     if (strcmp(r->handler, STATUS_MAGIC_TYPE) &&
         strcmp(r->handler, "server-status")) {
         return DECLINED;
     }
-
-    ap_mpm_query(AP_MPMQ_GENERATION, &mpm_generation);
 
 #ifdef HAVE_TIMES
 #ifdef _SC_CLK_TCK
@@ -287,14 +333,14 @@ static int status_handler(request_rec *r)
         for (j = 0; j < thread_limit; ++j) {
             int indx = (i * thread_limit) + j;
 
-            ws_record = ap_get_scoreboard_worker_from_indexes(i, j);
+            ws_record = ap_get_scoreboard_worker(i, j);
             res = ws_record->status;
             stat_buffer[indx] = status_flags[res];
 
             if (!ps_record->quiescing
                 && ps_record->pid) {
                 if (res == SERVER_READY
-                    && ps_record->generation == mpm_generation)
+                    && ps_record->generation == ap_my_generation)
                     ready++;
                 else if (res != SERVER_DEAD &&
                          res != SERVER_STARTING &&
@@ -377,7 +423,7 @@ static int status_handler(request_rec *r)
                              DEFAULT_TIME_FORMAT, 0),
                   "</dt>\n", NULL);
         ap_rprintf(r, "<dt>Parent Server Generation: %d</dt>\n",
-                   (int)mpm_generation);
+                   (int)ap_my_generation);
         ap_rputs("<dt>Server uptime: ", r);
         show_time(r, up_time);
         ap_rputs("</dt>\n", r);
@@ -397,13 +443,14 @@ static int status_handler(request_rec *r)
 #endif
 
             ap_rprintf(r, "Uptime: %ld\n", (long) (up_time));
-            if (up_time > 0) {
+            if (up_time > 0)
                 ap_rprintf(r, "ReqPerSec: %g\n",
                            (float) count / (float) up_time);
 
+            if (up_time > 0)
                 ap_rprintf(r, "BytesPerSec: %g\n",
                            KBYTE * (float) kbcount / (float) up_time);
-            }
+
             if (count > 0)
                 ap_rprintf(r, "BytesPerReq: %g\n",
                            KBYTE * (float) kbcount / (float) count);
@@ -423,10 +470,11 @@ static int status_handler(request_rec *r)
                            (tu + ts + tcu + tcs) / tick / up_time * 100.);
 #endif
 
-            if (up_time > 0) {
+            if (up_time > 0)
                 ap_rprintf(r, "<dt>%.3g requests/sec - ",
                            (float) count / (float) up_time);
 
+            if (up_time > 0) {
                 format_byte_out(r, (unsigned long)(KBYTE * (float) kbcount
                                                    / (float) up_time));
                 ap_rputs("/second - ", r);
@@ -526,7 +574,7 @@ static int status_handler(request_rec *r)
 
         for (i = 0; i < server_limit; ++i) {
             for (j = 0; j < thread_limit; ++j) {
-                ws_record = ap_get_scoreboard_worker_from_indexes(i, j);
+                ws_record = ap_get_scoreboard_worker(i, j);
 
                 if (ws_record->access_count == 0 &&
                     (ws_record->status == SERVER_READY ||
@@ -719,15 +767,19 @@ static int status_handler(request_rec *r)
                                (float)conn_bytes / KBYTE, (float) my_bytes / MBYTE,
                                (float)bytes / MBYTE);
 
-                    ap_rprintf(r, "</td><td>%s</td><td nowrap>%s</td>"
-                                  "<td nowrap>%s</td></tr>\n\n",
-                               ap_escape_html(r->pool,
-                                              ws_record->client),
-                               ap_escape_html(r->pool,
-                                              ws_record->vhost),
-                               ap_escape_html(r->pool,
-                                              ap_escape_logitem(r->pool, 
-                                                      ws_record->request)));
+                    if (ws_record->status == SERVER_BUSY_READ)
+                        ap_rprintf(r,
+                                   "</td><td>?</td><td nowrap>?</td><td nowrap>..reading.. </td></tr>\n\n");
+                    else
+                        ap_rprintf(r,
+                                   "</td><td>%s</td><td nowrap>%s</td><td nowrap>%s</td></tr>\n\n",
+                                   ap_escape_html(r->pool,
+                                                  ws_record->client),
+                                   ap_escape_html(r->pool,
+                                                  ws_record->vhost),
+                                   ap_escape_html(r->pool,
+                                                  ap_escape_logitem(r->pool, 
+                                                                    ws_record->request)));
                 } /* no_table_report */
             } /* for (j...) */
         } /* for (i...) */
@@ -780,16 +832,6 @@ static int status_handler(request_rec *r)
     return 0;
 }
 
-static int status_pre_config(apr_pool_t *p, apr_pool_t *plog, apr_pool_t *ptemp)
-{
-    /* When mod_status is loaded, default our ExtendedStatus to 'on'
-     * other modules which prefer verbose scoreboards may play a similar game.
-     * If left to their own requirements, mpm modules can make do with simple
-     * scoreboard entries.
-     */
-    ap_extended_status = 1;
-    return OK;
-}
 
 static int status_init(apr_pool_t *p, apr_pool_t *plog, apr_pool_t *ptemp,
                        server_rec *s)
@@ -820,7 +862,6 @@ static void status_child_init(apr_pool_t *p, server_rec *s)
 static void register_hooks(apr_pool_t *p)
 {
     ap_hook_handler(status_handler, NULL, NULL, APR_HOOK_MIDDLE);
-    ap_hook_pre_config(status_pre_config, NULL, NULL, APR_HOOK_LAST);
     ap_hook_post_config(status_init, NULL, NULL, APR_HOOK_MIDDLE);
 #ifdef HAVE_TIMES
     ap_hook_child_init(status_child_init, NULL, NULL, APR_HOOK_MIDDLE);
@@ -834,7 +875,7 @@ module AP_MODULE_DECLARE_DATA status_module =
     NULL,                       /* dir merger --- default is to override */
     NULL,                       /* server config */
     NULL,                       /* merge server config */
-    NULL,                       /* command table */
+    status_module_cmds,         /* command table */
     register_hooks              /* register_hooks */
 };
 

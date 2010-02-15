@@ -3,4 +3,7 @@
 # Created by configure
 
 "./configure" \
+"--prefix=/usr/local/apache2" \
+"--enable-mods-shared=all proxy proxy-ajp proxy-balancer filter deflate expires ssl rewrite mime-magic mem-cache info disk-cache dav dav-fs dav-lock" \
+"--with-mpm=worker" \
 "$@"

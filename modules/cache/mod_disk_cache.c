@@ -102,7 +102,7 @@ static char *data_file(apr_pool_t *p, disk_cache_conf *conf,
      }
 }
 
-static apr_status_t mkdir_structure(disk_cache_conf *conf, const char *file, apr_pool_t *pool)
+static void mkdir_structure(disk_cache_conf *conf, const char *file, apr_pool_t *pool)
 {
     apr_status_t rv;
     char *p;
@@ -116,12 +116,11 @@ static apr_status_t mkdir_structure(disk_cache_conf *conf, const char *file, apr
         rv = apr_dir_make(file,
                           APR_UREAD|APR_UWRITE|APR_UEXECUTE, pool);
         if (rv != APR_SUCCESS && !APR_STATUS_IS_EEXIST(rv)) {
-            return rv;
+            /* XXX */
         }
         *p = '/';
         ++p;
     }
-    return APR_SUCCESS;
 }
 
 /* htcacheclean may remove directories underneath us.
@@ -142,9 +141,7 @@ static apr_status_t safe_file_rename(disk_cache_conf *conf,
             /* 1000 micro-seconds aka 0.001 seconds. */
             apr_sleep(1000);
 
-            rv = mkdir_structure(conf, dest, pool);
-            if (rv != APR_SUCCESS)
-                continue;
+            mkdir_structure(conf, dest, pool);
 
             rv = apr_file_rename(src, dest, pool);
         }
@@ -333,22 +330,6 @@ static int create_entity(cache_handle_t *h, request_rec *r, const char *key, apr
         return DECLINED;
     }
 
-    /* Note, len is -1 if unknown so don't trust it too hard */
-    if (len > conf->maxfs) {
-        ap_log_error(APLOG_MARK, APLOG_DEBUG, 0, r->server,
-                     "disk_cache: URL %s failed the size check "
-                     "(%" APR_OFF_T_FMT " > %" APR_OFF_T_FMT ")",
-                     key, len, conf->maxfs);
-        return DECLINED;
-    }
-    if (len >= 0 && len < conf->minfs) {
-        ap_log_error(APLOG_MARK, APLOG_DEBUG, 0, r->server,
-                     "disk_cache: URL %s failed the size check "
-                     "(%" APR_OFF_T_FMT " < %" APR_OFF_T_FMT ")",
-                     key, len, conf->minfs);
-        return DECLINED;
-    }
-
     /* Allocate and initialize cache_object_t and disk_cache_object_t */
     h->cache_obj = obj = apr_pcalloc(r->pool, sizeof(*obj));
     obj->vobj = dobj = apr_pcalloc(r->pool, sizeof(*dobj));
@@ -376,10 +357,6 @@ static int open_entity(cache_handle_t *h, request_rec *r, const char *key)
     static int error_logged = 0;
     disk_cache_conf *conf = ap_get_module_config(r->server->module_config,
                                                  &disk_cache_module);
-#ifdef APR_SENDFILE_ENABLED
-    core_dir_config *coreconf = ap_get_module_config(r->per_dir_config,
-                                                     &core_module);
-#endif
     apr_finfo_t finfo;
     cache_object_t *obj;
     cache_info *info;
@@ -453,7 +430,7 @@ static int open_entity(cache_handle_t *h, request_rec *r, const char *key)
     }
     else if (format != DISK_FORMAT_VERSION) {
         ap_log_error(APLOG_MARK, APLOG_ERR, 0, r->server,
-                     "disk_cache: File '%s' has a version mismatch. File had version: %d.",
+                     "cache_disk: File '%s' has a version mismatch. File had version: %d.",
                      dobj->hdrsfile, format);
         return DECLINED;
     }
@@ -475,17 +452,11 @@ static int open_entity(cache_handle_t *h, request_rec *r, const char *key)
     /* Open the data file */
     flags = APR_READ|APR_BINARY;
 #ifdef APR_SENDFILE_ENABLED
-    /* When we are in the quick handler we don't have the per-directory
-     * configuration, so this check only takes the globel setting of
-     * the EnableSendFile directive into account.
-     */
-    flags |= ((coreconf->enable_sendfile == ENABLE_SENDFILE_OFF)
-              ? 0 : APR_SENDFILE_ENABLED);
+    flags |= APR_SENDFILE_ENABLED;
 #endif
     rc = apr_file_open(&dobj->fd, dobj->datafile, flags, 0, r->pool);
     if (rc != APR_SUCCESS) {
-        ap_log_error(APLOG_MARK, APLOG_ERR, rc, r->server,
-                 "disk_cache: Cannot open info header file %s",  dobj->datafile);
+        /* XXX: Log message */
         return DECLINED;
     }
 
@@ -497,8 +468,7 @@ static int open_entity(cache_handle_t *h, request_rec *r, const char *key)
     /* Read the bytes to setup the cache_info fields */
     rc = file_cache_recall_mydata(dobj->hfd, info, dobj, r);
     if (rc != APR_SUCCESS) {
-        ap_log_error(APLOG_MARK, APLOG_ERR, rc, r->server,
-                 "disk_cache: Cannot read header file %s",  dobj->hdrsfile);
+        /* XXX log message */
         return DECLINED;
     }
 
@@ -763,8 +733,7 @@ static apr_status_t recall_headers(cache_handle_t *h, request_rec *r)
 
     /* This case should not happen... */
     if (!dobj->hfd) {
-        ap_log_error(APLOG_MARK, APLOG_ERR, 0, r->server,
-                 "disk_cache: recalling headers; but no header fd for %s", dobj->name);
+        /* XXX log message */
         return APR_NOTFOUND;
     }
 
@@ -787,8 +756,9 @@ static apr_status_t recall_body(cache_handle_t *h, apr_pool_t *p, apr_bucket_bri
     apr_bucket *e;
     disk_cache_object_t *dobj = (disk_cache_object_t*) h->cache_obj->vobj;
 
-    apr_brigade_insert_file(bb, dobj->fd, 0, dobj->file_size, p);
-
+    e = apr_bucket_file_create(dobj->fd, 0, (apr_size_t) dobj->file_size, p,
+                               bb->bucket_alloc);
+    APR_BRIGADE_INSERT_HEAD(bb, e);
     e = apr_bucket_eos_create(bb->bucket_alloc);
     APR_BRIGADE_INSERT_TAIL(bb, e);
 
@@ -861,16 +831,13 @@ static apr_status_t store_headers(cache_handle_t *h, request_rec *r, cache_info 
                 dobj->prefix = NULL;
             }
 
-            rv = mkdir_structure(conf, dobj->hdrsfile, r->pool);
+            mkdir_structure(conf, dobj->hdrsfile, r->pool);
 
             rv = apr_file_mktemp(&dobj->tfd, dobj->tempfile,
                                  APR_CREATE | APR_WRITE | APR_BINARY | APR_EXCL,
                                  r->pool);
 
             if (rv != APR_SUCCESS) {
-                ap_log_error(APLOG_MARK, APLOG_WARNING, rv, r->server,
-                    "disk_cache: could not create temp file %s",
-                    dobj->tempfile);
                 return rv;
             }
 
@@ -895,7 +862,7 @@ static apr_status_t store_headers(cache_handle_t *h, request_rec *r, cache_info 
                 ap_log_error(APLOG_MARK, APLOG_WARNING, rv, r->server,
                     "disk_cache: rename tempfile to varyfile failed: %s -> %s",
                     dobj->tempfile, dobj->hdrsfile);
-                    apr_file_remove(dobj->tempfile, r->pool);
+                apr_file_remove(dobj->tempfile, r->pool);
                 return rv;
             }
 
@@ -914,9 +881,6 @@ static apr_status_t store_headers(cache_handle_t *h, request_rec *r, cache_info 
                          APR_BUFFERED | APR_EXCL, r->pool);
 
     if (rv != APR_SUCCESS) {
-       ap_log_error(APLOG_MARK, APLOG_WARNING, rv, r->server,
-           "disk_cache: could not create temp file %s",
-           dobj->tempfile);
         return rv;
     }
 
@@ -937,22 +901,25 @@ static apr_status_t store_headers(cache_handle_t *h, request_rec *r, cache_info 
 
     rv = apr_file_writev(dobj->hfd, (const struct iovec *) &iov, 2, &amt);
     if (rv != APR_SUCCESS) {
-       ap_log_error(APLOG_MARK, APLOG_WARNING, rv, r->server,
-           "disk_cache: could not write info to header file %s",
-           dobj->hdrsfile);
         return rv;
     }
 
     if (r->headers_out) {
         apr_table_t *headers_out;
 
-        headers_out = ap_cache_cacheable_headers_out(r);
+        headers_out = ap_cache_cacheable_hdrs_out(r->pool, r->headers_out,
+                                                  r->server);
 
+        if (!apr_table_get(headers_out, "Content-Type")
+            && r->content_type) {
+            apr_table_setn(headers_out, "Content-Type",
+                           ap_make_content_type(r, r->content_type));
+        }
+
+        headers_out = apr_table_overlay(r->pool, headers_out,
+                                        r->err_headers_out);
         rv = store_table(dobj->hfd, headers_out);
         if (rv != APR_SUCCESS) {
-           ap_log_error(APLOG_MARK, APLOG_WARNING, rv, r->server,
-               "disk_cache: could not write out-headers to header file %s",
-               dobj->hdrsfile);
             return rv;
         }
     }
@@ -962,13 +929,10 @@ static apr_status_t store_headers(cache_handle_t *h, request_rec *r, cache_info 
     if (r->headers_in) {
         apr_table_t *headers_in;
 
-        headers_in = ap_cache_cacheable_headers_in(r);
-
+        headers_in = ap_cache_cacheable_hdrs_out(r->pool, r->headers_in,
+                                                 r->server);
         rv = store_table(dobj->hfd, headers_in);
         if (rv != APR_SUCCESS) {
-           ap_log_error(APLOG_MARK, APLOG_WARNING, rv, r->server,
-               "disk_cache: could not write in-headers to header file %s",
-               dobj->hdrsfile);
             return rv;
         }
     }
@@ -981,7 +945,7 @@ static apr_status_t store_headers(cache_handle_t *h, request_rec *r, cache_info 
      */
     rv = apr_file_remove(dobj->hdrsfile, r->pool);
     if (rv != APR_SUCCESS) {
-        rv = mkdir_structure(conf, dobj->hdrsfile, r->pool);
+        mkdir_structure(conf, dobj->hdrsfile, r->pool);
     }
 
     rv = safe_file_rename(conf, dobj->tempfile, dobj->hdrsfile, r->pool);
@@ -1031,7 +995,7 @@ static apr_status_t store_body(cache_handle_t *h, request_rec *r,
         rv = apr_bucket_read(e, &str, &length, APR_BLOCK_READ);
         if (rv != APR_SUCCESS) {
             ap_log_error(APLOG_MARK, APLOG_ERR, 0, r->server,
-                         "disk_cache: Error when reading bucket for URL %s",
+                         "cache_disk: Error when reading bucket for URL %s",
                          h->cache_obj->key);
             /* Remove the intermediate cache file and return non-APR_SUCCESS */
             file_cache_errorcleanup(dobj, r);
@@ -1040,7 +1004,7 @@ static apr_status_t store_body(cache_handle_t *h, request_rec *r,
         rv = apr_file_write_full(dobj->tfd, str, length, &written);
         if (rv != APR_SUCCESS) {
             ap_log_error(APLOG_MARK, APLOG_ERR, 0, r->server,
-                         "disk_cache: Error when writing cache file for URL %s",
+                         "cache_disk: Error when writing cache file for URL %s",
                          h->cache_obj->key);
             /* Remove the intermediate cache file and return non-APR_SUCCESS */
             file_cache_errorcleanup(dobj, r);
@@ -1049,8 +1013,8 @@ static apr_status_t store_body(cache_handle_t *h, request_rec *r,
         dobj->file_size += written;
         if (dobj->file_size > conf->maxfs) {
             ap_log_error(APLOG_MARK, APLOG_DEBUG, 0, r->server,
-                         "disk_cache: URL %s failed the size check "
-                         "(%" APR_OFF_T_FMT ">%" APR_OFF_T_FMT ")",
+                         "cache_disk: URL %s failed the size check "
+                         "(%" APR_OFF_T_FMT " > %" APR_OFF_T_FMT ")",
                          h->cache_obj->key, dobj->file_size, conf->maxfs);
             /* Remove the intermediate cache file and return non-APR_SUCCESS */
             file_cache_errorcleanup(dobj, r);
@@ -1062,8 +1026,6 @@ static apr_status_t store_body(cache_handle_t *h, request_rec *r,
      * sanity checks.
      */
     if (APR_BUCKET_IS_EOS(APR_BRIGADE_LAST(bb))) {
-        const char *cl_header = apr_table_get(r->headers_out, "Content-Length");
-
         if (r->connection->aborted || r->no_cache) {
             ap_log_error(APLOG_MARK, APLOG_INFO, 0, r->server,
                          "disk_cache: Discarding body for URL %s "
@@ -1075,23 +1037,12 @@ static apr_status_t store_body(cache_handle_t *h, request_rec *r,
         }
         if (dobj->file_size < conf->minfs) {
             ap_log_error(APLOG_MARK, APLOG_DEBUG, 0, r->server,
-                         "disk_cache: URL %s failed the size check "
-                         "(%" APR_OFF_T_FMT "<%" APR_OFF_T_FMT ")",
+                         "cache_disk: URL %s failed the size check "
+                         "(%" APR_OFF_T_FMT " < %" APR_OFF_T_FMT ")",
                          h->cache_obj->key, dobj->file_size, conf->minfs);
             /* Remove the intermediate cache file and return non-APR_SUCCESS */
             file_cache_errorcleanup(dobj, r);
             return APR_EGENERAL;
-        }
-        if (cl_header) {
-            apr_off_t cl = (apr_off_t) apr_atoi64(cl_header);
-            if ((errno == 0) && (dobj->file_size != cl)) {
-                ap_log_error(APLOG_MARK, APLOG_DEBUG, 0, r->server,
-                             "disk_cache: URL %s didn't receive complete response, not caching",
-                             h->cache_obj->key);
-                /* Remove the intermediate cache file and return non-APR_SUCCESS */
-                file_cache_errorcleanup(dobj, r);
-                return APR_EGENERAL;
-            }
         }
 
         /* All checks were fine. Move tempfile to final destination */

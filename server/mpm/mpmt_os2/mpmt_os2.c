@@ -36,6 +36,7 @@
  Todo list
  - Enforce MaxClients somehow
 */
+#define CORE_PRIVATE
 #define INCL_NOPMAPI
 #define INCL_DOS
 #define INCL_DOSERRORS
@@ -48,11 +49,11 @@
 #include "http_config.h"
 #include "http_core.h"  /* for get_remote_host */
 #include "http_connection.h"
+#include "mpm.h"
 #include "ap_mpm.h"
 #include "ap_listen.h"
 #include "apr_portable.h"
 #include "mpm_common.h"
-#include "scoreboard.h"
 #include "apr_strings.h"
 #include <os2.h>
 #include <process.h>
@@ -110,7 +111,7 @@ void ap_mpm_child_main(apr_pool_t *pconf);
 static void set_signals();
 
 
-static int mpmt_os2_run(apr_pool_t *_pconf, apr_pool_t *plog, server_rec *s )
+int ap_mpm_run(apr_pool_t *_pconf, apr_pool_t *plog, server_rec *s )
 {
     char *listener_shm_name;
     parent_info_t *parent_info;
@@ -272,6 +273,12 @@ static char master_main()
                 ap_get_server_description());
     ap_log_error(APLOG_MARK, APLOG_INFO, 0, ap_server_conf,
                 "Server built: %s", ap_get_server_built());
+#ifdef AP_MPM_WANT_SET_ACCEPT_LOCK_MECH
+    ap_log_error(APLOG_MARK, APLOG_DEBUG, 0, ap_server_conf,
+                "AcceptMutex: %s (default: %s)",
+                apr_proc_mutex_name(accept_mutex),
+                apr_proc_mutex_defname());
+#endif
     if (one_process) {
         ap_scoreboard_image->parent[0].pid = getpid();
         ap_mpm_child_main(pconf);
@@ -408,70 +415,43 @@ static void set_signals()
 
 /* Enquiry functions used get MPM status info */
 
-static apr_status_t mpmt_os2_query(int query_code, int *result, apr_status_t *rv)
+AP_DECLARE(apr_status_t) ap_mpm_query(int query_code, int *result)
 {
-    *rv = APR_SUCCESS;
-
     switch (query_code) {
         case AP_MPMQ_MAX_DAEMON_USED:
             *result = ap_max_daemons_limit;
-            break;
-
+            return APR_SUCCESS;
         case AP_MPMQ_IS_THREADED:
             *result = AP_MPMQ_DYNAMIC;
-            break;
-
+            return APR_SUCCESS;
         case AP_MPMQ_IS_FORKED:
             *result = AP_MPMQ_NOT_SUPPORTED;
-            break;
-
+            return APR_SUCCESS;
         case AP_MPMQ_HARD_LIMIT_DAEMONS:
             *result = HARD_SERVER_LIMIT;
-            break;
-
+            return APR_SUCCESS;
         case AP_MPMQ_HARD_LIMIT_THREADS:
             *result = HARD_THREAD_LIMIT;
-            break;
-
+            return APR_SUCCESS;
         case AP_MPMQ_MIN_SPARE_DAEMONS:
             *result = 0;
-            break;
-
+            return APR_SUCCESS;
         case AP_MPMQ_MAX_SPARE_DAEMONS:
             *result = 0;
-            break;
-
+            return APR_SUCCESS;
         case AP_MPMQ_MAX_REQUESTS_DAEMON:
             *result = ap_max_requests_per_child;
-            break;
-
-        case AP_MPMQ_GENERATION:
-            *result = ap_my_generation;
-            break;
-
-        default:
-            *rv = APR_ENOTIMPL;
-            break;
+            return APR_SUCCESS;
     }
-
-    return OK;
+    return APR_ENOTIMPL;
 }
 
 
 
-static const char *mpmt_os2_note_child_killed(int childnum)
+int ap_graceful_stop_signalled(void)
 {
-  ap_scoreboard_image->parent[childnum].pid = 0;
-  return APR_SUCCESS;
+    return is_graceful;
 }
-
-
-
-static const char *mpmt_os2_get_name(void)
-{
-    return "mpmt_os2";
-}
-
 
 
 
@@ -493,53 +473,6 @@ static int mpmt_os2_pre_config(apr_pool_t *pconf, apr_pool_t *plog, apr_pool_t *
 #ifdef AP_MPM_WANT_SET_MAX_MEM_FREE
         ap_max_mem_free = APR_ALLOCATOR_MAX_FREE_UNLIMITED;
 #endif
-    ap_sys_privileges_handlers(1);
-
-    return OK;
-}
-
-
-
-static int mpmt_os2_check_config(apr_pool_t *p, apr_pool_t *plog,
-                                 apr_pool_t *ptemp, server_rec *s)
-{
-    static int restart_num = 0;
-    int startup = 0;
-
-    /* we want this only the first time around */
-    if (restart_num++ == 0) {
-        startup = 1;
-    }
-
-    if (ap_daemons_to_start < 0) {
-        if (startup) {
-            ap_log_error(APLOG_MARK, APLOG_WARNING | APLOG_STARTUP, 0, NULL,
-                         "WARNING: StartServers of %d not allowed, "
-                         "increasing to 1.", ap_daemons_to_start);
-        } else {
-            ap_log_error(APLOG_MARK, APLOG_WARNING, 0, s,
-                         "StartServers of %d not allowed, increasing to 1",
-                         ap_daemons_to_start);
-        }
-        ap_daemons_to_start = 1;
-    }
-
-    if (ap_min_spare_threads < 1) {
-        if (startup) {
-            ap_log_error(APLOG_MARK, APLOG_WARNING | APLOG_STARTUP, 0, NULL,
-                         "WARNING: MinSpareThreads of %d not allowed, "
-                         "increasing to 1", ap_min_spare_threads);
-            ap_log_error(APLOG_MARK, APLOG_WARNING | APLOG_STARTUP, 0, NULL,
-                         " to avoid almost certain server failure.");
-            ap_log_error(APLOG_MARK, APLOG_WARNING | APLOG_STARTUP, 0, NULL,
-                         " Please read the documentation.");
-        } else {
-            ap_log_error(APLOG_MARK, APLOG_WARNING, 0, s,
-                         "MinSpareThreads of %d not allowed, increasing to 1",
-                         ap_min_spare_threads);
-        }
-        ap_min_spare_threads = 1;
-    }
 
     return OK;
 }
@@ -549,11 +482,6 @@ static int mpmt_os2_check_config(apr_pool_t *p, apr_pool_t *plog,
 static void mpmt_os2_hooks(apr_pool_t *p)
 {
     ap_hook_pre_config(mpmt_os2_pre_config, NULL, NULL, APR_HOOK_MIDDLE);
-    ap_hook_check_config(mpmt_os2_check_config, NULL, NULL, APR_HOOK_MIDDLE);
-    ap_hook_mpm(mpmt_os2_run, NULL, NULL, APR_HOOK_MIDDLE);
-    ap_hook_mpm_query(mpmt_os2_query, NULL, NULL, APR_HOOK_MIDDLE);
-    ap_hook_mpm_get_name(mpmt_os2_get_name, NULL, NULL, APR_HOOK_MIDDLE);
-    ap_hook_mpm_note_child_killed(mpmt_os2_note_child_killed, NULL, NULL, APR_HOOK_MIDDLE);
 }
 
 
@@ -582,6 +510,17 @@ static const char *set_min_spare_threads(cmd_parms *cmd, void *dummy,
     }
 
     ap_min_spare_threads = atoi(arg);
+
+    if (ap_min_spare_threads <= 0) {
+       ap_log_error(APLOG_MARK, APLOG_STARTUP, 0, NULL,
+                    "WARNING: detected MinSpareThreads set to non-positive.");
+       ap_log_error(APLOG_MARK, APLOG_STARTUP, 0, NULL,
+                    "Resetting to 1 to avoid almost certain Apache failure.");
+       ap_log_error(APLOG_MARK, APLOG_STARTUP, 0, NULL,
+                    "Please read the documentation.");
+       ap_min_spare_threads = 1;
+    }
+
     return NULL;
 }
 

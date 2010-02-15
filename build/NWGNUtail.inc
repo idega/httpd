@@ -58,7 +58,7 @@ $(NLM_NAME)_LINKOPT_DEPENDS	= \
 				$(EOLIST)
 
 ifeq "$(words $(strip $(TARGET_lib)))" "1"
-LIB_NAME			= $(basename $(notdir $(TARGET_lib)))
+LIB_NAME					= $(basename $(notdir $(TARGET_lib)))
 $(LIB_NAME)_LIBLST_DEPENDS	= \
 				$(FILES_lib_objs) \
 				$(AP_WORK)\build\NWGNUenvironment.inc \
@@ -82,20 +82,17 @@ endif
 # Generic compiler rules
 #
 
-ifneq ($(MAKECMDGOALS),clean)
-$(AP_WORK)/build/NWGNUversion.inc : $(AP_WORK)/build/nw_ver.awk $(AP_WORK)/include/ap_release.h
+$(AP_WORK)\build\NWGNUversion.inc : $(AP_WORK)\include\ap_release.h $(AP_WORK)\build\nw_ver.awk
 	@echo Generating $(subst /,\,$@)
-	$(AWK) -f $^ > $@
+	$(AWK) -f $(AP_WORK)\build\nw_ver.awk $(AP_WORK)\include\ap_release.h > $(AP_WORK)\build\NWGNUversion.inc
 
--include $(AP_WORK)/build/NWGNUversion.inc
+-include $(AP_WORK)\build\NWGNUversion.inc
 
 ifneq "$(strip $(VERSION_STR))" ""
-VERSION_INC = $(AP_WORK)/build/NWGNUversion.inc
+VERSION_INC = $(AP_WORK)\build\NWGNUversion.inc
 else
-VERSION		= 2,3,0
-VERSION_STR	= 2.3.0
-VERSION_MAJMIN	= 23
-endif
+VERSION		= 2,0,0
+VERSION_STR	= 2.0.0
 endif
 
 
@@ -237,7 +234,6 @@ ifneq "$(LDAPSDK)" ""
 endif
 	@echo -l $(APULDAP)/$(OBJDIR) >> $@
 	@echo -l $(XML)/$(OBJDIR) >> $@
-	@echo -l $(SRC)/$(OBJDIR) >> $@
 	@echo -nodefaults >> $@
 	@echo -map $(OBJDIR)\$(NLM_NAME).map>> $@
 ifneq "$(strip $(XLFLAGS))" ""

@@ -61,6 +61,8 @@
 #include <sys/select.h>
 #endif
 
+#define CORE_PRIVATE
+
 #include "ap_config.h"
 #include "httpd.h"
 #include "mpm_default.h"
@@ -106,15 +108,9 @@
 #define WORKER_READY        SERVER_READY
 #define WORKER_IDLE_KILL    SERVER_IDLE_KILL
 
-#define MPM_HARD_LIMITS_FILE "/mpm_default.h"
-
 /* config globals */
 
-server_rec *ap_server_conf;
-
-/* *Non*-shared http_main globals... */
-
-static int ap_threads_per_child=0;         /* Worker threads per child */
+int ap_threads_per_child=0;         /* Worker threads per child */
 static int ap_threads_to_start=0;
 static int ap_threads_min_free=0;
 static int ap_threads_max_free=0;
@@ -126,7 +122,10 @@ static int mpm_state = AP_MPMQ_STARTING;
  * to deal with MaxClients changes across SIGWINCH restarts.  We use this
  * value to optimize routines that have to scan the entire scoreboard.
  */
-static int ap_max_workers_limit = -1;
+int ap_max_workers_limit = -1;
+server_rec *ap_server_conf;
+
+/* *Non*-shared http_main globals... */
 
 int hold_screen_on_exit = 0; /* Indicates whether the screen should be held open */
 
@@ -172,7 +171,7 @@ static int volatile shutdown_pending;
 static int volatile restart_pending;
 static int volatile is_graceful;
 static int volatile wait_to_finish=1;
-static ap_generation_t volatile ap_my_generation=0;
+ap_generation_t volatile ap_my_generation=0;
 
 /* a clean exit from a child with proper cleanup */
 static void clean_child_exit(int code, int worker_num, apr_pool_t *ptrans,
@@ -200,69 +199,52 @@ static void mpm_main_cleanup(void)
     }
 }
 
-static int netware_query(int query_code, int *result, apr_status_t *rv)
+AP_DECLARE(apr_status_t) ap_mpm_query(int query_code, int *result)
 {
-    *rv = APR_SUCCESS;
     switch(query_code){
         case AP_MPMQ_MAX_DAEMON_USED:
             *result = 1;
-            break;
+            return APR_SUCCESS;
         case AP_MPMQ_IS_THREADED:
             *result = AP_MPMQ_DYNAMIC;
-            break;
+            return APR_SUCCESS;
         case AP_MPMQ_IS_FORKED:
             *result = AP_MPMQ_NOT_SUPPORTED;
-            break;
+            return APR_SUCCESS;
         case AP_MPMQ_HARD_LIMIT_DAEMONS:
             *result = HARD_SERVER_LIMIT;
-            break;
+            return APR_SUCCESS;
         case AP_MPMQ_HARD_LIMIT_THREADS:
             *result = HARD_THREAD_LIMIT;
-            break;
+            return APR_SUCCESS;
         case AP_MPMQ_MAX_THREADS:
             *result = ap_threads_limit;
-            break;
+            return APR_SUCCESS;
         case AP_MPMQ_MIN_SPARE_DAEMONS:
             *result = 0;
-            break;
+            return APR_SUCCESS;
         case AP_MPMQ_MIN_SPARE_THREADS:
             *result = ap_threads_min_free;
-            break;
+            return APR_SUCCESS;
         case AP_MPMQ_MAX_SPARE_DAEMONS:
             *result = 0;
-            break;
+            return APR_SUCCESS;
         case AP_MPMQ_MAX_SPARE_THREADS:
             *result = ap_threads_max_free;
-            break;
+            return APR_SUCCESS;
         case AP_MPMQ_MAX_REQUESTS_DAEMON:
             *result = ap_max_requests_per_child;
-            break;
+            return APR_SUCCESS;
         case AP_MPMQ_MAX_DAEMONS:
             *result = 1;
-            break;
+            return APR_SUCCESS;
         case AP_MPMQ_MPM_STATE:
             *result = mpm_state;
-            break;
-        case AP_MPMQ_GENERATION:
-            *result = ap_my_generation;
-            break;
-        default:
-            *rv = APR_ENOTIMPL;
-            break;
+            return APR_SUCCESS;
     }
-    return OK;
+    return APR_ENOTIMPL;
 }
 
-static apr_status_t netware_note_child_killed(int childnum)
-{
-    ap_scoreboard_image->parent[childnum].pid = 0;
-    return APR_SUCCESS;
-}
-
-static const char *netware_get_name(void)
-{
-    return "NetWare";
-}
 
 /*****************************************************************
  * Connection structures and accounting...
@@ -331,6 +313,12 @@ int nlmUnloadSignaled(int wait)
  * they are really private to child_main.
  */
 
+
+int ap_graceful_stop_signalled(void)
+{
+    /* not ever called anymore... */
+    return 0;
+}
 
 #define MAX_WB_RETRIES  3
 #ifdef DBINFO_ON
@@ -729,7 +717,7 @@ static void perform_idle_server_maintenance(apr_pool_t *p)
     }
 }
 
-static void display_settings()
+static void display_settings ()
 {
     int status_array[SERVER_NUM_STATUS];
     int i, status, total=0;
@@ -874,7 +862,7 @@ static int shutdown_listeners()
  * Executive routines.
  */
 
-static int netware_run(apr_pool_t *_pconf, apr_pool_t *plog, server_rec *s)
+int ap_mpm_run(apr_pool_t *_pconf, apr_pool_t *plog, server_rec *s)
 {
     apr_status_t status=0;
 
@@ -922,6 +910,12 @@ static int netware_run(apr_pool_t *_pconf, apr_pool_t *plog, server_rec *s)
             ap_get_server_description());
     ap_log_error(APLOG_MARK, APLOG_INFO, 0, ap_server_conf,
             "Server built: %s", ap_get_server_built());
+#ifdef AP_MPM_WANT_SET_ACCEPT_LOCK_MECH
+    ap_log_error(APLOG_MARK, APLOG_DEBUG, 0, ap_server_conf,
+            "AcceptMutex: %s (default: %s)",
+            apr_proc_mutex_name(accept_mutex),
+            apr_proc_mutex_defname());
+#endif
     show_server_data();
 
     mpm_state = AP_MPMQ_RUNNING;
@@ -1011,100 +1005,9 @@ static int netware_pre_config(apr_pool_t *p, apr_pool_t *plog, apr_pool_t *ptemp
     return OK;
 }
 
-static int netware_check_config(apr_pool_t *p, apr_pool_t *plog,
-                                apr_pool_t *ptemp, server_rec *s)
-{
-    static int restart_num = 0;
-    int startup = 0;
-
-    /* we want this only the first time around */
-    if (restart_num++ == 0) {
-        startup = 1;
-    }
-
-    if (ap_threads_limit > HARD_THREAD_LIMIT) {
-        if (startup) {
-            ap_log_error(APLOG_MARK, APLOG_WARNING | APLOG_STARTUP, 0, NULL,
-                         "WARNING: MaxThreads of %d exceeds compile-time "
-                         "limit of", ap_threads_limit);
-            ap_log_error(APLOG_MARK, APLOG_WARNING | APLOG_STARTUP, 0, NULL,
-                         " %d threads, decreasing to %d.",
-                         HARD_THREAD_LIMIT, HARD_THREAD_LIMIT);
-            ap_log_error(APLOG_MARK, APLOG_WARNING | APLOG_STARTUP, 0, NULL,
-                         " To increase, please see the HARD_THREAD_LIMIT"
-                         "define in");
-            ap_log_error(APLOG_MARK, APLOG_WARNING | APLOG_STARTUP, 0, NULL,
-                         " server/mpm/netware%s.", MPM_HARD_LIMITS_FILE);
-        } else {
-            ap_log_error(APLOG_MARK, APLOG_WARNING, 0, s,
-                         "MaxThreads of %d exceeds compile-time limit "
-                         "of %d, decreasing to match",
-                         ap_threads_limit, HARD_THREAD_LIMIT);
-        }
-        ap_threads_limit = HARD_THREAD_LIMIT;
-    }
-    else if (ap_threads_limit < 1) {
-        if (startup) {
-            ap_log_error(APLOG_MARK, APLOG_WARNING | APLOG_STARTUP, 0, NULL,
-                         "WARNING: MaxThreads of %d not allowed, "
-                         "increasing to 1.", ap_threads_limit);
-        } else {
-            ap_log_error(APLOG_MARK, APLOG_WARNING, 0, s,
-                         "MaxThreads of %d not allowed, increasing to 1",
-                         ap_threads_limit);
-        }
-        ap_threads_limit = 1;
-    }
-
-    /* ap_threads_to_start > ap_threads_limit effectively checked in
-     * call to startup_workers(ap_threads_to_start) in ap_mpm_run()
-     */
-    if (ap_threads_to_start < 0) {
-        if (startup) {
-            ap_log_error(APLOG_MARK, APLOG_WARNING | APLOG_STARTUP, 0, NULL,
-                         "WARNING: StartThreads of %d not allowed, "
-                         "increasing to 1.", ap_threads_to_start);
-        } else {
-            ap_log_error(APLOG_MARK, APLOG_WARNING, 0, s,
-                         "StartThreads of %d not allowed, increasing to 1",
-                         ap_threads_to_start);
-        }
-        ap_threads_to_start = 1;
-    }
-
-    if (ap_threads_min_free < 1) {
-        if (startup) {
-            ap_log_error(APLOG_MARK, APLOG_WARNING | APLOG_STARTUP, 0, NULL,
-                         "WARNING: MinSpareThreads of %d not allowed, "
-                         "increasing to 1", ap_threads_min_free);
-            ap_log_error(APLOG_MARK, APLOG_WARNING | APLOG_STARTUP, 0, NULL,
-                         " to avoid almost certain server failure.");
-            ap_log_error(APLOG_MARK, APLOG_WARNING | APLOG_STARTUP, 0, NULL,
-                         " Please read the documentation.");
-        } else {
-            ap_log_error(APLOG_MARK, APLOG_WARNING, 0, s,
-                         "MinSpareThreads of %d not allowed, increasing to 1",
-                         ap_threads_min_free);
-        }
-        ap_threads_min_free = 1;
-    }
-
-    /* ap_threads_max_free < ap_threads_min_free + 1 checked in ap_mpm_run() */
-
-    return OK;
-}
-
 static void netware_mpm_hooks(apr_pool_t *p)
 {
     ap_hook_pre_config(netware_pre_config, NULL, NULL, APR_HOOK_MIDDLE);
-    ap_hook_check_config(netware_check_config, NULL, NULL, APR_HOOK_MIDDLE);
-    //ap_hook_post_config(netware_post_config, NULL, NULL, 0);
-    //ap_hook_child_init(netware_child_init, NULL, NULL, APR_HOOK_MIDDLE);
-    //ap_hook_open_logs(netware_open_logs, NULL, aszSucc, APR_HOOK_REALLY_FIRST);
-    ap_hook_mpm(netware_run, NULL, NULL, APR_HOOK_MIDDLE);
-    ap_hook_mpm_query(netware_query, NULL, NULL, APR_HOOK_MIDDLE);
-    ap_hook_mpm_note_child_killed(netware_note_child_killed, NULL, NULL, APR_HOOK_MIDDLE);
-    ap_hook_mpm_get_name(netware_get_name, NULL, NULL, APR_HOOK_MIDDLE);
 }
 
 void netware_rewrite_args(process_rec *process)
@@ -1321,6 +1224,16 @@ static const char *set_min_free_threads(cmd_parms *cmd, void *dummy, const char 
     }
 
     ap_threads_min_free = atoi(arg);
+    if (ap_threads_min_free <= 0) {
+       ap_log_error(APLOG_MARK, APLOG_STARTUP, 0, NULL,
+                    "WARNING: detected MinSpareServers set to non-positive.");
+       ap_log_error(APLOG_MARK, APLOG_STARTUP, 0, NULL,
+                    "Resetting to 1 to avoid almost certain Apache failure.");
+       ap_log_error(APLOG_MARK, APLOG_STARTUP, 0, NULL,
+                    "Please read the documentation.");
+       ap_threads_min_free = 1;
+    }
+
     return NULL;
 }
 
@@ -1343,6 +1256,23 @@ static const char *set_thread_limit (cmd_parms *cmd, void *dummy, const char *ar
     }
 
     ap_threads_limit = atoi(arg);
+    if (ap_threads_limit > HARD_THREAD_LIMIT) {
+       ap_log_error(APLOG_MARK, APLOG_STARTUP, 0, NULL,
+                    "WARNING: MaxThreads of %d exceeds compile time limit "
+                    "of %d threads,", ap_threads_limit, HARD_THREAD_LIMIT);
+       ap_log_error(APLOG_MARK, APLOG_STARTUP, 0, NULL,
+                    " lowering MaxThreads to %d.  To increase, please "
+                    "see the", HARD_THREAD_LIMIT);
+       ap_log_error(APLOG_MARK, APLOG_STARTUP, 0, NULL,
+                    " HARD_THREAD_LIMIT define in %s.",
+                    AP_MPM_HARD_LIMITS_FILE);
+       ap_threads_limit = HARD_THREAD_LIMIT;
+    }
+    else if (ap_threads_limit < 1) {
+        ap_log_error(APLOG_MARK, APLOG_STARTUP, 0, NULL,
+            "WARNING: Require MaxThreads > 0, setting to 1");
+        ap_threads_limit = 1;
+    }
     return NULL;
 }
 

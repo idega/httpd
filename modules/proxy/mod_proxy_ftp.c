@@ -37,80 +37,6 @@
 
 module AP_MODULE_DECLARE_DATA proxy_ftp_module;
 
-typedef struct {
-    int ftp_list_on_wildcard;
-    int ftp_list_on_wildcard_set;
-    int ftp_escape_wildcards;
-    int ftp_escape_wildcards_set;
-    const char *ftp_directory_charset;
-} proxy_ftp_dir_conf;
-
-static void *create_proxy_ftp_dir_config(apr_pool_t *p, char *dummy)
-{
-    proxy_ftp_dir_conf *new =
-        (proxy_ftp_dir_conf *) apr_pcalloc(p, sizeof(proxy_ftp_dir_conf));
-
-    /* Put these in the dir config so they work inside <Location> */
-    new->ftp_list_on_wildcard = 1;
-    new->ftp_escape_wildcards = 1;
-
-    return (void *) new;
-}
-
-static void *merge_proxy_ftp_dir_config(apr_pool_t *p, void *basev, void *addv)
-{
-    proxy_ftp_dir_conf *new = (proxy_ftp_dir_conf *) apr_pcalloc(p, sizeof(proxy_ftp_dir_conf));
-    proxy_ftp_dir_conf *add = (proxy_ftp_dir_conf *) addv;
-    proxy_ftp_dir_conf *base = (proxy_ftp_dir_conf *) basev;
-
-    /* Put these in the dir config so they work inside <Location> */
-    new->ftp_list_on_wildcard = add->ftp_list_on_wildcard_set ?
-                                add->ftp_list_on_wildcard :
-                                base->ftp_list_on_wildcard;
-    new->ftp_list_on_wildcard_set = add->ftp_list_on_wildcard_set ?
-                                1 :
-                                base->ftp_list_on_wildcard_set;
-    new->ftp_escape_wildcards = add->ftp_escape_wildcards_set ?
-                                add->ftp_escape_wildcards :
-                                base->ftp_escape_wildcards;
-    new->ftp_escape_wildcards_set = add->ftp_escape_wildcards_set ?
-                                1 :
-                                base->ftp_escape_wildcards_set;
-    new->ftp_directory_charset = add->ftp_directory_charset ?
-                                 add->ftp_directory_charset :
-                                 base->ftp_directory_charset;
-    return new;
-}
-
-static const char *set_ftp_list_on_wildcard(cmd_parms *cmd, void *dconf,
-                                            int flag)
-{
-    proxy_ftp_dir_conf *conf = dconf;
-
-    conf->ftp_list_on_wildcard = flag;
-    conf->ftp_list_on_wildcard_set = 1;
-    return NULL;
-}
-
-static const char *set_ftp_escape_wildcards(cmd_parms *cmd, void *dconf,
-                                            int flag)
-{
-    proxy_ftp_dir_conf *conf = dconf;
-
-    conf->ftp_escape_wildcards = flag;
-    conf->ftp_escape_wildcards_set = 1;
-    return NULL;
-}
-
-static const char *set_ftp_directory_charset(cmd_parms *cmd, void *dconf,
-                                             const char *arg)
-{
-    proxy_ftp_dir_conf *conf = dconf;
-
-    conf->ftp_directory_charset = arg;
-    return NULL;
-}
-
 /*
  * Decodes a '%' escaped string, and returns the number of characters
  */
@@ -137,21 +63,13 @@ static int decodeenc(char *x)
  * Escape the globbing characters in a path used as argument to
  * the FTP commands (SIZE, CWD, RETR, MDTM, ...).
  * ftpd assumes '\\' as a quoting character to escape special characters.
- * Just returns the original string if ProxyFtpEscapeWildcards has been
- * configured "off".
  * Returns: escaped string
  */
 #define FTP_GLOBBING_CHARS "*?[{~"
-static const char *ftp_escape_globbingchars(apr_pool_t *p, const char *path, proxy_ftp_dir_conf *dconf)
+static char *ftp_escape_globbingchars(apr_pool_t *p, const char *path)
 {
-    char *ret;
+    char *ret = apr_palloc(p, 2*strlen(path)+sizeof(""));
     char *d;
-    
-    if (!dconf->ftp_escape_wildcards) {
-        return path;
-    }
-
-    ret = apr_palloc(p, 2*strlen(path)+sizeof(""));
     for (d = ret; *path; ++path) {
         if (strchr(FTP_GLOBBING_CHARS, *path) != NULL)
             *d++ = '\\';
@@ -396,26 +314,9 @@ static apr_status_t proxy_send_dir_filter(ap_filter_t *f,
         /* basedir is either "", or "/%2f" for the "squid %2f hack" */
         const char *basedir = "";  /* By default, path is relative to the $HOME dir */
         char *wildcard = NULL;
-        const char *escpath;
 
-        /*
-         * In the reverse proxy case we need to construct our site string
-         * via ap_construct_url. For non anonymous sites apr_uri_unparse would
-         * only supply us with 'username@' which leads to the construction of
-         * an invalid base href later on. Losing the username part of the URL
-         * is no problem in the reverse proxy case as the browser sents the
-         * credentials anyway once entered.
-         */
-        if (r->proxyreq == PROXYREQ_REVERSE) {
-            site = ap_construct_url(p, "", r);
-        }
-        else {
-            /* Save "scheme://site" prefix without password */
-            site = apr_uri_unparse(p, &f->r->parsed_uri,
-                                   APR_URI_UNP_OMITPASSWORD |
-                                   APR_URI_UNP_OMITPATHINFO);
-        }
-
+        /* Save "scheme://site" prefix without password */
+        site = apr_uri_unparse(p, &f->r->parsed_uri, APR_URI_UNP_OMITPASSWORD | APR_URI_UNP_OMITPATHINFO);
         /* ... and path without query args */
         path = apr_uri_unparse(p, &f->r->parsed_uri, APR_URI_UNP_OMITSITEPART | APR_URI_UNP_OMITQUERY);
 
@@ -449,14 +350,13 @@ static apr_status_t proxy_send_dir_filter(ap_filter_t *f,
         str = (basedir[0] != '\0') ? "<a href=\"/%2f/\">%2f</a>/" : "";
 
         /* print "ftp://host/" */
-        escpath = ap_escape_html(p, path);
         str = apr_psprintf(p, DOCTYPE_HTML_3_2
                 "<html>\n <head>\n  <title>%s%s%s</title>\n"
-                "<base href=\"%s%s%s\">\n"
                 " </head>\n"
                 " <body>\n  <h2>Directory of "
                 "<a href=\"/\">%s</a>/%s",
-                site, basedir, escpath, site, basedir, escpath, site, str);
+                site, basedir, ap_escape_html(p, path),
+                site, str);
 
         APR_BRIGADE_INSERT_TAIL(out, apr_bucket_pool_create(str, strlen(str),
                                                           p, c->bucket_alloc));
@@ -481,7 +381,6 @@ static apr_status_t proxy_send_dir_filter(ap_filter_t *f,
                                                            c->bucket_alloc));
         }
         if (wildcard != NULL) {
-            wildcard = ap_escape_html(p, wildcard);
             APR_BRIGADE_INSERT_TAIL(out, apr_bucket_pool_create(wildcard,
                                                            strlen(wildcard), p,
                                                            c->bucket_alloc));
@@ -695,31 +594,6 @@ static apr_status_t proxy_send_dir_filter(ap_filter_t *f,
     return APR_SUCCESS;
 }
 
-/* Parse EPSV reply and return port, or zero on error. */
-static apr_port_t parse_epsv_reply(const char *reply)
-{
-    const char *p;
-    char *ep;
-    long port;
-
-    /* Reply syntax per RFC 2428: "229 blah blah (|||port|)" where '|'
-     * can be any character in ASCII from 33-126, obscurely.  Verify
-     * the syntax. */
-    p = ap_strchr_c(reply, '(');
-    if (p == NULL || !p[1] || p[1] != p[2] || p[1] != p[3]
-        || p[4] == p[1]) {
-        return 0;
-    }
-
-    errno = 0;
-    port = strtol(p + 4, &ep, 10);
-    if (errno || port < 1 || port > 65535 || ep[0] != p[1] || ep[1] != ')') {
-        return 0;
-    }
-
-    return (apr_port_t)port;
-}
-
 /*
  * Generic "send FTP command to server" routine, using the control socket.
  * Returns the FTP returncode (3 digit code)
@@ -865,7 +739,7 @@ static
 apr_status_t proxy_ftp_cleanup(request_rec *r, proxy_conn_rec *backend)
 {
 
-    backend->close = 1;
+    backend->close_on_recycle = 1;
     ap_set_module_config(r->connection->conn_config, &proxy_ftp_module, NULL);
     ap_proxy_release_connection("FTP", backend, r->server);
 
@@ -916,8 +790,6 @@ static int proxy_ftp_handler(request_rec *r, proxy_worker *worker,
 #if defined(USE_MDTM) && (defined(HAVE_TIMEGM) || defined(HAVE_GMTOFF))
     apr_time_t mtime = 0L;
 #endif
-    proxy_ftp_dir_conf *fdconf = ap_get_module_config(r->per_dir_config,
-                                                      &proxy_ftp_module);
 
     /* stuff for PASV mode */
     int connect = 0, use_port = 0;
@@ -1005,11 +877,6 @@ static int proxy_ftp_handler(request_rec *r, proxy_worker *worker,
     if ((password = apr_table_get(r->headers_in, "Authorization")) != NULL
         && strcasecmp(ap_getword(r->pool, &password, ' '), "Basic") == 0
         && (password = ap_pbase64decode(r->pool, password))[0] != ':') {
-        /* Check the decoded string for special characters. */
-        if (!ftp_check_string(password)) {
-            return ap_proxyerror(r, HTTP_BAD_REQUEST, 
-                                 "user credentials contained invalid character");
-        } 
         /*
          * Note that this allocation has to be made from r->connection->pool
          * because it has the lifetime of the connection.  The other
@@ -1085,7 +952,7 @@ static int proxy_ftp_handler(request_rec *r, proxy_worker *worker,
         status = ap_proxy_acquire_connection("FTP", &backend, worker, r->server);
         if (status != OK) {
             if (backend) {
-                backend->close = 1;
+                backend->close_on_recycle = 1;
                 ap_proxy_release_connection("FTP", backend, r->server);
             }
             return status;
@@ -1271,7 +1138,7 @@ static int proxy_ftp_handler(request_rec *r, proxy_worker *worker,
          * We could also have extended gen_test_char.c with a special T_ESCAPE_FTP_PATH
          */
         rc = proxy_ftp_command(apr_pstrcat(p, "CWD ",
-                           ftp_escape_globbingchars(p, path, fdconf), CRLF, NULL),
+                           ftp_escape_globbingchars(p, path), CRLF, NULL),
                            r, origin, bb, &ftpmessage);
         *strp = '/';
         /* responses: 250, 421, 500, 501, 502, 530, 550 */
@@ -1333,11 +1200,26 @@ static int proxy_ftp_handler(request_rec *r, proxy_worker *worker,
             return ftp_proxyerror(r, backend, HTTP_BAD_GATEWAY, ftpmessage);
         }
         else if (rc == 229) {
-            /* Parse the port out of the EPSV reply. */
-            data_port = parse_epsv_reply(ftpmessage);
+            char *pstr;
+            char *tok_cntx;
 
-            if (data_port) {
+            pstr = ftpmessage;
+            pstr = apr_strtok(pstr, " ", &tok_cntx);    /* separate result code */
+            if (pstr != NULL) {
+                if (*(pstr + strlen(pstr) + 1) == '=') {
+                    pstr += strlen(pstr) + 2;
+                }
+                else {
+                    pstr = apr_strtok(NULL, "(", &tok_cntx);    /* separate address &
+                                                                 * port params */
+                    if (pstr != NULL)
+                        pstr = apr_strtok(NULL, ")", &tok_cntx);
+                }
+            }
+
+            if (pstr) {
                 apr_sockaddr_t *epsv_addr;
+                data_port = atoi(pstr + 3);
 
                 ap_log_error(APLOG_MARK, APLOG_DEBUG, 0, r->server,
                        "proxy: FTP: EPSV contacting remote host on port %d",
@@ -1350,12 +1232,14 @@ static int proxy_ftp_handler(request_rec *r, proxy_worker *worker,
                     return HTTP_INTERNAL_SERVER_ERROR;
                 }
 
+#if !defined (TPF) && !defined(BEOS)
                 if (conf->recv_buffer_size > 0
                         && (rv = apr_socket_opt_set(data_sock, APR_SO_RCVBUF,
                                                     conf->recv_buffer_size))) {
                     ap_log_rerror(APLOG_MARK, APLOG_ERR, rv, r,
                                   "proxy: FTP: apr_socket_opt_set(SO_RCVBUF): Failed to set ProxyReceiveBufferSize, using default");
                 }
+#endif
 
                 rv = apr_socket_opt_set(data_sock, APR_TCP_NODELAY, 1);
                 if (rv != APR_SUCCESS && rv != APR_ENOTIMPL) {
@@ -1377,6 +1261,10 @@ static int proxy_ftp_handler(request_rec *r, proxy_worker *worker,
                 else {
                     connect = 1;
                 }
+            }
+            else {
+                /* and try the regular way */
+                apr_socket_close(data_sock);
             }
         }
     }
@@ -1438,12 +1326,14 @@ static int proxy_ftp_handler(request_rec *r, proxy_worker *worker,
                     return HTTP_INTERNAL_SERVER_ERROR;
                 }
 
+#if !defined (TPF) && !defined(BEOS)
                 if (conf->recv_buffer_size > 0
                         && (rv = apr_socket_opt_set(data_sock, APR_SO_RCVBUF,
                                                     conf->recv_buffer_size))) {
                     ap_log_rerror(APLOG_MARK, APLOG_ERR, rv, r,
                                   "proxy: FTP: apr_socket_opt_set(SO_RCVBUF): Failed to set ProxyReceiveBufferSize, using default");
                 }
+#endif
 
                 rv = apr_socket_opt_set(data_sock, APR_TCP_NODELAY, 1);
                 if (rv != APR_SUCCESS && rv != APR_ENOTIMPL) {
@@ -1463,6 +1353,10 @@ static int proxy_ftp_handler(request_rec *r, proxy_worker *worker,
                 else {
                     connect = 1;
                 }
+            }
+            else {
+                /* and try the regular way */
+                apr_socket_close(data_sock);
             }
         }
     }
@@ -1567,10 +1461,9 @@ static int proxy_ftp_handler(request_rec *r, proxy_worker *worker,
     }
 
     /* If len == 0 then it must be a directory (you can't RETR nothing)
-     * Also, don't allow to RETR by wildcard. Instead, create a dirlisting,
-     * unless ProxyFtpListOnWildcard is off.
+     * Also, don't allow to RETR by wildcard. Instead, create a dirlisting
      */
-    if (len == 0 || (ftp_check_globbingchars(path) && fdconf->ftp_list_on_wildcard)) {
+    if (len == 0 || ftp_check_globbingchars(path)) {
         dirlisting = 1;
     }
     else {
@@ -1591,7 +1484,7 @@ static int proxy_ftp_handler(request_rec *r, proxy_worker *worker,
         /* Therefore: switch to binary if the user did not specify ";type=a" */
         ftp_set_TYPE(xfer_type, r, origin, bb, &ftpmessage);
         rc = proxy_ftp_command(apr_pstrcat(p, "SIZE ",
-                           ftp_escape_globbingchars(p, path, fdconf), CRLF, NULL),
+                           ftp_escape_globbingchars(p, path), CRLF, NULL),
                            r, origin, bb, &ftpmessage);
         if (rc == -1 || rc == 421) {
             return ftp_proxyerror(r, backend, HTTP_BAD_GATEWAY,
@@ -1610,7 +1503,7 @@ static int proxy_ftp_handler(request_rec *r, proxy_worker *worker,
                              "proxy: FTP: SIZE shows this is a directory");
             dirlisting = 1;
             rc = proxy_ftp_command(apr_pstrcat(p, "CWD ",
-                           ftp_escape_globbingchars(p, path, fdconf), CRLF, NULL),
+                           ftp_escape_globbingchars(p, path), CRLF, NULL),
                            r, origin, bb, &ftpmessage);
             /* possible results: 250, 421, 500, 501, 502, 530, 550 */
             /* 250 Requested file action okay, completed. */
@@ -1671,7 +1564,7 @@ static int proxy_ftp_handler(request_rec *r, proxy_worker *worker,
          *     The "." and subsequent digits ("sss") are optional. <..>
          *     Time values are always represented in UTC (GMT)
          */
-        rc = proxy_ftp_command(apr_pstrcat(p, "MDTM ", ftp_escape_globbingchars(p, path, fdconf), CRLF, NULL),
+        rc = proxy_ftp_command(apr_pstrcat(p, "MDTM ", ftp_escape_globbingchars(p, path), CRLF, NULL),
                                r, origin, bb, &ftpmessage);
         /* then extract the Last-Modified time from it (YYYYMMDDhhmmss or YYYYMMDDhhmmss.xxx GMT). */
         if (rc == 213) {
@@ -1710,7 +1603,7 @@ static int proxy_ftp_handler(request_rec *r, proxy_worker *worker,
     }
 #endif /* USE_MDTM */
 /* FIXME: Handle range requests - send REST */
-        buf = apr_pstrcat(p, "RETR ", ftp_escape_globbingchars(p, path, fdconf), CRLF, NULL);
+        buf = apr_pstrcat(p, "RETR ", ftp_escape_globbingchars(p, path), CRLF, NULL);
     }
     rc = proxy_ftp_command(buf, r, origin, bb, &ftpmessage);
     /* rc is an intermediate response for the LIST or RETR commands */
@@ -1747,7 +1640,7 @@ static int proxy_ftp_handler(request_rec *r, proxy_worker *worker,
         ftp_set_TYPE('A', r, origin, bb, NULL);
 
         rc = proxy_ftp_command(apr_pstrcat(p, "CWD ",
-                               ftp_escape_globbingchars(p, path, fdconf), CRLF, NULL),
+                               ftp_escape_globbingchars(p, path), CRLF, NULL),
                                r, origin, bb, &ftpmessage);
         /* possible results: 250, 421, 500, 501, 502, 530, 550 */
         /* 250 Requested file action okay, completed. */
@@ -1793,16 +1686,26 @@ static int proxy_ftp_handler(request_rec *r, proxy_worker *worker,
 
     apr_rfc822_date(dates, r->request_time);
     apr_table_setn(r->headers_out, "Date", dates);
-    apr_table_setn(r->headers_out, "Server", ap_get_server_description());
+    apr_table_setn(r->headers_out, "Server", ap_get_server_banner());
 
     /* set content-type */
     if (dirlisting) {
+        proxy_dir_conf *dconf = ap_get_module_config(r->per_dir_config,
+                                                     &proxy_module);
+
         ap_set_content_type(r, apr_pstrcat(p, "text/html;charset=",
-                                           fdconf->ftp_directory_charset ?
-                                           fdconf->ftp_directory_charset :
+                                           dconf->ftp_directory_charset ?
+                                           dconf->ftp_directory_charset :
                                            "ISO-8859-1",  NULL));
     }
     else {
+        if (r->content_type) {
+            ap_log_error(APLOG_MARK, APLOG_DEBUG, 0, r->server,
+                     "proxy: FTP: Content-Type set to %s", r->content_type);
+        }
+        else {
+            ap_set_content_type(r, ap_default_type(r));
+        }
         if (xfer_type != 'A' && size != NULL) {
             /* We "trust" the ftp server to really serve (size) bytes... */
             apr_table_setn(r->headers_out, "Content-Length", size);
@@ -1810,11 +1713,9 @@ static int proxy_ftp_handler(request_rec *r, proxy_worker *worker,
                          "proxy: FTP: Content-Length set to %s", size);
         }
     }
-    if (r->content_type) {
-        apr_table_setn(r->headers_out, "Content-Type", r->content_type);
-        ap_log_error(APLOG_MARK, APLOG_DEBUG, 0, r->server,
-                     "proxy: FTP: Content-Type set to %s", r->content_type);
-    }
+    apr_table_setn(r->headers_out, "Content-Type", r->content_type);
+    ap_log_error(APLOG_MARK, APLOG_DEBUG, 0, r->server,
+                 "proxy: FTP: Content-Type set to %s", r->content_type);
 
 #if defined(USE_MDTM) && (defined(HAVE_TIMEGM) || defined(HAVE_GMTOFF))
     if (mtime != 0L) {
@@ -1873,11 +1774,6 @@ static int proxy_ftp_handler(request_rec *r, proxy_worker *worker,
         return HTTP_INTERNAL_SERVER_ERROR;
     }
 
-    /*
-     * We do not do SSL over the data connection, even if the virtual host we
-     * are in might have SSL enabled
-     */
-    ap_proxy_ssl_disable(data);
     /* set up the connection filters */
     rc = ap_run_pre_connection(data, data_sock);
     if (rc != OK && rc != DONE) {
@@ -1940,9 +1836,7 @@ static int proxy_ftp_handler(request_rec *r, proxy_worker *worker,
                  * for a slow client to eat these bytes
                  */
                 ap_flush_conn(data);
-                if (data_sock) {
-                    apr_socket_close(data_sock);
-                }
+                apr_socket_close(data_sock);
                 data_sock = NULL;
                 ap_log_error(APLOG_MARK, APLOG_DEBUG, 0, r->server,
                              "proxy: FTP: data connection closed");
@@ -2016,24 +1910,12 @@ static void ap_proxy_ftp_register_hook(apr_pool_t *p)
                               NULL, AP_FTYPE_RESOURCE);
 }
 
-static const command_rec proxy_ftp_cmds[] =
-{
-    AP_INIT_FLAG("ProxyFtpListOnWildcard", set_ftp_list_on_wildcard, NULL,
-     RSRC_CONF|ACCESS_CONF, "Whether wildcard characters in a path cause mod_proxy_ftp to list the files instead of trying to get them. Defaults to on."),
-    AP_INIT_FLAG("ProxyFtpEscapeWildcards", set_ftp_escape_wildcards, NULL,
-     RSRC_CONF|ACCESS_CONF, "Whether the proxy should escape wildcards in paths before sending them to the FTP server.  Defaults to on, but most FTP servers will need it turned off if you need to manage paths that contain wildcard characters."),
-    AP_INIT_TAKE1("ProxyFtpDirCharset", set_ftp_directory_charset, NULL,
-     RSRC_CONF|ACCESS_CONF, "Define the character set for proxied FTP listings"),
-    {NULL}
-};
-
-
 module AP_MODULE_DECLARE_DATA proxy_ftp_module = {
     STANDARD20_MODULE_STUFF,
-    create_proxy_ftp_dir_config,/* create per-directory config structure */
-    merge_proxy_ftp_dir_config, /* merge per-directory config structures */
+    NULL,                       /* create per-directory config structure */
+    NULL,                       /* merge per-directory config structures */
     NULL,                       /* create per-server config structure */
     NULL,                       /* merge per-server config structures */
-    proxy_ftp_cmds,             /* command apr_table_t */
+    NULL,                       /* command apr_table_t */
     ap_proxy_ftp_register_hook  /* register hooks */
 };

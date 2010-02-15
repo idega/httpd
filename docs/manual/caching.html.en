@@ -12,19 +12,19 @@
 <link href="./images/favicon.ico" rel="shortcut icon" /></head>
 <body id="manual-page"><div id="page-header">
 <p class="menu"><a href="./mod/">Modules</a> | <a href="./mod/directives.html">Directives</a> | <a href="./faq/">FAQ</a> | <a href="./glossary.html">Glossary</a> | <a href="./sitemap.html">Sitemap</a></p>
-<p class="apache">Apache HTTP Server Version 2.3</p>
+<p class="apache">Apache HTTP Server Version 2.2</p>
 <img alt="" src="./images/feather.gif" /></div>
 <div class="up"><a href="./"><img title="&lt;-" alt="&lt;-" src="./images/left.gif" /></a></div>
 <div id="path">
-<a href="http://www.apache.org/">Apache</a> &gt; <a href="http://httpd.apache.org/">HTTP Server</a> &gt; <a href="http://httpd.apache.org/docs/">Documentation</a> &gt; <a href="./">Version 2.3</a></div><div id="page-content"><div id="preamble"><h1>Caching Guide</h1>
+<a href="http://www.apache.org/">Apache</a> &gt; <a href="http://httpd.apache.org/">HTTP Server</a> &gt; <a href="http://httpd.apache.org/docs/">Documentation</a> &gt; <a href="./">Version 2.2</a></div><div id="page-content"><div id="preamble"><h1>Caching Guide</h1>
 <div class="toplang">
 <p><span>Available Languages: </span><a href="./en/caching.html" title="English">&nbsp;en&nbsp;</a> |
-<a href="./fr/caching.html" hreflang="fr" rel="alternate" title="Français">&nbsp;fr&nbsp;</a> |
-<a href="./tr/caching.html" hreflang="tr" rel="alternate" title="Türkçe">&nbsp;tr&nbsp;</a></p>
+<a href="./fr/caching.html" hreflang="fr" rel="alternate" title="Français">&nbsp;fr&nbsp;</a></p>
 </div>
 
     <p>This document supplements the <code class="module"><a href="./mod/mod_cache.html">mod_cache</a></code>,
-    <code class="module"><a href="./mod/mod_disk_cache.html">mod_disk_cache</a></code>, <code class="module"><a href="./mod/mod_file_cache.html">mod_file_cache</a></code> and <a href="programs/htcacheclean.html">htcacheclean</a> reference documentation.
+    <code class="module"><a href="./mod/mod_disk_cache.html">mod_disk_cache</a></code>, <code class="module"><a href="./mod/mod_mem_cache.html">mod_mem_cache</a></code>,
+    <code class="module"><a href="./mod/mod_file_cache.html">mod_file_cache</a></code> and <a href="programs/htcacheclean.html">htcacheclean</a> reference documentation.
     It describes how to use Apache's caching features to accelerate web and 
     proxy serving, while avoiding common problems and misconfigurations.</p>
   </div>
@@ -47,7 +47,7 @@
     handling, both as an origin webserver and as a proxy.</p>
 
     <p><code class="module"><a href="./mod/mod_cache.html">mod_cache</a></code> and its provider modules 
-    <code class="module"><a href="./mod/mod_disk_cache.html">mod_disk_cache</a></code> 
+    <code class="module"><a href="./mod/mod_mem_cache.html">mod_mem_cache</a></code> and <code class="module"><a href="./mod/mod_disk_cache.html">mod_disk_cache</a></code> 
     provide intelligent, HTTP-aware caching. The content itself is stored
     in the cache, and mod_cache aims to honour all of the various HTTP
     headers and options that control the cachability of content. It can
@@ -67,7 +67,7 @@
     often.</p>
 
     <p>As <code class="module"><a href="./mod/mod_file_cache.html">mod_file_cache</a></code> presents a relatively simple
-    caching implementation, apart from the specific sections on <code class="directive"><a href="./mod/mod_file_cache.html#cachefile">CacheFile</a></code> and <code class="directive"><a href="./mod/mod_file_cache.html#mmapfile">MMapFile</a></code>, the explanations
+    caching implementation, apart from the specific sections on <code class="directive"><a href="./mod/mod_file_cache.html#cachefile">CacheFile</a></code> and <code class="directive"><a href="./mod/mod_file_cache.html#mmapstatic">MMapStatic</a></code>, the explanations
     in this guide cover the <code class="module"><a href="./mod/mod_cache.html">mod_cache</a></code> caching 
     architecture.</p>
 
@@ -82,7 +82,7 @@
 
     
     
-    <table class="related"><tr><th>Related Modules</th><th>Related Directives</th></tr><tr><td><ul><li><code class="module"><a href="./mod/mod_cache.html">mod_cache</a></code></li><li><code class="module"><a href="./mod/mod_disk_cache.html">mod_disk_cache</a></code></li><li><code class="module"><a href="./mod/mod_file_cache.html">mod_file_cache</a></code></li></ul></td><td><ul><li><code class="directive"><a href="./mod/mod_cache.html#cacheenable">CacheEnable</a></code></li><li><code class="directive"><a href="./mod/mod_cache.html#cachedisable">CacheDisable</a></code></li><li><code class="directive"><a href="./mod/mod_file_cache.html#cachefile">CacheFile</a></code></li><li><code class="directive"><a href="./mod/mod_file_cache.html#mmapfile">MMapFile</a></code></li><li><code class="directive"><a href="./mod/core.html#usecanonicalname">UseCanonicalName</a></code></li><li><code class="directive"><a href="./mod/mod_negotiation.html#cachenegotiateddocs">CacheNegotiatedDocs</a></code></li></ul></td></tr></table>
+    <table class="related"><tr><th>Related Modules</th><th>Related Directives</th></tr><tr><td><ul><li><code class="module"><a href="./mod/mod_cache.html">mod_cache</a></code></li><li><code class="module"><a href="./mod/mod_mem_cache.html">mod_mem_cache</a></code></li><li><code class="module"><a href="./mod/mod_disk_cache.html">mod_disk_cache</a></code></li><li><code class="module"><a href="./mod/mod_file_cache.html">mod_file_cache</a></code></li></ul></td><td><ul><li><code class="directive"><a href="./mod/mod_cache.html#cacheenable">CacheEnable</a></code></li><li><code class="directive"><a href="./mod/mod_cache.html#cachedisable">CacheDisable</a></code></li><li><code class="directive"><a href="./mod/mod_file_cache.html#mmapstatic">MMapStatic</a></code></li><li><code class="directive"><a href="./mod/mod_file_cache.html#cachefile">CacheFile</a></code></li><li><code class="directive"><a href="./mod/mod_file_cache.html#cachefile">CacheFile</a></code></li><li><code class="directive"><a href="./mod/core.html#usecanonicalname">UseCanonicalName</a></code></li><li><code class="directive"><a href="./mod/mod_negotiation.html#cachenegotiateddocs">CacheNegotiatedDocs</a></code></li></ul></td></tr></table>
 
     <p>There are two main stages in <code class="module"><a href="./mod/mod_cache.html">mod_cache</a></code> that can
     occur in the lifetime of a request. First, <code class="module"><a href="./mod/mod_cache.html">mod_cache</a></code>
@@ -197,7 +197,7 @@
       changed in size or modification time. As such, even if Apache is
       caching local content, even expired content may still be served faster
       from the cache if it has not changed. As long as reading from the cache
-      store is faster than reading from the backend (e.g. <code class="module"><a href="./mod/mod_disk_cache.html">mod_disk_cache</a></code> with memory disk
+      store is faster than reading from the backend (e.g. an in-memory cache 
       compared to reading from disk).</p> 
     
 
@@ -232,15 +232,12 @@
         in the "Cache-Control:" header.</li>
 
         <li>If the URL included a query string (e.g. from a HTML form GET
-        method) it will not be cached unless the response specifies an
-        explicit expiration by including an "Expires:" header or the max-age
-        or s-maxage directive of the "Cache-Control:" header, as per RFC2616
-        sections 13.9 and 13.2.1.</li>
+        method) it will not be cached unless the response includes an
+        "Expires:" header, as per RFC2616 section 13.9.</li>
 
         <li>If the response has a status of 200 (OK), the response must
         also include at least one of the "Etag", "Last-Modified" or
-        the "Expires" headers, or the max-age or s-maxage directive of
-        the "Cache-Control:" header, unless the 
+        the "Expires" headers, unless the 
         <code class="directive"><a href="./mod/mod_cache.html#cacheignorenolastmod">CacheIgnoreNoLastMod</a></code> 
         directive has been used to require otherwise.</li>
 
@@ -271,7 +268,7 @@
       not be cached.</p>
 
       <p>If on the other hand, the content served differs depending on the
-      values of various HTTP headers, it might be possible
+      values of various HTTP headers, it is possible that it might be possible
       to cache it intelligently through the use of a "Vary" header.</p>
     
 
@@ -292,9 +289,10 @@ Vary: negotiate,accept-language,accept-charset
       </code></p></div>
 
       <p><code class="module"><a href="./mod/mod_cache.html">mod_cache</a></code> will only serve the cached content to
-      requesters with accept-language and accept-charset headers
+      requesters with matching accept-language and accept-charset headers
       matching those of the original request.</p>
     
+ 
   </div><div class="top"><a href="#page-header"><img alt="top" src="./images/up.gif" /></a></div>
 <div class="section">
 <h2><a name="security" id="security">Security Considerations</a></h2>
@@ -317,12 +315,12 @@ Vary: negotiate,accept-language,accept-charset
       from the cache as long as that content has not expired.</p>
 
       <p>If, for example, your configuration permits access to a resource by IP
-      address you should ensure that this content is not cached. You can do this
-      by using the <code class="directive"><a href="./mod/mod_cache.html#cachedisable">CacheDisable</a></code>
+      address you should ensure that this content is not cached. You can do this by
+      using the <code class="directive"><a href="./mod/mod_cache.html#cachedisable">CacheDisable</a></code>
       directive, or <code class="module"><a href="./mod/mod_expires.html">mod_expires</a></code>. Left unchecked,
       <code class="module"><a href="./mod/mod_cache.html">mod_cache</a></code> - very much like a reverse proxy - would cache
       the content when served and then serve it to any client, on any IP
-      address.</p>
+      address.</p>        
     
 
     <h3>Local exploits</h3>
@@ -374,12 +372,12 @@ Vary: negotiate,accept-language,accept-charset
 <h2><a name="filehandle" id="filehandle">File-Handle Caching</a></h2>
     
 
-    <table class="related"><tr><th>Related Modules</th><th>Related Directives</th></tr><tr><td><ul><li><code class="module"><a href="./mod/mod_file_cache.html">mod_file_cache</a></code></li></ul></td><td><ul><li><code class="directive"><a href="./mod/mod_file_cache.html#cachefile">CacheFile</a></code></li></ul></td></tr></table>
+    <table class="related"><tr><th>Related Modules</th><th>Related Directives</th></tr><tr><td><ul><li><code class="module"><a href="./mod/mod_file_cache.html">mod_file_cache</a></code></li><li><code class="module"><a href="./mod/mod_mem_cache.html">mod_mem_cache</a></code></li></ul></td><td><ul><li><code class="directive"><a href="./mod/mod_file_cache.html#cachefile">CacheFile</a></code></li><li><code class="directive"><a href="./mod/mod_cache.html#cacheenable">CacheEnable</a></code></li><li><code class="directive"><a href="./mod/mod_cache.html#cachedisable">CacheDisable</a></code></li></ul></td></tr></table>
 
     <p>The act of opening a file can itself be a source of delay, particularly 
     on network filesystems. By maintaining a cache of open file descriptors
     for commonly served files, Apache can avoid this delay. Currently Apache
-    provides one implementation of File-Handle Caching.</p> 
+    provides two different implementations of File-Handle Caching.</p> 
 
     <h3>CacheFile</h3>
       
@@ -416,12 +414,25 @@ Vary: negotiate,accept-language,accept-charset
       descriptor closed.</p>
     
 
+    <h3>CacheEnable fd</h3>
+      
+
+      <p><code class="module"><a href="./mod/mod_mem_cache.html">mod_mem_cache</a></code> also provides its own file-handle 
+      caching scheme, which can be enabled via the 
+      <code class="directive"><a href="./mod/mod_cache.html#cacheenable">CacheEnable</a></code> directive.</p>
+
+      <div class="example"><pre>CacheEnable fd /</pre></div>
+
+      <p>As with all of <code class="module"><a href="./mod/mod_cache.html">mod_cache</a></code> this type of file-handle
+      caching is intelligent, and handles will not be maintained beyond
+      the expiry time of the cached content.</p>
+    
   </div><div class="top"><a href="#page-header"><img alt="top" src="./images/up.gif" /></a></div>
 <div class="section">
 <h2><a name="inmemory" id="inmemory">In-Memory Caching</a></h2>
     
 
-     <table class="related"><tr><th>Related Modules</th><th>Related Directives</th></tr><tr><td><ul><li><code class="module"><a href="./mod/mod_file_cache.html">mod_file_cache</a></code></li></ul></td><td><ul><li><code class="directive"><a href="./mod/mod_cache.html#cacheenable">CacheEnable</a></code></li><li><code class="directive"><a href="./mod/mod_cache.html#cachedisable">CacheDisable</a></code></li><li><code class="directive"><a href="./mod/mod_file_cache.html#mmapfile">MMapFile</a></code></li></ul></td></tr></table>
+     <table class="related"><tr><th>Related Modules</th><th>Related Directives</th></tr><tr><td><ul><li><code class="module"><a href="./mod/mod_mem_cache.html">mod_mem_cache</a></code></li><li><code class="module"><a href="./mod/mod_file_cache.html">mod_file_cache</a></code></li></ul></td><td><ul><li><code class="directive"><a href="./mod/mod_cache.html#cacheenable">CacheEnable</a></code></li><li><code class="directive"><a href="./mod/mod_cache.html#cachedisable">CacheDisable</a></code></li><li><code class="directive"><a href="./mod/mod_file_cache.html#mmapstatic">MMapStatic</a></code></li></ul></td></tr></table>
        
     <p>Serving directly from system memory is universally the fastest method
     of serving content. Reading files from a disk controller or, even worse,
@@ -478,28 +489,51 @@ sys     0m0.000s</pre></div>
     caching there are some circumstances in which in-memory caching may be 
     better performed by Apache.</p>
 
-    <h3>MMapFile Caching</h3>
+    <p>Firstly, an operating system can only cache files it knows about. If 
+    you are running Apache as a proxy server, the files you are caching are
+    not locally stored but remotely served. If you still want the unbeatable
+    speed of in-memory caching, Apache's own memory caching is needed.</p>
+
+    <h3>MMapStatic Caching</h3>
       
 
       <p><code class="module"><a href="./mod/mod_file_cache.html">mod_file_cache</a></code> provides the 
-      <code class="directive"><a href="./mod/mod_file_cache.html#mmapfile">MMapFile</a></code> directive, which
+      <code class="directive"><a href="./mod/mod_file_cache.html#mmapstatic">MMapStatic</a></code> directive, which
       allows you to have Apache map a static file's contents into memory at
       start time (using the mmap system call). Apache will use the in-memory 
       contents for all subsequent accesses to this file.</p>
 
-      <div class="example"><pre>MMapFile /usr/local/apache2/htdocs/index.html</pre></div>
+      <div class="example"><pre>MMapStatic /usr/local/apache2/htdocs/index.html</pre></div>
 
       <p>As with the
       <code class="directive"><a href="./mod/mod_file_cache.html#cachefile">CacheFile</a></code> directive, any
       changes in these files will not be picked up by Apache after it has
       started.</p>
 
-      <p> The <code class="directive"><a href="./mod/mod_file_cache.html#mmapfile">MMapFile</a></code> 
+      <p> The <code class="directive"><a href="./mod/mod_file_cache.html#mmapstatic">MMapStatic</a></code> 
       directive does not keep track of how much memory it allocates, so
       you must ensure not to over-use the directive. Each Apache child
       process will replicate this memory, so it is critically important
       to ensure that the files mapped are not so large as to cause the
       system to swap memory.</p>
+    
+
+    <h3>mod_mem_cache Caching</h3>
+      
+
+      <p><code class="module"><a href="./mod/mod_mem_cache.html">mod_mem_cache</a></code> provides a HTTP-aware intelligent
+      in-memory cache. It also uses heap memory directly, which means that
+      even if <var>MMap</var> is not supported on your system, 
+      <code class="module"><a href="./mod/mod_mem_cache.html">mod_mem_cache</a></code> may still be able to perform caching.</p>
+
+      <p>Caching of this type is enabled via;</p>
+
+      <div class="example"><pre>
+# Enable memory caching
+CacheEnable mem /
+
+# Limit the size of the cache to 1 Megabyte
+MCacheSize 1024</pre></div>
     
   </div><div class="top"><a href="#page-header"><img alt="top" src="./images/up.gif" /></a></div>
 <div class="section">
@@ -509,8 +543,9 @@ sys     0m0.000s</pre></div>
      <table class="related"><tr><th>Related Modules</th><th>Related Directives</th></tr><tr><td><ul><li><code class="module"><a href="./mod/mod_disk_cache.html">mod_disk_cache</a></code></li></ul></td><td><ul><li><code class="directive"><a href="./mod/mod_cache.html#cacheenable">CacheEnable</a></code></li><li><code class="directive"><a href="./mod/mod_cache.html#cachedisable">CacheDisable</a></code></li></ul></td></tr></table>
        
     <p><code class="module"><a href="./mod/mod_disk_cache.html">mod_disk_cache</a></code> provides a disk-based caching mechanism 
-    for <code class="module"><a href="./mod/mod_cache.html">mod_cache</a></code>. This cache is intelligent and content will
-    be served from the cache only as long as it is considered valid.</p>
+    for <code class="module"><a href="./mod/mod_cache.html">mod_cache</a></code>. As with <code class="module"><a href="./mod/mod_mem_cache.html">mod_mem_cache</a></code>
+    this cache is intelligent and content will be served from the cache only
+    as long as it is considered valid.</p>
 
     <p>Typically the module will be configured as so;</p>
 
@@ -615,9 +650,8 @@ CacheDirLength 1</pre></div>
   </div></div>
 <div class="bottomlang">
 <p><span>Available Languages: </span><a href="./en/caching.html" title="English">&nbsp;en&nbsp;</a> |
-<a href="./fr/caching.html" hreflang="fr" rel="alternate" title="Français">&nbsp;fr&nbsp;</a> |
-<a href="./tr/caching.html" hreflang="tr" rel="alternate" title="Türkçe">&nbsp;tr&nbsp;</a></p>
+<a href="./fr/caching.html" hreflang="fr" rel="alternate" title="Français">&nbsp;fr&nbsp;</a></p>
 </div><div id="footer">
-<p class="apache">Copyright 2010 The Apache Software Foundation.<br />Licensed under the <a href="http://www.apache.org/licenses/LICENSE-2.0">Apache License, Version 2.0</a>.</p>
+<p class="apache">Copyright 2007 The Apache Software Foundation.<br />Licensed under the <a href="http://www.apache.org/licenses/LICENSE-2.0">Apache License, Version 2.0</a>.</p>
 <p class="menu"><a href="./mod/">Modules</a> | <a href="./mod/directives.html">Directives</a> | <a href="./faq/">FAQ</a> | <a href="./glossary.html">Glossary</a> | <a href="./sitemap.html">Sitemap</a></p></div>
 </body></html>

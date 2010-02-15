@@ -33,6 +33,7 @@
 #define APR_WANT_MEMFUNC
 #include "apr_want.h"
 
+#define CORE_PRIVATE
 #include "util_filter.h"
 #include "ap_config.h"
 #include "httpd.h"
@@ -94,7 +95,7 @@ AP_DECLARE(void) ap_setup_make_content_type(apr_pool_t *pool)
 /*
  * Builds the content-type that should be sent to the client from the
  * content-type specified.  The following rules are followed:
- *    - if type is NULL or "", return NULL (do not set content-type).
+ *    - if type is NULL, type is set to ap_default_type(r)
  *    - if charset adding is disabled, stop processing and return type.
  *    - then, if there are no parameters on type, add the default charset
  *    - return type
@@ -108,8 +109,8 @@ AP_DECLARE(const char *)ap_make_content_type(request_rec *r, const char *type)
     core_request_config *request_conf;
     apr_size_t type_len;
 
-    if (!type || *type == '\0') {
-        return NULL;
+    if (!type) {
+        type = ap_default_type(r);
     }
 
     if (conf->add_default_charset != ADD_DEFAULT_CHARSET_ON) {
@@ -221,8 +222,9 @@ AP_DECLARE(apr_status_t) ap_rgetline_core(char **s, apr_size_t n,
      * against APR_ASCII_LF at the end of the loop if bb only contains
      * zero-length buckets.
      */
-    if (last_char)
+    if (last_char) {
         *last_char = '\0';
+    }
 
     for (;;) {
         apr_brigade_cleanup(bb);
@@ -431,13 +433,8 @@ AP_DECLARE(apr_status_t) ap_rgetline_core(char **s, apr_size_t n,
             }
         }
     }
+
     *read = bytes_handled;
-
-    /* PR#43039: We shouldn't accept NULL bytes within the line */
-    if (strlen(*s) < bytes_handled) {
-        return APR_EINVAL;
-    }
-
     return APR_SUCCESS;
 }
 
@@ -611,12 +608,6 @@ static int read_request_line(request_rec *r, apr_bucket_brigade *bb)
                 r->proto_num = HTTP_VERSION(1,0);
                 r->protocol  = apr_pstrdup(r->pool, "HTTP/1.0");
             }
-            else if (rv == APR_TIMEUP) {
-                r->status = HTTP_REQUEST_TIME_OUT;
-            }
-            else if (rv == APR_EINVAL) {
-                r->status = HTTP_BAD_REQUEST;
-            }
             return 0;
         }
     } while ((len <= 0) && (++num_blank_lines < max_blank_lines));
@@ -700,12 +691,7 @@ AP_DECLARE(void) ap_get_mime_headers_core(request_rec *r, apr_bucket_brigade *bb
                          &len, r, 0, bb);
 
         if (rv != APR_SUCCESS) {
-            if (rv == APR_TIMEUP) {
-                r->status = HTTP_REQUEST_TIME_OUT;
-            }
-            else {
-                r->status = HTTP_BAD_REQUEST;
-            }
+            r->status = HTTP_BAD_REQUEST;
 
             /* ap_rgetline returns APR_ENOSPC if it fills up the buffer before
              * finding the end-of-line.  This is only going to happen if it
@@ -858,11 +844,9 @@ request_rec *ap_read_request(conn_rec *conn)
     apr_socket_t *csd;
     apr_interval_time_t cur_timeout;
 
-
     apr_pool_create(&p, conn->pool);
     apr_pool_tag(p, "request");
     r = apr_pcalloc(p, sizeof(request_rec));
-    AP_READ_REQUEST_ENTRY((intptr_t)r, (uintptr_t)conn);
     r->pool            = p;
     r->connection      = conn;
     r->server          = conn->base_server;
@@ -893,7 +877,7 @@ request_rec *ap_read_request(conn_rec *conn)
     r->read_length     = 0;
     r->read_body       = REQUEST_NO_BODY;
 
-    r->status          = HTTP_OK;  /* Until further notice */
+    r->status          = HTTP_REQUEST_TIME_OUT;  /* Until we get a request */
     r->the_request     = NULL;
 
     /* Begin by presuming any module can make its own path_info assumptions,
@@ -905,32 +889,18 @@ request_rec *ap_read_request(conn_rec *conn)
 
     /* Get the request... */
     if (!read_request_line(r, tmp_bb)) {
-        if (r->status == HTTP_REQUEST_URI_TOO_LARGE
-            || r->status == HTTP_BAD_REQUEST) {
-            if (r->status == HTTP_BAD_REQUEST) {
-                ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, r,
-                              "request failed: invalid characters in URI");
-            }
-            else {
-                ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, r,
-                              "request failed: URI too long (longer than %d)", r->server->limit_req_line);
-            }
+        if (r->status == HTTP_REQUEST_URI_TOO_LARGE) {
+            ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, r,
+                          "request failed: URI too long (longer than %d)", r->server->limit_req_line);
             ap_send_error_response(r, 0);
             ap_update_child_status(conn->sbh, SERVER_BUSY_LOG, r);
             ap_run_log_transaction(r);
             apr_brigade_destroy(tmp_bb);
-            goto traceout;
-        }
-        else if (r->status == HTTP_REQUEST_TIME_OUT) {
-            ap_update_child_status(conn->sbh, SERVER_BUSY_LOG, r);
-            ap_run_log_transaction(r);
-            apr_brigade_destroy(tmp_bb);
-            goto traceout;
+            return r;
         }
 
         apr_brigade_destroy(tmp_bb);
-        r = NULL;
-        goto traceout;
+        return NULL;
     }
 
     /* We may have been in keep_alive_timeout mode, so toggle back
@@ -946,14 +916,14 @@ request_rec *ap_read_request(conn_rec *conn)
 
     if (!r->assbackwards) {
         ap_get_mime_headers_core(r, tmp_bb);
-        if (r->status != HTTP_OK) {
+        if (r->status != HTTP_REQUEST_TIME_OUT) {
             ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, r,
                           "request failed: error reading the headers");
             ap_send_error_response(r, 0);
             ap_update_child_status(conn->sbh, SERVER_BUSY_LOG, r);
             ap_run_log_transaction(r);
             apr_brigade_destroy(tmp_bb);
-            goto traceout;
+            return r;
         }
 
         if (apr_table_get(r->headers_in, "Transfer-Encoding")
@@ -981,11 +951,13 @@ request_rec *ap_read_request(conn_rec *conn)
             ap_update_child_status(conn->sbh, SERVER_BUSY_LOG, r);
             ap_run_log_transaction(r);
             apr_brigade_destroy(tmp_bb);
-            goto traceout;
+            return r;
         }
     }
 
     apr_brigade_destroy(tmp_bb);
+
+    r->status = HTTP_OK;                         /* Until further notice. */
 
     /* update what we think the virtual host is based on the headers we've
      * now read. may update status.
@@ -1033,15 +1005,14 @@ request_rec *ap_read_request(conn_rec *conn)
         ap_send_error_response(r, 0);
         ap_update_child_status(conn->sbh, SERVER_BUSY_LOG, r);
         ap_run_log_transaction(r);
-        goto traceout;
+        return r;
     }
 
     if ((access_status = ap_run_post_read_request(r))) {
         ap_die(access_status, r);
         ap_update_child_status(conn->sbh, SERVER_BUSY_LOG, r);
         ap_run_log_transaction(r);
-        r = NULL;
-        goto traceout;
+        return NULL;
     }
 
     if (((expect = apr_table_get(r->headers_in, "Expect")) != NULL)
@@ -1063,24 +1034,22 @@ request_rec *ap_read_request(conn_rec *conn)
             ap_send_error_response(r, 0);
             ap_update_child_status(conn->sbh, SERVER_BUSY_LOG, r);
             ap_run_log_transaction(r);
-            goto traceout;
+            return r;
         }
     }
 
-    AP_READ_REQUEST_SUCCESS((uintptr_t)r, (char *)r->method, (char *)r->uri, (char *)r->server->defn_name, r->status);
-    return r;
-    traceout:
-    AP_READ_REQUEST_FAILURE((uintptr_t)r);
     return r;
 }
 
-/* if a request with a body creates a subrequest, remove original request's
- * input headers which pertain to the body which has already been read.
- * out-of-line helper function for ap_set_sub_req_protocol.
+/* if a request with a body creates a subrequest, clone the original request's
+ * input headers minus any headers pertaining to the body which has already
+ * been read.  out-of-line helper function for ap_set_sub_req_protocol.
  */
 
-static void strip_headers_request_body(request_rec *rnew)
+static void clone_headers_no_body(request_rec *rnew,
+                                  const request_rec *r)
 {
+    rnew->headers_in = apr_table_copy(rnew->pool, r->headers_in);
     apr_table_unset(rnew->headers_in, "Content-Encoding");
     apr_table_unset(rnew->headers_in, "Content-Language");
     apr_table_unset(rnew->headers_in, "Content-Length");
@@ -1114,14 +1083,15 @@ AP_DECLARE(void) ap_set_sub_req_protocol(request_rec *rnew,
 
     rnew->status          = HTTP_OK;
 
-    rnew->headers_in = apr_table_copy(rnew->pool, r->headers_in);
-
     /* did the original request have a body?  (e.g. POST w/SSI tags)
      * if so, make sure the subrequest doesn't inherit body headers
      */
-    if (!r->kept_body && (apr_table_get(r->headers_in, "Content-Length")
-        || apr_table_get(r->headers_in, "Transfer-Encoding"))) {
-        strip_headers_request_body(rnew);
+    if (apr_table_get(r->headers_in, "Content-Length")
+        || apr_table_get(r->headers_in, "Transfer-Encoding")) {
+        clone_headers_no_body(rnew, r);
+    } else {
+        /* no body (common case).  clone headers the cheap way */
+        rnew->headers_in      = r->headers_in;
     }
     rnew->subprocess_env  = apr_table_copy(rnew->pool, r->subprocess_env);
     rnew->headers_out     = apr_table_make(rnew->pool, 5);
@@ -1263,7 +1233,6 @@ struct content_length_ctx {
                      * least one bucket on to the next output filter
                      * for this request
                      */
-    apr_bucket_brigade *tmpbb;
 };
 
 /* This filter computes the content length, but it also computes the number
@@ -1284,7 +1253,6 @@ AP_CORE_DECLARE_NONSTD(apr_status_t) ap_content_length_filter(
     if (!ctx) {
         f->ctx = ctx = apr_palloc(r->pool, sizeof(*ctx));
         ctx->data_sent = 0;
-        ctx->tmpbb = apr_brigade_create(r->pool, r->connection->bucket_alloc);
     }
 
     /* Loop through this set of buckets to compute their length
@@ -1314,17 +1282,16 @@ AP_CORE_DECLARE_NONSTD(apr_status_t) ap_content_length_filter(
                  * do a blocking read on the next batch.
                  */
                 if (e != APR_BRIGADE_FIRST(b)) {
-                    apr_bucket *flush;
-                    apr_brigade_split_ex(b, e, ctx->tmpbb);
-                    flush = apr_bucket_flush_create(r->connection->bucket_alloc);
+                    apr_bucket_brigade *split = apr_brigade_split(b, e);
+                    apr_bucket *flush = apr_bucket_flush_create(r->connection->bucket_alloc);
 
                     APR_BRIGADE_INSERT_TAIL(b, flush);
                     rv = ap_pass_brigade(f->next, b);
                     if (rv != APR_SUCCESS || f->c->aborted) {
+                        apr_brigade_destroy(split);
                         return rv;
                     }
-                    apr_brigade_cleanup(b);
-                    APR_BRIGADE_CONCAT(b, ctx->tmpbb);
+                    b = split;
                     e = APR_BRIGADE_FIRST(b);
 
                     ctx->data_sent = 1;
@@ -1356,13 +1323,13 @@ AP_CORE_DECLARE_NONSTD(apr_status_t) ap_content_length_filter(
          * by something like proxy.  the brigade only has an EOS bucket
          * in this case, making r->bytes_sent zero.
          *
-         * if r->bytes_sent > 0 we have a (temporary) body whose length may
-         * have been changed by a filter.  the C-L header might not have been
-         * updated so we do it here.  long term it would be cleaner to have
-         * such filters update or remove the C-L header, and just use it
+         * if r->bytes_sent > 0 we have a (temporary) body whose length may 
+         * have been changed by a filter.  the C-L header might not have been 
+         * updated so we do it here.  long term it would be cleaner to have 
+         * such filters update or remove the C-L header, and just use it 
          * if present.
          */
-        !(r->header_only && r->bytes_sent == 0 &&
+        !(r->header_only && r->bytes_sent == 0 &&   
             apr_table_get(r->headers_out, "Content-Length"))) {
         ap_set_content_length(r, r->bytes_sent);
     }
@@ -1380,11 +1347,12 @@ AP_DECLARE(apr_status_t) ap_send_fd(apr_file_t *fd, request_rec *r,
 {
     conn_rec *c = r->connection;
     apr_bucket_brigade *bb = NULL;
+    apr_bucket *b;
     apr_status_t rv;
 
     bb = apr_brigade_create(r->pool, c->bucket_alloc);
-    
-    apr_brigade_insert_file(bb, fd, 0, len, r->pool);
+    b = apr_bucket_file_create(fd, offset, len, r->pool, c->bucket_alloc);
+    APR_BRIGADE_INSERT_TAIL(bb, b);
 
     rv = ap_pass_brigade(r->output_filters, bb);
     if (rv != APR_SUCCESS) {
@@ -1417,7 +1385,6 @@ AP_DECLARE(size_t) ap_send_mmap(apr_mmap_t *mm, request_rec *r, size_t offset,
 
 typedef struct {
     apr_bucket_brigade *bb;
-    apr_bucket_brigade *tmpbb;
 } old_write_filter_ctx;
 
 AP_CORE_DECLARE_NONSTD(apr_status_t) ap_old_write_filter(
@@ -1427,7 +1394,7 @@ AP_CORE_DECLARE_NONSTD(apr_status_t) ap_old_write_filter(
 
     AP_DEBUG_ASSERT(ctx);
 
-    if (ctx->bb != NULL) {
+    if (ctx->bb != 0) {
         /* whatever is coming down the pipe (we don't care), we
          * can simply insert our buffered data at the front and
          * pass the whole bundle down the chain.
@@ -1438,10 +1405,15 @@ AP_CORE_DECLARE_NONSTD(apr_status_t) ap_old_write_filter(
     return ap_pass_brigade(f->next, bb);
 }
 
-static ap_filter_t *insert_old_write_filter(request_rec *r)
+static apr_status_t buffer_output(request_rec *r,
+                                  const char *str, apr_size_t len)
 {
+    conn_rec *c = r->connection;
     ap_filter_t *f;
     old_write_filter_ctx *ctx;
+
+    if (len == 0)
+        return APR_SUCCESS;
 
     /* future optimization: record some flags in the request_rec to
      * say whether we've added our filter, and whether it is first.
@@ -1456,40 +1428,23 @@ static ap_filter_t *insert_old_write_filter(request_rec *r)
     if (f == NULL) {
         /* our filter hasn't been added yet */
         ctx = apr_pcalloc(r->pool, sizeof(*ctx));
-        ctx->tmpbb = apr_brigade_create(r->pool, r->connection->bucket_alloc);
-
         ap_add_output_filter("OLD_WRITE", ctx, r, r->connection);
         f = r->output_filters;
     }
-
-    return f;
-}
-
-static apr_status_t buffer_output(request_rec *r,
-                                  const char *str, apr_size_t len)
-{
-    conn_rec *c = r->connection;
-    ap_filter_t *f;
-    old_write_filter_ctx *ctx;
-
-    if (len == 0)
-        return APR_SUCCESS;
-
-    f = insert_old_write_filter(r);
-    ctx = f->ctx;
 
     /* if the first filter is not our buffering filter, then we have to
      * deliver the content through the normal filter chain
      */
     if (f != r->output_filters) {
-        apr_status_t rv;
+        apr_bucket_brigade *bb = apr_brigade_create(r->pool, c->bucket_alloc);
         apr_bucket *b = apr_bucket_transient_create(str, len, c->bucket_alloc);
-        APR_BRIGADE_INSERT_TAIL(ctx->tmpbb, b);
+        APR_BRIGADE_INSERT_TAIL(bb, b);
 
-        rv = ap_pass_brigade(r->output_filters, ctx->tmpbb);
-        apr_brigade_cleanup(ctx->tmpbb);
-        return rv;
+        return ap_pass_brigade(r->output_filters, bb);
     }
+
+    /* grab the context from our filter */
+    ctx = r->output_filters->ctx;
 
     if (ctx->bb == NULL) {
         ctx->bb = apr_brigade_create(r->pool, c->bucket_alloc);
@@ -1645,20 +1600,13 @@ AP_DECLARE_NONSTD(int) ap_rvputs(request_rec *r, ...)
 AP_DECLARE(int) ap_rflush(request_rec *r)
 {
     conn_rec *c = r->connection;
+    apr_bucket_brigade *bb;
     apr_bucket *b;
-    ap_filter_t *f;
-    old_write_filter_ctx *ctx;
-    apr_status_t rv;
 
-    f = insert_old_write_filter(r);
-    ctx = f->ctx;
-
+    bb = apr_brigade_create(r->pool, c->bucket_alloc);
     b = apr_bucket_flush_create(c->bucket_alloc);
-    APR_BRIGADE_INSERT_TAIL(ctx->tmpbb, b);
-
-    rv = ap_pass_brigade(r->output_filters, ctx->tmpbb);
-    apr_brigade_cleanup(ctx->tmpbb);
-    if (rv != APR_SUCCESS)
+    APR_BRIGADE_INSERT_TAIL(bb, b);
+    if (ap_pass_brigade(r->output_filters, bb) != APR_SUCCESS)
         return -1;
 
     return 0;
@@ -1684,60 +1632,39 @@ typedef struct hdr_ptr {
     ap_filter_t *f;
     apr_bucket_brigade *bb;
 } hdr_ptr;
+
 static int send_header(void *data, const char *key, const char *val)
 {
     ap_fputstrs(((hdr_ptr*)data)->f, ((hdr_ptr*)data)->bb,
                 key, ": ", val, CRLF, NULL);
     return 1;
 }
+
 AP_DECLARE(void) ap_send_interim_response(request_rec *r, int send_headers)
 {
     hdr_ptr x;
-    char *status_line = NULL;
-    request_rec *rr;
 
     if (r->proto_num < 1001) {
         /* don't send interim response to HTTP/1.0 Client */
         return;
     }
     if (!ap_is_HTTP_INFO(r->status)) {
-        ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, r,
+        ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, NULL,
                       "Status is %d - not sending interim response", r->status);
         return;
     }
-    if ((r->status == HTTP_CONTINUE) && !r->expecting_100) {
-        /*
-         * Don't send 100-Continue when there was no Expect: 100-continue
-         * in the request headers. For origin servers this is a SHOULD NOT
-         * for proxies it is a MUST NOT according to RFC 2616 8.2.3
-         */
-        return;
-    }
-
-    /* if we send an interim response, we're no longer in a state of
-     * expecting one.  Also, this could feasibly be in a subrequest,
-     * so we need to propagate the fact that we responded.
-     */
-    for (rr = r; rr != NULL; rr = rr->main) {
-        rr->expecting_100 = 0;
-    }
-
-    status_line = apr_pstrcat(r->pool, AP_SERVER_PROTOCOL, " ", r->status_line, CRLF, NULL);
-    ap_xlate_proto_to_ascii(status_line, strlen(status_line));
 
     x.f = r->connection->output_filters;
     x.bb = apr_brigade_create(r->pool, r->connection->bucket_alloc);
-
-    ap_fputs(x.f, x.bb, status_line);
+    ap_fputstrs(x.f, x.bb, AP_SERVER_PROTOCOL, " ", r->status_line, CRLF, NULL);
     if (send_headers) {
         apr_table_do(send_header, &x, r->headers_out, NULL);
         apr_table_clear(r->headers_out);
     }
-    ap_fputs(x.f, x.bb, CRLF_ASCII);
+    ap_fputs(x.f, x.bb, CRLF);
     ap_fflush(x.f, x.bb);
     apr_brigade_destroy(x.bb);
 }
-
 
 AP_IMPLEMENT_HOOK_RUN_ALL(int,post_read_request,
                           (request_rec *r), (r), OK, DECLINED)

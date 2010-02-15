@@ -20,12 +20,14 @@
 #define APR_WANT_STRFUNC
 #include "apr_want.h"
 
+#define CORE_PRIVATE
 #include "ap_config.h"
 #include "httpd.h"
 #include "http_config.h"
 #include "http_core.h"
 #include "ap_listen.h"
 #include "http_log.h"
+#include "mpm.h"
 #include "mpm_common.h"
 
 AP_DECLARE_DATA ap_listen_rec *ap_listeners = NULL;
@@ -168,7 +170,11 @@ static apr_status_t make_sock(apr_pool_t *p, ap_listen_rec *server)
     server->sd = s;
     server->active = 1;
 
+#ifdef MPM_ACCEPT_FUNC
+    server->accept_func = MPM_ACCEPT_FUNC;
+#else
     server->accept_func = NULL;
+#endif
 
     return APR_SUCCESS;
 }
@@ -218,11 +224,13 @@ static void ap_apply_accept_filter(apr_pool_t *p, ap_listen_rec *lis,
                           accf);
         }
 #else
-        rv = apr_socket_opt_set(s, APR_TCP_DEFER_ACCEPT, 30);
+#ifdef APR_TCP_DEFER_ACCEPT
+        rv = apr_socket_opt_set(s, APR_TCP_DEFER_ACCEPT, 1);
         if (rv != APR_SUCCESS && !APR_STATUS_IS_ENOTIMPL(rv)) {
             ap_log_perror(APLOG_MARK, APLOG_WARNING, rv, p,
                               "Failed to enable APR_TCP_DEFER_ACCEPT");
         }
+#endif
 #endif
     }
 }
@@ -234,8 +242,7 @@ static apr_status_t close_listeners_on_exec(void *v)
 }
 
 static const char *alloc_listener(process_rec *process, char *addr,
-                                  apr_port_t port, const char* proto,
-                                  void *dummy)
+                                  apr_port_t port, const char* proto)
 {
     ap_listen_rec **walk, *last;
     apr_status_t status;
@@ -270,9 +277,6 @@ static const char *alloc_listener(process_rec *process, char *addr,
     }
 
     if (found_listener) {
-        if (ap_listeners->slave != dummy) {
-            return "Cannot define a slave on the same IP:port as a Listener";
-        }
         return NULL;
     }
 
@@ -330,7 +334,6 @@ static const char *alloc_listener(process_rec *process, char *addr,
             last->next = new;
             last = new;
         }
-        new->slave = dummy;
     }
 
     return NULL;
@@ -374,22 +377,14 @@ static int open_listeners(apr_pool_t *pool)
         }
         else {
 #if APR_HAVE_IPV6
-            ap_listen_rec *cur;
             int v6only_setting;
-            int skip = 0;
 
             /* If we have the unspecified IPv4 address (0.0.0.0) and
              * the unspecified IPv6 address (::) is next, we need to
              * swap the order of these in the list. We always try to
              * bind to IPv6 first, then IPv4, since an IPv6 socket
              * might be able to receive IPv4 packets if V6ONLY is not
-             * enabled, but never the other way around.
-             * Note: In some configurations, the unspecified IPv6 address
-             * could be even later in the list.  This logic only corrects
-             * the situation where it is next in the list, such as when
-             * apr_sockaddr_info_get() returns an IPv4 and an IPv6 address,
-             * in that order.
-             */
+             * enabled, but never the other way around. */
             if (lr->next != NULL
                 && IS_INADDR_ANY(lr->bind_addr)
                 && lr->bind_addr->port == lr->next->bind_addr->port
@@ -407,32 +402,26 @@ static int open_listeners(apr_pool_t *pool)
                 lr = next;
             }
 
-            /* If we are trying to bind to 0.0.0.0 and a previous listener
+            /* If we are trying to bind to 0.0.0.0 and the previous listener
              * was :: on the same port and in turn that socket does not have
              * the IPV6_V6ONLY flag set; we must skip the current attempt to
              * listen (which would generate an error). IPv4 will be handled
              * on the established IPv6 socket.
              */
-            if (IS_INADDR_ANY(lr->bind_addr)) {
-                for (cur = ap_listeners; cur != lr; cur = cur->next) {
-                    if (lr->bind_addr->port == cur->bind_addr->port
-                        && IS_IN6ADDR_ANY(cur->bind_addr)
-                        && apr_socket_opt_get(cur->sd, APR_IPV6_V6ONLY,
-                                              &v6only_setting) == APR_SUCCESS
-                        && v6only_setting == 0) {
+            if (previous != NULL
+                && IS_INADDR_ANY(lr->bind_addr)
+                && lr->bind_addr->port == previous->bind_addr->port
+                && IS_IN6ADDR_ANY(previous->bind_addr)
+                && apr_socket_opt_get(previous->sd, APR_IPV6_V6ONLY,
+                                      &v6only_setting) == APR_SUCCESS
+                && v6only_setting == 0) {
 
-                        /* Remove the current listener from the list */
-                        previous->next = lr->next;
-                        lr = previous; /* maintain current value of previous after
-                                        * post-loop expression is evaluated
-                                        */
-                        skip = 1;
-                        break;
-                    }
-                }
-                if (skip) {
-                    continue;
-                }
+                /* Remove the current listener from the list */
+                previous->next = lr->next;
+                lr = previous; /* maintain current value of previous after
+                                * post-loop expression is evaluated
+                                */
+                continue;
             }
 #endif
             if (make_sock(pool, lr) == APR_SUCCESS) {
@@ -586,22 +575,6 @@ AP_DECLARE_NONSTD(void) ap_close_listeners(void)
         lr->active = 0;
     }
 }
-AP_DECLARE_NONSTD(int) ap_close_selected_listeners(ap_slave_t *slave)
-{
-    ap_listen_rec *lr;
-    int n = 0;
-
-    for (lr = ap_listeners; lr; lr = lr->next) {
-        if (lr->slave != slave) {
-            apr_socket_close(lr->sd);
-            lr->active = 0;
-        }
-        else {
-            ++n;
-        }
-    }
-    return n;
-}
 
 AP_DECLARE(void) ap_listen_pre_config(void)
 {
@@ -610,10 +583,7 @@ AP_DECLARE(void) ap_listen_pre_config(void)
     ap_listenbacklog = DEFAULT_LISTENBACKLOG;
 }
 
-/* Hack: populate an extra field
- * When this gets called from a Listen directive, dummy is null.
- * So we can use non-null dummy to pass a data pointer without conflict
- */
+
 AP_DECLARE_NONSTD(const char *) ap_set_listener(cmd_parms *cmd, void *dummy,
                                                 int argc, char *const argv[])
 {
@@ -649,18 +619,14 @@ AP_DECLARE_NONSTD(const char *) ap_set_listener(cmd_parms *cmd, void *dummy,
     }
 
     if (argc != 2) {
-        if (port == 443) {
-            proto = "https";
-        } else {
-            proto = "http";
-        }
+        proto = "http";
     }
     else {
         proto = apr_pstrdup(cmd->pool, argv[1]);
         ap_str_tolower(proto);
     }
 
-    return alloc_listener(cmd->server->process, host, port, proto, dummy);
+    return alloc_listener(cmd->server->process, host, port, proto);
 }
 
 AP_DECLARE_NONSTD(const char *) ap_set_listenbacklog(cmd_parms *cmd,

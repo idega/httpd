@@ -1,6 +1,6 @@
 #ifndef lint
-static char const
-ssl_expr_yyrcsid[] = "$FreeBSD: src/usr.bin/yacc/skeleton.c,v 1.28.2.1 2001/07/19 05:46:39 peter Exp $";
+static char const 
+ssl_expr_yyrcsid[] = "$FreeBSD: src/usr.bin/yacc/skeleton.c,v 1.28 2000/01/17 02:04:06 bde Exp $";
 #endif
 #include <stdlib.h>
 #define YYBYACC 1
@@ -11,11 +11,7 @@ ssl_expr_yyrcsid[] = "$FreeBSD: src/usr.bin/yacc/skeleton.c,v 1.28.2.1 2001/07/1
 #define ssl_expr_yyclearin (ssl_expr_yychar=(YYEMPTY))
 #define ssl_expr_yyerrok (ssl_expr_yyerrflag=0)
 #define YYRECOVERING() (ssl_expr_yyerrflag!=0)
-#if defined(__cplusplus) || __STDC__
-static int ssl_expr_yygrowstack(void);
-#else
 static int ssl_expr_yygrowstack();
-#endif
 #define YYPREFIX "ssl_expr_yy"
 #line 36 "ssl_expr_parse.y"
 #include "ssl_private.h"
@@ -24,7 +20,7 @@ typedef union {
     char     *cpVal;
     ssl_expr *exVal;
 } YYSTYPE;
-#line 28 "y.tab.c"
+#line 24 "y.tab.c"
 #define YYERRCODE 256
 #define T_TRUE 257
 #define T_FALSE 258
@@ -43,7 +39,7 @@ typedef union {
 #define T_OP_REG 271
 #define T_OP_NRE 272
 #define T_OP_IN 273
-#define T_OP_PEEREXTLIST 274
+#define T_OP_OID 274
 #define T_OP_OR 275
 #define T_OP_AND 276
 #define T_OP_NOT 277
@@ -164,7 +160,7 @@ const char * const ssl_expr_yyname[] = {
 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,"T_TRUE",
 "T_FALSE","T_DIGIT","T_ID","T_STRING","T_REGEX","T_REGEX_I","T_FUNC_FILE",
 "T_OP_EQ","T_OP_NE","T_OP_LT","T_OP_LE","T_OP_GT","T_OP_GE","T_OP_REG",
-"T_OP_NRE","T_OP_IN","T_OP_PEEREXTLIST","T_OP_OR","T_OP_AND","T_OP_NOT",
+"T_OP_NRE","T_OP_IN","T_OP_OID","T_OP_OR","T_OP_AND","T_OP_NOT",
 };
 const char * const ssl_expr_yyrule[] = {
 "$accept : root",
@@ -185,7 +181,7 @@ const char * const ssl_expr_yyrule[] = {
 "comparison : word T_OP_IN wordlist",
 "comparison : word T_OP_REG regex",
 "comparison : word T_OP_NRE regex",
-"wordlist : T_OP_PEEREXTLIST '(' word ')'",
+"wordlist : T_OP_OID '(' word ')'",
 "wordlist : '{' words '}'",
 "words : word",
 "words : words ',' word",
@@ -233,7 +229,7 @@ int ssl_expr_yyerror(char *s)
     return 2;
 }
 
-#line 237 "y.tab.c"
+#line 233 "y.tab.c"
 /* allocate initial stack or double stack size, up to YYMAXDEPTH */
 static int ssl_expr_yygrowstack()
 {
@@ -274,22 +270,22 @@ static int ssl_expr_yygrowstack()
 #if defined(__cplusplus) || __STDC__
 #define YYPARSE_PARAM_ARG void
 #define YYPARSE_PARAM_DECL
-#else  /* ! ANSI-C/C++ */
+#else	/* ! ANSI-C/C++ */
 #define YYPARSE_PARAM_ARG
 #define YYPARSE_PARAM_DECL
-#endif  /* ANSI-C/C++ */
-#else   /* YYPARSE_PARAM */
+#endif	/* ANSI-C/C++ */
+#else	/* YYPARSE_PARAM */
 #ifndef YYPARSE_PARAM_TYPE
 #define YYPARSE_PARAM_TYPE void *
 #endif
 #if defined(__cplusplus) || __STDC__
 #define YYPARSE_PARAM_ARG YYPARSE_PARAM_TYPE YYPARSE_PARAM
 #define YYPARSE_PARAM_DECL
-#else  /* ! ANSI-C/C++ */
+#else	/* ! ANSI-C/C++ */
 #define YYPARSE_PARAM_ARG YYPARSE_PARAM
 #define YYPARSE_PARAM_DECL YYPARSE_PARAM_TYPE YYPARSE_PARAM;
-#endif  /* ANSI-C/C++ */
-#endif  /* ! YYPARSE_PARAM */
+#endif	/* ANSI-C/C++ */
+#endif	/* ! YYPARSE_PARAM */
 
 int
 ssl_expr_yyparse (YYPARSE_PARAM_ARG)
@@ -498,7 +494,7 @@ case 17:
 break;
 case 18:
 #line 107 "ssl_expr_parse.y"
-{ ssl_expr_yyval.exVal = ssl_expr_make(op_PeerExtElement, ssl_expr_yyvsp[-1].exVal, NULL); }
+{ ssl_expr_yyval.exVal = ssl_expr_make(op_OidListElement, ssl_expr_yyvsp[-1].exVal, NULL); }
 break;
 case 19:
 #line 108 "ssl_expr_parse.y"
@@ -530,9 +526,9 @@ case 25:
 break;
 case 26:
 #line 121 "ssl_expr_parse.y"
-{
+{ 
                 ap_regex_t *regex;
-                if ((regex = ap_pregcomp(ssl_expr_info.pool, ssl_expr_yyvsp[0].cpVal,
+                if ((regex = ap_pregcomp(ssl_expr_info.pool, ssl_expr_yyvsp[0].cpVal, 
                                          AP_REG_EXTENDED|AP_REG_NOSUB)) == NULL) {
                     ssl_expr_error = "Failed to compile regular expression";
                     YYERROR;
@@ -544,7 +540,7 @@ case 27:
 #line 130 "ssl_expr_parse.y"
 {
                 ap_regex_t *regex;
-                if ((regex = ap_pregcomp(ssl_expr_info.pool, ssl_expr_yyvsp[0].cpVal,
+                if ((regex = ap_pregcomp(ssl_expr_info.pool, ssl_expr_yyvsp[0].cpVal, 
                                          AP_REG_EXTENDED|AP_REG_NOSUB|AP_REG_ICASE)) == NULL) {
                     ssl_expr_error = "Failed to compile regular expression";
                     YYERROR;
@@ -554,12 +550,12 @@ case 27:
 break;
 case 28:
 #line 141 "ssl_expr_parse.y"
-{
+{ 
                ssl_expr *args = ssl_expr_make(op_ListElement, ssl_expr_yyvsp[-1].cpVal, NULL);
                ssl_expr_yyval.exVal = ssl_expr_make(op_Func, "file", args);
             }
 break;
-#line 563 "y.tab.c"
+#line 559 "y.tab.c"
     }
     ssl_expr_yyssp -= ssl_expr_yym;
     ssl_expr_yystate = *ssl_expr_yyssp;

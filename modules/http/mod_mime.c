@@ -274,16 +274,6 @@ static const char *add_extension_info(cmd_parms *cmd, void *m_,
 }
 
 /*
- * As RemoveType should also override the info from TypesConfig, we add an
- * empty string as type instead of actually removing the type.
- */
-static const char *remove_extension_type(cmd_parms *cmd, void *m_,
-                                         const char *ext)
-{
-    return add_extension_info(cmd, m_, "", ext);
-}
-
-/*
  * Note handler names are un-added with each per_dir_config merge.
  * This keeps the association from being inherited, but not
  * from being re-added at a subordinate level.
@@ -322,12 +312,6 @@ static const char *multiviews_match(cmd_parms *cmd, void *m_,
                                     const char *include)
 {
     mime_dir_config *m = (mime_dir_config *) m_;
-    const char *errmsg;
-
-    errmsg = ap_check_cmd_context(cmd, NOT_IN_LOCATION);
-    if (errmsg != NULL) {
-        return errmsg;
-    }
 
     if (strcasecmp(include, "Any") == 0) {
         if (m->multimatch && (m->multimatch & ~MULTIMATCH_ANY)) {
@@ -413,7 +397,7 @@ static const command_rec mime_cmds[] =
     AP_INIT_ITERATE("RemoveOutputFilter", remove_extension_info,
         (void *)APR_OFFSETOF(extension_info, output_filters), OR_FILEINFO,
         "one or more file extensions"),
-    AP_INIT_ITERATE("RemoveType", remove_extension_type,
+    AP_INIT_ITERATE("RemoveType", remove_extension_info,
         (void *)APR_OFFSETOF(extension_info, forced_type), OR_FILEINFO,
         "one or more file extensions"),
     AP_INIT_TAKE1("TypesConfig", set_types_config, NULL, RSRC_CONF,
@@ -801,7 +785,6 @@ static int find_ct(request_rec *r)
     while (*fn && (ext = ap_getword(r->pool, &fn, '.'))) {
         const extension_info *exinfo = NULL;
         int found;
-        char *extcase;
 
         if (*ext == '\0') {  /* ignore empty extensions "bad..html" */
             continue;
@@ -809,9 +792,6 @@ static int find_ct(request_rec *r)
 
         found = 0;
 
-        /* Save the ext in extcase before converting it to lower case.
-         */
-        extcase = apr_pstrdup(r->pool, ext);
         ap_str_tolower(ext);
 
         if (conf->extension_mappings != NULL) {
@@ -829,8 +809,7 @@ static int find_ct(request_rec *r)
 
         if (exinfo != NULL) {
 
-            /* empty string is treated as special case for RemoveType */
-            if (exinfo->forced_type && *exinfo->forced_type) {
+            if (exinfo->forced_type) {
                 ap_set_content_type(r, exinfo->forced_type);
                 found = 1;
             }
@@ -877,8 +856,8 @@ static int find_ct(request_rec *r)
                 }
             }
             /* XXX Two significant problems; 1, we don't check to see if we are
-             * setting redundant filters.    2, we insert these in the types
-             * config hook, which may be too early (dunno.)
+             * setting redundant filters.    2, we insert these in the types config
+             * hook, which may be too early (dunno.)
              */
             if (exinfo->input_filters && r->proxyreq == PROXYREQ_NONE) {
                 const char *filter, *filters = exinfo->input_filters;
@@ -906,7 +885,7 @@ static int find_ct(request_rec *r)
             found_metadata = 1;
         }
         else {
-            *((const char **) apr_array_push(exception_list)) = extcase;
+            *((const char **) apr_array_push(exception_list)) = ext;
         }
     }
 

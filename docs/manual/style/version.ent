@@ -18,7 +18,7 @@
 -->
 
 <!ENTITY httpd.major "2">
-<!ENTITY httpd.minor "3">
-<!ENTITY httpd.patch "5">
+<!ENTITY httpd.minor "2">
+<!ENTITY httpd.patch "8">
 
-<!ENTITY httpd.docs "trunk">
+<!ENTITY httpd.docs "2.2">

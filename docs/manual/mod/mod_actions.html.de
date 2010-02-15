@@ -13,32 +13,32 @@
 <body>
 <div id="page-header">
 <p class="menu"><a href="../mod/">Module</a> | <a href="../mod/directives.html">Direktiven</a> | <a href="../faq/">FAQ</a> | <a href="../glossary.html">Glossar</a> | <a href="../sitemap.html">Seitenindex</a></p>
-<p class="apache">Apache HTTP Server Version 2.3</p>
+<p class="apache">Apache HTTP Server Version 2.2</p>
 <img alt="" src="../images/feather.gif" /></div>
 <div class="up"><a href="./"><img title="&lt;-" alt="&lt;-" src="../images/left.gif" /></a></div>
 <div id="path">
-<a href="http://www.apache.org/">Apache</a> &gt; <a href="http://httpd.apache.org/">HTTP-Server</a> &gt; <a href="http://httpd.apache.org/docs/">Dokumentation</a> &gt; <a href="../">Version 2.3</a> &gt; <a href="./">Module</a></div>
+<a href="http://www.apache.org/">Apache</a> &gt; <a href="http://httpd.apache.org/">HTTP-Server</a> &gt; <a href="http://httpd.apache.org/docs/">Dokumentation</a> &gt; <a href="../">Version 2.2</a> &gt; <a href="./">Module</a></div>
 <div id="page-content">
 <div id="preamble"><h1>Apache-Modul mod_actions</h1>
 <div class="toplang">
 <p><span>Verfügbare Sprachen: </span><a href="../de/mod/mod_actions.html" title="Deutsch">&nbsp;de&nbsp;</a> |
 <a href="../en/mod/mod_actions.html" hreflang="en" rel="alternate" title="English">&nbsp;en&nbsp;</a> |
-<a href="../fr/mod/mod_actions.html" hreflang="fr" rel="alternate" title="Français">&nbsp;fr&nbsp;</a> |
 <a href="../ja/mod/mod_actions.html" hreflang="ja" rel="alternate" title="Japanese">&nbsp;ja&nbsp;</a> |
 <a href="../ko/mod/mod_actions.html" hreflang="ko" rel="alternate" title="Korean">&nbsp;ko&nbsp;</a></p>
 </div>
 <table class="module"><tr><th><a href="module-dict.html#Description">Beschreibung:</a></th><td>Dieses Modul ermöglicht die Ausführung von CGI-Skripten
   in Abhängigkeit von Medientypen und Anfragemethoden.</td></tr>
-<tr><th><a href="module-dict.html#Status">Status:</a></th><td>Basis</td></tr>
+<tr><th><a href="module-dict.html#Status">Status:</a></th><td>Base</td></tr>
 <tr><th><a href="module-dict.html#ModuleIdentifier">Modulbezeichner:</a></th><td>actions_module</td></tr>
 <tr><th><a href="module-dict.html#SourceFile">Quelltext-Datei:</a></th><td>mod_actions.c</td></tr></table>
 <h3>Zusammenfassung</h3>
 
     <p>Das Modul besitzt zwei Direktiven. Die Direktive <code class="directive"><a href="#action">Action</a></code> erlaubt die Ausführung von 
-      CGI-Skripten immer dann, wenn eine Anfrage zu einem bestimmten <a class="glossarylink" href="../glossary.html#mime-type" title="siehe Glossar">MIME-Type</a> erfolgt. Die Direktive <code class="directive"><a href="#script">Script</a></code> erlaubt die Ausführung von
-      CGI-Skripten abhängig von einer bestimmten Methode, die in der
-      Anfrage verwendet wird. Dies macht es deutlich einfacher, Skripte
-      auszuführen, die Dateien verarbeiten.</p>
+      CGI-Skripten immer dann, wenn eine Anfrage zu einem bestimmten <a class="glossarylink" href="../glossary.html#mime-type" title="siehe Glossar">MIME-Type</a> erfolgt. Die Direktive <code class="directive"><a href="#script">Script</a></code> erlaubt die Ausführung
+      von CGI-Skripten abhängig von einer
+      bestimmten Methode, die in der Anfrage verwendet wird. Dies macht es
+      deutlich einfacher, Skripte auszuführen, die Dateien
+      verarbeiten.</p>
 </div>
 <div id="quickview"><h3 class="directives">Direktiven</h3>
 <ul id="toc">
@@ -60,7 +60,7 @@
 <tr><th><a href="directive-dict.html#Syntax">Syntax:</a></th><td><code>Action <var>Aktionsart</var> <var>CGI-Skript</var> [virtual]</code></td></tr>
 <tr><th><a href="directive-dict.html#Context">Kontext:</a></th><td>Serverkonfiguration, Virtual Host, Verzeichnis, .htaccess</td></tr>
 <tr><th><a href="directive-dict.html#Override">AllowOverride:</a></th><td>FileInfo</td></tr>
-<tr><th><a href="directive-dict.html#Status">Status:</a></th><td>Basis</td></tr>
+<tr><th><a href="directive-dict.html#Status">Status:</a></th><td>Base</td></tr>
 <tr><th><a href="directive-dict.html#Module">Modul:</a></th><td>mod_actions</td></tr>
 <tr><th><a href="directive-dict.html#Compatibility">Kompatibilität:</a></th><td>Der Schalter <code>virtual</code> und die Übergabe des 
   Handlers wurden in Apache 2.1 eingeführt.</td></tr>
@@ -69,12 +69,11 @@
       <var>CGI-Skript</var> aktiviert, sobald die <var>Aktionsart</var> durch
       eine Anfrage ausgelöst wird. <var>CGI-Skript</var> ist der URL-Pfad
       zu einer Ressource, die unter Verwendung von <code class="directive"><a href="../mod/mod_alias.html#scriptalias">ScriptAlias</a></code> oder <code class="directive"><a href="../mod/mod_mime.html#addhandler">AddHandler</a></code> als CGI-Skript gekennzeichnet
-      wurde. Die <var>Aktionsart</var> kann entweder ein <a href="../handler.html">Handler</a> oder ein <a class="glossarylink" href="../glossary.html#mime-type" title="siehe Glossar">MIME-Type</a> sein. Die URL und
-      den Dateipfad des angeforderten Dokuments in den 
-      Standard-CGI-Umgebungsvariablen <code>PATH_INFO</code> und
-      <code>PATH_TRANSLATED</code> übergeben. Der für die jeweilige 
-      Anfrage verwendete Handler wird in der Umgebungsvariablen
-      <code>REDIRECT_HANDLER</code> übergeben.</p>
+      wurde. Die <var>Aktionsart</var> kann entweder ein <a href="../handler.html">Handler</a> oder ein <a class="glossarylink" href="../glossary.html#mime-type" title="siehe Glossar">MIME-Type</a> sein. Die URL und den Dateipfad des
+      angeforderten Dokuments in den Standard-CGI-Umgebungsvariablen
+      <code>PATH_INFO</code> und <code>PATH_TRANSLATED</code> übergeben.
+      Der für die jeweilige Anfrage verwendete Handler wird in der
+      Umgebungsvariablen <code>REDIRECT_HANDLER</code> übergeben.</p>
 
     <div class="example"><h3>Beispiele</h3><p><code>
       # Anfragen für Dateien eines bestimmten MIME-Types:<br />
@@ -119,7 +118,7 @@
   Anfragemethode.</td></tr>
 <tr><th><a href="directive-dict.html#Syntax">Syntax:</a></th><td><code>Script <var>Methode</var> <var>CGI-Skript</var></code></td></tr>
 <tr><th><a href="directive-dict.html#Context">Kontext:</a></th><td>Serverkonfiguration, Virtual Host, Verzeichnis</td></tr>
-<tr><th><a href="directive-dict.html#Status">Status:</a></th><td>Basis</td></tr>
+<tr><th><a href="directive-dict.html#Status">Status:</a></th><td>Base</td></tr>
 <tr><th><a href="directive-dict.html#Module">Modul:</a></th><td>mod_actions</td></tr>
 </table>
   <p>Die Direktive fügt eine Aktion hinzu, welche das
@@ -159,10 +158,9 @@
 <div class="bottomlang">
 <p><span>Verfügbare Sprachen: </span><a href="../de/mod/mod_actions.html" title="Deutsch">&nbsp;de&nbsp;</a> |
 <a href="../en/mod/mod_actions.html" hreflang="en" rel="alternate" title="English">&nbsp;en&nbsp;</a> |
-<a href="../fr/mod/mod_actions.html" hreflang="fr" rel="alternate" title="Français">&nbsp;fr&nbsp;</a> |
 <a href="../ja/mod/mod_actions.html" hreflang="ja" rel="alternate" title="Japanese">&nbsp;ja&nbsp;</a> |
 <a href="../ko/mod/mod_actions.html" hreflang="ko" rel="alternate" title="Korean">&nbsp;ko&nbsp;</a></p>
 </div><div id="footer">
-<p class="apache">Copyright 2010 The Apache Software Foundation.<br />Lizenziert unter der <a href="http://www.apache.org/licenses/LICENSE-2.0">Apache License, Version 2.0</a>.</p>
+<p class="apache">Copyright 2007 The Apache Software Foundation.<br />Lizenziert unter der <a href="http://www.apache.org/licenses/LICENSE-2.0">Apache License, Version 2.0</a>.</p>
 <p class="menu"><a href="../mod/">Module</a> | <a href="../mod/directives.html">Direktiven</a> | <a href="../faq/">FAQ</a> | <a href="../glossary.html">Glossar</a> | <a href="../sitemap.html">Seitenindex</a></p></div>
 </body></html>

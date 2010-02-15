@@ -124,7 +124,7 @@ static void add_password(const char *user, const char *realm, apr_file_t *f)
     char *pw;
     apr_md5_ctx_t context;
     unsigned char digest[16];
-    char string[3 * MAX_STRING_LEN];
+    char string[MAX_STRING_LEN];
     char pwin[MAX_STRING_LEN];
     char pwv[MAX_STRING_LEN];
     unsigned int i;
@@ -188,8 +188,8 @@ int main(int argc, const char * const argv[])
     char *dirname;
     char user[MAX_STRING_LEN];
     char realm[MAX_STRING_LEN];
-    char line[3 * MAX_STRING_LEN];
-    char l[3 * MAX_STRING_LEN];
+    char line[MAX_STRING_LEN];
+    char l[MAX_STRING_LEN];
     char w[MAX_STRING_LEN];
     char x[MAX_STRING_LEN];
     int found;
@@ -222,11 +222,9 @@ int main(int argc, const char * const argv[])
                     apr_strerror(rv, errmsg, sizeof errmsg));
             exit(1);
         }
-        apr_cpystrn(user, argv[4], sizeof(user));
-        apr_cpystrn(realm, argv[3], sizeof(realm));
         apr_file_printf(errfile, "Adding password for %s in realm %s.\n",
-                    user, realm);
-        add_password(user, realm, f);
+                    argv[4], argv[3]);
+        add_password(argv[4], argv[3], f);
         apr_file_close(f);
         exit(0);
     }
@@ -255,7 +253,7 @@ int main(int argc, const char * const argv[])
     apr_cpystrn(realm, argv[2], sizeof(realm));
 
     found = 0;
-    while (!(get_line(line, sizeof(line), f))) {
+    while (!(get_line(line, MAX_STRING_LEN, f))) {
         if (found || (line[0] == '#') || (!line[0])) {
             putline(tfp, line);
             continue;

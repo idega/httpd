@@ -44,8 +44,6 @@
 <!-- build typemap                                                        -->
 <!-- ==================================================================== -->
 <xsl:template match="/metafile">
-<xsl:text># GENERATED FROM XML -- DO NOT EDIT</xsl:text>&lf;
-&lf;
 <xsl:apply-templates select="variants/variant" />
 </xsl:template>
 <!-- /metafile -->

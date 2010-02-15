@@ -103,7 +103,6 @@ static void do_pattmatch(ap_filter_t *f, apr_bucket *inb,
                          apr_pool_t *tmp_pool)
 {
     int i;
-    int force_quick = 0;
     ap_regmatch_t regm[AP_MAX_REG_MATCH];
     apr_size_t bytes;
     apr_size_t len;
@@ -129,13 +128,6 @@ static void do_pattmatch(ap_filter_t *f, apr_bucket *inb,
     apr_pool_create(&tpool, tmp_pool);
     scratch = NULL;
     fbytes = 0;
-    /*
-     * Simple optimization. If we only have one pattern, then
-     * we can safely avoid the overhead of flattening
-     */
-    if (cfg->patterns->nelts == 1) {
-       force_quick = 1;
-    }
     for (i = 0; i < cfg->patterns->nelts; i++) {
         for (b = APR_BRIGADE_FIRST(mybb);
              b != APR_BRIGADE_SENTINEL(mybb);
@@ -155,7 +147,7 @@ static void do_pattmatch(ap_filter_t *f, apr_bucket *inb,
                     {
                         /* get offset into buff for pattern */
                         len = (apr_size_t) (repl - buff);
-                        if (script->flatten && !force_quick) {
+                        if (script->flatten) {
                             /*
                              * We are flattening the buckets here, meaning
                              * that we don't do the fast bucket splits.
@@ -189,7 +181,7 @@ static void do_pattmatch(ap_filter_t *f, apr_bucket *inb,
                         bytes -= len;
                         buff += len;
                     }
-                    if (script->flatten && s1 && !force_quick) {
+                    if (script->flatten && s1) {
                         /*
                          * we've finished looking at the bucket, so remove the
                          * old one and add in our new one
@@ -199,6 +191,7 @@ static void do_pattmatch(ap_filter_t *f, apr_bucket *inb,
                         tmp_b = apr_bucket_transient_create(s1, strlen(s1),
                                             f->r->connection->bucket_alloc);
                         APR_BUCKET_INSERT_BEFORE(b, tmp_b);
+                        tmp_b = APR_BUCKET_NEXT(b);
                         apr_bucket_delete(b);
                         b = tmp_b;
                     }
@@ -226,7 +219,7 @@ static void do_pattmatch(ap_filter_t *f, apr_bucket *inb,
                         /* first, grab the replacement string */
                         repl = ap_pregsub(tmp_pool, script->replacement, p,
                                           AP_MAX_REG_MATCH, regm);
-                        if (script->flatten && !force_quick) {
+                        if (script->flatten) {
                             SEDSCAT(s1, s2, tmp_pool, p, regm[0].rm_so, repl);
                         }
                         else {
@@ -243,11 +236,12 @@ static void do_pattmatch(ap_filter_t *f, apr_bucket *inb,
                          */
                         p += regm[0].rm_eo;
                     }
-                    if (script->flatten && s1 && !force_quick) {
+                    if (script->flatten && s1) {
                         s1 = apr_pstrcat(tmp_pool, s1, p, NULL);
                         tmp_b = apr_bucket_transient_create(s1, strlen(s1),
                                             f->r->connection->bucket_alloc);
                         APR_BUCKET_INSERT_BEFORE(b, tmp_b);
+                        tmp_b = APR_BUCKET_NEXT(b);
                         apr_bucket_delete(b);
                         b = tmp_b;
                     }
@@ -373,7 +367,7 @@ static apr_status_t substitute_filter(ap_filter_t *f, apr_bucket_brigade *bb)
              */
             rv = apr_bucket_read(b, &buff, &bytes, APR_BLOCK_READ);
             if (rv != APR_SUCCESS || bytes == 0) {
-                apr_bucket_delete(b);
+                APR_BUCKET_REMOVE(b);
             }
             else {
                 int num = 0;
@@ -494,7 +488,7 @@ static const char *set_pattern(cmd_parms *cmd, void *cfg, const char *line)
     subst_pattern_t *nscript;
     int is_pattern = 0;
     int ignore_case = 0;
-    int flatten = 1;
+    int flatten = 0;
     ap_regex_t *r = NULL;
 
     if (apr_tolower(*line) != 's') {
@@ -505,43 +499,35 @@ static const char *set_pattern(cmd_parms *cmd, void *cfg, const char *line)
     if (delim)
         from = ++ourline;
     if (from) {
-        if (*ourline != delim) {
-            while (*++ourline && *ourline != delim);
-        }
+        while (*++ourline && *ourline != delim);
         if (*ourline) {
             *ourline = '\0';
             to = ++ourline;
         }
     }
     if (to) {
-        if (*ourline != delim) {
-            while (*++ourline && *ourline != delim);
-        }
+        while (*++ourline && *ourline != delim);
         if (*ourline) {
             *ourline = '\0';
             flags = ++ourline;
         }
     }
 
-    if (!delim || !from || !*from || !to) {
+    if (!delim || !from || !to) {
         return "Bad Substitute format, must be a complete s/// pattern";
     }
 
-    if (flags) {
-        while (*flags) {
-            delim = apr_tolower(*flags);    /* re-use */
-            if (delim == 'i')
-                ignore_case = 1;
-            else if (delim == 'n')
-                is_pattern = 1;
-            else if (delim == 'f')
-                flatten = 1;
-            else if (delim == 'q')
-                flatten = 0;
-            else
-                return "Bad Substitute flag, only s///[infq] are supported";
-            flags++;
-        }
+    while (*flags) {
+        delim = apr_tolower(*flags);    /* re-use */
+        if (delim == 'i')
+            ignore_case = 1;
+        else if (delim == 'n')
+            is_pattern = 1;
+        else if (delim == 'f')
+            flatten = 1;
+        else
+            return "Bad Substitute flag, only s///[inf] are supported";
+        flags++;
     }
 
     /* first see if we can compile the regex */

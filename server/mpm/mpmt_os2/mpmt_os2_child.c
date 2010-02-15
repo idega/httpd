@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 
+#define CORE_PRIVATE
 #define INCL_NOPMAPI
 #define INCL_DOS
 #define INCL_DOSERRORS
@@ -26,7 +27,7 @@
 #include "http_config.h"
 #include "http_core.h"  /* for get_remote_host */
 #include "http_connection.h"
-#include "scoreboard.h"
+#include "mpm.h"
 #include "ap_mpm.h"
 #include "ap_listen.h"
 #include "apr_portable.h"

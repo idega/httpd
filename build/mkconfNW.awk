@@ -42,16 +42,17 @@ BEGIN {
 }
 
 /@@LoadModule@@/ {
-    print "#LoadModule access_compat_module modules/accesscompat.nlm"
     print "#LoadModule actions_module modules/actions.nlm"
     print "#LoadModule auth_basic_module modules/authbasc.nlm"
     print "#LoadModule auth_digest_module modules/authdigt.nlm"
     print "#LoadModule authn_anon_module modules/authnano.nlm"
     print "#LoadModule authn_dbd_module modules/authndbd.nlm"
     print "#LoadModule authn_dbm_module modules/authndbm.nlm"
+    print "#LoadModule authn_default_module modules/authndef.nlm"
     print "#LoadModule authn_file_module modules/authnfil.nlm"
     print "#LoadModule authz_dbd_module modules/authzdbd.nlm"
     print "#LoadModule authz_dbm_module modules/authzdbm.nlm"
+    print "#LoadModule authz_default_module modules/authzdef.nlm"
     print "#LoadModule authz_groupfile_module modules/authzgrp.nlm"
     print "#LoadModule authz_user_module modules/authzusr.nlm"
     print "#LoadModule authnz_ldap_module modules/authnzldap.nlm"
@@ -59,7 +60,7 @@ BEGIN {
     print "#LoadModule asis_module modules/mod_asis.nlm"
     print "LoadModule autoindex_module modules/autoindex.nlm"
     print "#LoadModule cern_meta_module modules/cernmeta.nlm"
-    print "LoadModule cgi_module modules/mod_cgi.nlm"
+    print "#LoadModule cgi_module modules/mod_cgi.nlm"
     print "#LoadModule dav_module modules/mod_dav.nlm"
     print "#LoadModule dav_fs_module modules/moddavfs.nlm"
     print "#LoadModule dav_lock_module modules/moddavlk.nlm"
@@ -92,6 +93,10 @@ BEGIN {
     next
 }
 
+match ($0,/443/) {
+    sub(/443/, SSLPORT)
+}
+
 match ($0,/^#SSLSessionCache +"dbm:/) {
     sub(/^#/, "")
 }
@@ -100,8 +105,8 @@ match ($0,/^SSLSessionCache +"shmcb:/) {
     sub(/^SSLSessionCache/, "#SSLSessionCache")
 }
 
-match ($0,/^# Mutex +default +file:@rel_runtimedir@/) {
-    sub(/file:@rel_runtimedir@/, "default")
+match ($0,/^SSLMutex +"file:@exp_runtimedir@\/ssl_mutex"/) {
+    sub(/"file:@exp_runtimedir@\/ssl_mutex"/, "default")
 }
 
 match ($0,/@@.*@@/) {
@@ -124,19 +129,10 @@ match ($0,/@nonssl_.*@/) {
     sub(/@nonssl_.*@/,B[s],$0)
 }
 
-match ($0,/^<IfModule cgid_module>$/) {
-    print "#"
-    print "# CGIMapExtension: Technique for locating the interpreter for CGI scripts."
-    print "# The special interpreter path \"OS\" can be used for NLM CGIs."
-    print "#"
-    print "#CGIMapExtension OS .cgi"
-    print "CGIMapExtension SYS:/perl/Perlcgi/perlcgi.nlm .pl"
-    print ""
-}
-
 {
     print
 }
+
 
 END {
     if ((ARGV[1] ~ /httpd.conf.in/) && !BSDSKT) { 
@@ -149,6 +145,6 @@ END {
        print "# prevent Apache from glomming onto all bound IP addresses (0.0.0.0)"
        print "#"
        print "#SecureListen "SSLPORT" \"SSL CertificateDNS\""
+       print ""
     }
-    print ""
 }

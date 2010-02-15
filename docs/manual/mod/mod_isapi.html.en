@@ -13,11 +13,11 @@
 <body>
 <div id="page-header">
 <p class="menu"><a href="../mod/">Modules</a> | <a href="../mod/directives.html">Directives</a> | <a href="../faq/">FAQ</a> | <a href="../glossary.html">Glossary</a> | <a href="../sitemap.html">Sitemap</a></p>
-<p class="apache">Apache HTTP Server Version 2.3</p>
+<p class="apache">Apache HTTP Server Version 2.2</p>
 <img alt="" src="../images/feather.gif" /></div>
 <div class="up"><a href="./"><img title="&lt;-" alt="&lt;-" src="../images/left.gif" /></a></div>
 <div id="path">
-<a href="http://www.apache.org/">Apache</a> &gt; <a href="http://httpd.apache.org/">HTTP Server</a> &gt; <a href="http://httpd.apache.org/docs/">Documentation</a> &gt; <a href="../">Version 2.3</a> &gt; <a href="./">Modules</a></div>
+<a href="http://www.apache.org/">Apache</a> &gt; <a href="http://httpd.apache.org/">HTTP Server</a> &gt; <a href="http://httpd.apache.org/docs/">Documentation</a> &gt; <a href="../">Version 2.2</a> &gt; <a href="./">Modules</a></div>
 <div id="page-content">
 <div id="preamble"><h1>Apache Module mod_isapi</h1>
 <div class="toplang">
@@ -74,10 +74,9 @@
 
     <div class="note">In older versions of the Apache server,
     <code>isapi-isa</code> was the proper handler name, rather than
-    <code>isapi-handler</code>. As of 2.3 development versions of the Apache
-    server, <code>isapi-isa</code> is no longer valid. You will need to
-    change your configuration to use <code>isapi-handler</code>
-    instead.</div>
+    <code>isapi-handler</code>. For compatibility, configurations may
+    continue using <code>isapi-isa</code> through all versions of Apache
+    prior to 2.3.0.</div>
 
     <p>There is no capability within the Apache server to leave a
     requested module loaded. However, you may preload and keep a
@@ -339,6 +338,6 @@ extensions</td></tr>
 <p><span>Available Languages: </span><a href="../en/mod/mod_isapi.html" title="English">&nbsp;en&nbsp;</a> |
 <a href="../ko/mod/mod_isapi.html" hreflang="ko" rel="alternate" title="Korean">&nbsp;ko&nbsp;</a></p>
 </div><div id="footer">
-<p class="apache">Copyright 2010 The Apache Software Foundation.<br />Licensed under the <a href="http://www.apache.org/licenses/LICENSE-2.0">Apache License, Version 2.0</a>.</p>
+<p class="apache">Copyright 2007 The Apache Software Foundation.<br />Licensed under the <a href="http://www.apache.org/licenses/LICENSE-2.0">Apache License, Version 2.0</a>.</p>
 <p class="menu"><a href="../mod/">Modules</a> | <a href="../mod/directives.html">Directives</a> | <a href="../faq/">FAQ</a> | <a href="../glossary.html">Glossary</a> | <a href="../sitemap.html">Sitemap</a></p></div>
 </body></html>

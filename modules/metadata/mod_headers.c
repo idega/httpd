@@ -33,10 +33,7 @@
  *     add    - add this header, possible resulting in two or more
  *              headers with the same name
  *     append - append this text onto any existing header of this same
- *     merge  - merge this text onto any existing header of this same,
- *              avoiding duplicate values
  *     unset  - remove this header
- *      edit  - transform the header value according to a regexp
  *
  * Where action is unset, the third argument (value) should not be given.
  * The header name can include the colon, or not.
@@ -81,7 +78,6 @@
 #include "http_log.h"
 #include "util_filter.h"
 #include "http_protocol.h"
-#include "ap_expr.h"
 
 #include "mod_ssl.h" /* for the ssl_var_lookup optional function defn */
 
@@ -92,11 +88,9 @@ typedef enum {
     hdr_add = 'a',              /* add header (could mean multiple hdrs) */
     hdr_set = 's',              /* set (replace old value) */
     hdr_append = 'm',           /* append (merge into any old value) */
-    hdr_merge = 'g',            /* merge (merge, but avoid duplicates) */
     hdr_unset = 'u',            /* unset header */
     hdr_echo = 'e',             /* echo headers from request to response */
-    hdr_edit = 'r',             /* change value by regexp, match once */
-    hdr_edit_r = 'R'            /* change value by regexp, everymatch */
+    hdr_edit = 'r'              /* change value by regexp */
 } hdr_actions;
 
 /*
@@ -127,7 +121,6 @@ typedef struct {
     ap_regex_t *regex;
     const char *condition_var;
     const char *subs;
-    ap_parse_node_t *expr;
 } header_entry;
 
 /* echo_do is used for Header echo to iterate through the request headers*/
@@ -135,13 +128,6 @@ typedef struct {
     request_rec *r;
     header_entry *hdr;
 } echo_do;
-
-/* edit_do is used for Header edit to iterate through the request headers */
-typedef struct {
-    apr_pool_t *p;
-    header_entry *hdr;
-    apr_table_t *t;
-} edit_do;
 
 /*
  * headers_conf is our per-module configuration. This is used as both
@@ -367,7 +353,6 @@ static char *parse_format_string(apr_pool_t *p, header_entry *hdr, const char *s
     /* No string to parse with unset and echo commands */
     if (hdr->action == hdr_unset ||
         hdr->action == hdr_edit ||
-        hdr->action == hdr_edit_r ||
         hdr->action == hdr_echo) {
         return NULL;
     }
@@ -395,7 +380,6 @@ static APR_INLINE const char *header_inout_cmd(cmd_parms *cmd,
     const char *condition_var = NULL;
     const char *colon;
     header_entry *new;
-    ap_parse_node_t *expr = NULL;
 
     apr_array_header_t *fixup = (cmd->info == &hdr_in)
         ? dirconf->fixup_in   : (cmd->info == &hdr_err)
@@ -410,21 +394,17 @@ static APR_INLINE const char *header_inout_cmd(cmd_parms *cmd,
         new->action = hdr_add;
     else if (!strcasecmp(action, "append"))
         new->action = hdr_append;
-    else if (!strcasecmp(action, "merge"))
-        new->action = hdr_merge;
     else if (!strcasecmp(action, "unset"))
         new->action = hdr_unset;
     else if (!strcasecmp(action, "echo"))
         new->action = hdr_echo;
     else if (!strcasecmp(action, "edit"))
         new->action = hdr_edit;
-    else if (!strcasecmp(action, "edit*"))
-        new->action = hdr_edit_r;
     else
-        return "first argument must be 'add', 'set', 'append', 'merge', "
-               "'unset', 'echo', 'edit', or 'edit*'.";
+        return "first argument must be 'add', 'set', 'append', 'unset', "
+               "'echo' or 'edit'.";
 
-    if (new->action == hdr_edit || new->action == hdr_edit_r) {
+    if (new->action == hdr_edit) {
         if (subs == NULL) {
             return "Header edit requires a match and a substitution";
         }
@@ -479,20 +459,16 @@ static APR_INLINE const char *header_inout_cmd(cmd_parms *cmd,
         if (strcasecmp(envclause, "early") == 0) {
             condition_var = condition_early;
         }
-        else if (strncasecmp(envclause, "env=", 4) == 0) {
+        else {
+            if (strncasecmp(envclause, "env=", 4) != 0) {
+                return "error: envclause should be in the form env=envar";
+            }
             if ((envclause[4] == '\0')
                 || ((envclause[4] == '!') && (envclause[5] == '\0'))) {
                 return "error: missing environment variable name. "
                     "envclause should be in the form env=envar ";
             }
             condition_var = envclause + 4;
-        }
-        else {
-            int err = 0;
-            expr = ap_expr_parse(cmd->pool, envclause, &err);
-            if (err) {
-                return "Can't parse envclause/expression";
-            }
         }
     }
 
@@ -502,7 +478,6 @@ static APR_INLINE const char *header_inout_cmd(cmd_parms *cmd,
 
     new->header = hdr;
     new->condition_var = condition_var;
-    new->expr = expr;
 
     return parse_format_string(cmd->pool, new, value);
 }
@@ -570,7 +545,6 @@ static const char *process_regexp(header_entry *hdr, const char *value,
     unsigned int nmatch = 10;
     ap_regmatch_t pmatch[10];
     const char *subs;
-    const char *remainder;
     char *ret;
     int diffsz;
     if (ap_regexec(hdr->regex, value, nmatch, pmatch, 0)) {
@@ -579,13 +553,6 @@ static const char *process_regexp(header_entry *hdr, const char *value,
     }
     subs = ap_pregsub(pool, hdr->subs, value, nmatch, pmatch);
     diffsz = strlen(subs) - (pmatch[0].rm_eo - pmatch[0].rm_so);
-    if (hdr->action == hdr_edit) {
-        remainder = value + pmatch[0].rm_eo;
-    }
-    else { /* recurse to edit multiple matches if applicable */
-        remainder = process_regexp(hdr, value + pmatch[0].rm_eo, pool);
-        diffsz += strlen(remainder) - strlen(value + pmatch[0].rm_eo);
-    }
     ret = apr_palloc(pool, strlen(value) + 1 + diffsz);
     memcpy(ret, value, pmatch[0].rm_so);
     strcpy(ret + pmatch[0].rm_so, subs);
@@ -602,22 +569,6 @@ static int echo_header(echo_do *v, const char *key, const char *val)
         apr_table_add(v->r->headers_out, key, val);
     }
 
-    return 1;
-}
-
-static int edit_header(void *v, const char *key, const char *val)
-{
-    edit_do *ed = (edit_do *)v;
-
-    apr_table_addn(ed->t, key, process_regexp(ed->hdr, val, ed->p));
-    return 1;
-}
-
-static int add_them_all(void *v, const char *key, const char *val)
-{
-    apr_table_t *headers = (apr_table_t *)v;
-
-    apr_table_addn(headers, key, val);
     return 1;
 }
 
@@ -640,19 +591,6 @@ static void do_headers_fixup(request_rec *r, apr_table_t *headers,
         else if (early && (envar != condition_early)) {
             continue;
         }
-        /* Do we have an expression to evaluate? */
-        else if (hdr->expr != NULL) {
-            int err = 0;
-            int eval = ap_expr_eval(r, hdr->expr, &err, NULL,
-                                    ap_expr_string, NULL);
-            if (err) {
-                ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, r,
-                              "Failed to evaluate expression - ignoring");
-            }
-            else if (!eval) {
-                continue;
-            }
-        }
         /* Have any conditional envar-controlled Header processing to do? */
         else if (envar && !early) {
             if (*envar != '!') {
@@ -672,50 +610,7 @@ static void do_headers_fixup(request_rec *r, apr_table_t *headers,
         case hdr_append:
             apr_table_mergen(headers, hdr->header, process_tags(hdr, r));
             break;
-        case hdr_merge:
-            val = apr_table_get(headers, hdr->header);
-            if (val == NULL) {
-                apr_table_addn(headers, hdr->header, process_tags(hdr, r));
-            } else {
-                char *new_val = process_tags(hdr, r);
-                apr_size_t new_val_len = strlen(new_val);
-                int tok_found = 0;
-
-                /* modified version of logic in ap_get_token() */
-                while (*val) {
-                    const char *tok_start;
-
-                    while (*val && apr_isspace(*val))
-                        ++val;
-
-                    tok_start = val;
-
-                    while (*val && *val != ',') {
-                        if (*val++ == '"')
-                            while (*val)
-                                if (*val++ == '"')
-                                    break;
-                    }
-
-                    if (new_val_len == (apr_size_t)(val - tok_start)
-                        && !strncmp(tok_start, new_val, new_val_len)) {
-                        tok_found = 1;
-                        break;
-                    }
-
-                    if (*val)
-                        ++val;
-                }
-
-                if (!tok_found) {
-                    apr_table_mergen(headers, hdr->header, new_val);
-                }
-            }
-            break;
         case hdr_set:
-            if (!strcasecmp(hdr->header, "Content-Type")) {
-                 ap_set_content_type(r, process_tags(hdr, r));
-            }
             apr_table_setn(headers, hdr->header, process_tags(hdr, r));
             break;
         case hdr_unset:
@@ -728,21 +623,10 @@ static void do_headers_fixup(request_rec *r, apr_table_t *headers,
                          echo_header, (void *) &v, r->headers_in, NULL);
             break;
         case hdr_edit:
-        case hdr_edit_r:
-            if (!strcasecmp(hdr->header, "Content-Type") && r->content_type) {
-                ap_set_content_type(r, process_regexp(hdr, r->content_type,
-                                                      r->pool));
-            }
-            if (apr_table_get(headers, hdr->header)) {
-                edit_do ed;
-
-                ed.p = r->pool;
-                ed.hdr = hdr;
-                ed.t = apr_table_make(r->pool, 5);
-                apr_table_do(edit_header, (void *) &ed, headers, hdr->header,
-                             NULL);
-                apr_table_unset(headers, hdr->header);
-                apr_table_do(add_them_all, (void *) headers, ed.t, NULL);
+            val = apr_table_get(headers, hdr->header);
+            if (val != NULL) {
+                apr_table_setn(headers, hdr->header,
+                               process_regexp(hdr, val, r->pool));
             }
             break;
         }

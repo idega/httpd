@@ -18,12 +18,6 @@
  * @file http_request.h
  * @brief Apache Request library
  *
- * @defgroup APACHE_CORE_REQ Apache Request Processing
- * @ingroup  APACHE_CORE
- * @{
- */
-
-/*
  * request.c is the code which handles the main line of request
  * processing, once a request has been read in (finding the right per-
  * directory configuration, building it if necessary, and calling all
@@ -48,7 +42,6 @@
 #define APACHE_HTTP_REQUEST_H
 
 #include "apr_hooks.h"
-#include "apr_optional.h"
 #include "util_filter.h"
 
 #ifdef __cplusplus
@@ -188,73 +181,7 @@ AP_DECLARE(void) ap_internal_fast_redirect(request_rec *sub_req, request_rec *r)
  * @return 1 if authentication is required, 0 otherwise
  */
 AP_DECLARE(int) ap_some_auth_required(request_rec *r);
-
-/**
- * @defgroup APACHE_CORE_REQ_AUTH Access Control for Sub-Requests and
- *                                Internal Redirects
- * @ingroup  APACHE_CORE_REQ
- * @{
- */
-
-#define AP_AUTH_INTERNAL_PER_URI  0  /**< Run access control hooks on all
-                                          internal requests with URIs
-                                          distinct from that of initial
-                                          request */
-#define AP_AUTH_INTERNAL_PER_CONF 1  /**< Run access control hooks only on
-                                          internal requests with
-                                          configurations distinct from
-                                          that of initial request */
-#define AP_AUTH_INTERNAL_MASK     0x000F  /**< mask to extract internal request
-                                               processing mode */
-
-/**
- * Clear flag which determines when access control hooks will be run for
- * internal requests.
- */
-AP_DECLARE(void) ap_clear_auth_internal(void);
-
-/**
- * Determine whether access control hooks will be run for all internal
- * requests with URIs distinct from that of the initial request, or only
- * those for which different configurations apply than those which applied
- * to the initial request.  To accomodate legacy external modules which
- * may expect access control hooks to be run for all internal requests
- * with distinct URIs, this is the default behaviour unless all access
- * control hooks and authentication and authorization providers are
- * registered with AP_AUTH_INTERNAL_PER_CONF.
- * @param ptemp Pool used for temporary allocations
- */
-AP_DECLARE(void) ap_setup_auth_internal(apr_pool_t *ptemp);
-
-/**
- * Register an authentication or authorization provider with the global
- * provider pool.
- * @param pool The pool to create any storage from
- * @param provider_group The group to store the provider in
- * @param provider_name The name for this provider
- * @param provider_version The version for this provider
- * @param provider Opaque structure for this provider
- * @param type Internal request processing mode, either
- *             AP_AUTH_INTERNAL_PER_URI or AP_AUTH_INTERNAL_PER_CONF
- * @return APR_SUCCESS if all went well
- */
-AP_DECLARE(apr_status_t) ap_register_auth_provider(apr_pool_t *pool,
-                                                   const char *provider_group,
-                                                   const char *provider_name,
-                                                   const char *provider_version,
-                                                   const void *provider,
-                                                   int type);
-
-/** @} */
-
-/* Optional functions coming from mod_authn_core and mod_authz_core
- * that list all registered authn/z providers.
- */
-APR_DECLARE_OPTIONAL_FN(apr_array_header_t *, authn_ap_list_provider_names,
-                        (apr_pool_t *ptemp));
-APR_DECLARE_OPTIONAL_FN(apr_array_header_t *, authz_ap_list_provider_names,
-                        (apr_pool_t *ptemp));
-
+ 
 /**
  * Determine if the current request is the main request or a subrequest
  * @param r The current request
@@ -308,25 +235,12 @@ AP_DECLARE(void) ap_allow_standard_methods(request_rec *r, int reset, ...);
 #define MERGE_ALLOW 0
 #define REPLACE_ALLOW 1
 
+#ifdef CORE_PRIVATE
 /**
- * Process a top-level request from a client, and synchronously write
- * the response to the client
+ * Function called by main.c to handle first-level request 
  * @param r The current request
  */
-void ap_process_request(request_rec *r);
-
-/* For post-processing after a handler has finished with a request. 
- * (Commonly used after it was suspended)
- */
-AP_DECLARE(void) ap_process_request_after_handler(request_rec *r);
-
-/**
- * Process a top-level request from a client, allowing some or all of
- * the response to remain buffered in the core output filter for later,
- * asynchronous write completion
- * @param r The current request
- */
-void ap_process_async_request(request_rec *r);
+void ap_process_request(request_rec *);
 
 /**
  * Kill the current request
@@ -334,6 +248,7 @@ void ap_process_async_request(request_rec *r);
  * @param r The current request
  */
 AP_DECLARE(void) ap_die(int type, request_rec *r);
+#endif
 
 /* Hooks */
 
@@ -376,13 +291,11 @@ AP_DECLARE_HOOK(int,map_to_storage,(request_rec *r))
  * r->ap_auth_type). This hook is only run when Apache determines that
  * authentication/authorization is required for this resource (as determined
  * by the 'Require' directive). It runs after the access_checker hook, and
- * before the auth_checker hook. This hook should be registered with
- * ap_hook_check_authn().
+ * before the auth_checker hook.
  *
  * @param r The current request
  * @return OK, DECLINED, or HTTP_...
  * @ingroup hooks
- * @see ap_hook_check_authn
  */
 AP_DECLARE_HOOK(int,check_user_id,(request_rec *r))
 
@@ -409,13 +322,11 @@ AP_DECLARE_HOOK(int,type_checker,(request_rec *r))
  * This hook is used to apply additional access control to this resource.
  * It runs *before* a user is authenticated, so this hook is really to
  * apply additional restrictions independent of a user. It also runs
- * independent of 'Require' directive usage. This hook should be registered
- * with ap_hook_check_access().
+ * independent of 'Require' directive usage.
  *
  * @param r the current request
  * @return OK, DECLINED, or HTTP_...
  * @ingroup hooks
- * @see ap_hook_check_access
  */
 AP_DECLARE_HOOK(int,access_checker,(request_rec *r))
 
@@ -424,69 +335,13 @@ AP_DECLARE_HOOK(int,access_checker,(request_rec *r))
  * is available for the authenticated user (r->user and r->ap_auth_type).
  * It runs after the access_checker and check_user_id hooks. Note that
  * it will *only* be called if Apache determines that access control has
- * been applied to this resource (through a 'Require' directive). This
- * hook should be registered with ap_hook_check_authz().
+ * been applied to this resource (through a 'Require' directive).
  *
  * @param r the current request
  * @return OK, DECLINED, or HTTP_...
  * @ingroup hooks
- * @see ap_hook_check_authz
  */
 AP_DECLARE_HOOK(int,auth_checker,(request_rec *r))
-
-/**
- * Register a hook function that will apply additional access control to
- * the current request.
- * @param pf An access_checker hook function
- * @param aszPre A NULL-terminated array of strings that name modules whose
- *               hooks should precede this one
- * @param aszSucc A NULL-terminated array of strings that name modules whose
- *                hooks should succeed this one
- * @param nOrder An integer determining order before honouring aszPre and
- *               aszSucc (for example, HOOK_MIDDLE)
- * @param type Internal request processing mode, either
- *             AP_AUTH_INTERNAL_PER_URI or AP_AUTH_INTERNAL_PER_CONF
- */
-AP_DECLARE(void) ap_hook_check_access(ap_HOOK_access_checker_t *pf,
-                                      const char * const *aszPre,
-                                      const char * const *aszSucc,
-                                      int nOrder, int type);
-
-/**
- * Register a hook function that will analyze the request headers,
- * authenticate the user, and set the user information in the request record.
- * @param pf A check_user_id hook function
- * @param aszPre A NULL-terminated array of strings that name modules whose
- *               hooks should precede this one
- * @param aszSucc A NULL-terminated array of strings that name modules whose
- *                hooks should succeed this one
- * @param nOrder An integer determining order before honouring aszPre and
- *               aszSucc (for example, HOOK_MIDDLE)
- * @param type Internal request processing mode, either
- *             AP_AUTH_INTERNAL_PER_URI or AP_AUTH_INTERNAL_PER_CONF
- */
-AP_DECLARE(void) ap_hook_check_authn(ap_HOOK_check_user_id_t *pf,
-                                     const char * const *aszPre,
-                                     const char * const *aszSucc,
-                                     int nOrder, int type);
-
-/**
- * Register a hook function that determine if the resource being requested
- * is available for the currently authenticated user.
- * @param pf An auth_checker hook function
- * @param aszPre A NULL-terminated array of strings that name modules whose
- *               hooks should precede this one
- * @param aszSucc A NULL-terminated array of strings that name modules whose
- *                hooks should succeed this one
- * @param nOrder An integer determining order before honouring aszPre and
- *               aszSucc (for example, HOOK_MIDDLE)
- * @param type Internal request processing mode, either
- *             AP_AUTH_INTERNAL_PER_URI or AP_AUTH_INTERNAL_PER_CONF
- */
-AP_DECLARE(void) ap_hook_check_authz(ap_HOOK_auth_checker_t *pf,
-                                     const char * const *aszPre,
-                                     const char * const *aszSucc,
-                                     int nOrder, int type);
 
 /**
  * This hook allows modules to insert filters for the current request
@@ -499,39 +354,8 @@ AP_DECLARE(int) ap_location_walk(request_rec *r);
 AP_DECLARE(int) ap_directory_walk(request_rec *r);
 AP_DECLARE(int) ap_file_walk(request_rec *r);
 
-/** End Of REQUEST (EOR) bucket */
-AP_DECLARE_DATA extern const apr_bucket_type_t ap_bucket_type_eor;
-
-/**
- * Determine if a bucket is an End Of REQUEST (EOR) bucket
- * @param e The bucket to inspect
- * @return true or false
- */
-#define AP_BUCKET_IS_EOR(e)         (e->type == &ap_bucket_type_eor)
-
-/**
- * Make the bucket passed in an End Of REQUEST (EOR) bucket
- * @param b The bucket to make into an EOR bucket
- * @param r The request to destroy when this bucket is destroyed
- * @return The new bucket, or NULL if allocation failed
- */
-AP_DECLARE(apr_bucket *) ap_bucket_eor_make(apr_bucket *b, request_rec *r);
-
-/**
- * Create a bucket referring to an End Of REQUEST (EOR). This bucket
- * holds a pointer to the request_rec, so that the request can be
- * destroyed right after all of the output has been sent to the client.
- *
- * @param list The freelist from which this bucket should be allocated
- * @param r The request to destroy when this bucket is destroyed
- * @return The new bucket, or NULL if allocation failed
- */
-AP_DECLARE(apr_bucket *) ap_bucket_eor_create(apr_bucket_alloc_t *list,
-                                              request_rec *r);
-
 #ifdef __cplusplus
 }
 #endif
 
 #endif	/* !APACHE_HTTP_REQUEST_H */
-/** @} */

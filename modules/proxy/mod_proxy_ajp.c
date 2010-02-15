@@ -29,8 +29,7 @@ module AP_MODULE_DECLARE_DATA proxy_ajp_module;
  */
 static int proxy_ajp_canon(request_rec *r, char *url)
 {
-    char *host, *path, sport[7];
-    char *search = NULL;
+    char *host, *path, *search, sport[7];
     const char *err;
     apr_port_t port = AJP13_DEF_PORT;
 
@@ -58,18 +57,23 @@ static int proxy_ajp_canon(request_rec *r, char *url)
     }
 
     /*
-     * now parse path/search args, according to rfc1738:
-     * process the path. With proxy-nocanon set (by
-     * mod_proxy) we use the raw, unparsed uri
+     * now parse path/search args, according to rfc1738
+     *
+     * N.B. if this isn't a true proxy request, then the URL _path_
+     * has already been decoded.  True proxy requests have
+     * r->uri == r->unparsed_uri, and no others have that property.
      */
-    if (apr_table_get(r->notes, "proxy-nocanon")) {
-        path = url;   /* this is the raw path */
+    if (r->uri == r->unparsed_uri) {
+        search = strchr(url, '?');
+        if (search != NULL)
+            *(search++) = '\0';
     }
-    else {
-        path = ap_proxy_canonenc(r->pool, url, strlen(url), enc_path, 0,
-                                 r->proxyreq);
+    else
         search = r->args;
-    }
+
+    /* process path */
+    path = ap_proxy_canonenc(r->pool, url, strlen(url), enc_path, 0,
+                             r->proxyreq);
     if (path == NULL)
         return HTTP_BAD_REQUEST;
 
@@ -83,58 +87,6 @@ static int proxy_ajp_canon(request_rec *r, char *url)
                               "/", path, (search) ? "?" : "",
                               (search) ? search : "", NULL);
     return OK;
-}
-
-#define METHOD_NON_IDEMPOTENT       0
-#define METHOD_IDEMPOTENT           1
-#define METHOD_IDEMPOTENT_WITH_ARGS 2
-
-static int is_idempotent(request_rec *r)
-{
-    /*
-     * RFC2616 (9.1.2): GET, HEAD, PUT, DELETE, OPTIONS, TRACE are considered
-     * idempotent. Hint: HEAD requests use M_GET as method number as well.
-     */
-    switch (r->method_number) {
-        case M_GET:
-        case M_DELETE:
-        case M_PUT:
-        case M_OPTIONS:
-        case M_TRACE:
-            /*
-             * If the request has arguments it might have side-effects and thus
-             * it might be undesirable to resent it to a backend again
-             * automatically.
-             */
-            if (r->args) {
-                return METHOD_IDEMPOTENT_WITH_ARGS;
-            }
-            return METHOD_IDEMPOTENT;
-        /* Everything else is not considered idempotent. */
-        default:
-            return METHOD_NON_IDEMPOTENT;
-    }
-}
-
-static apr_off_t get_content_length(request_rec * r)
-{
-    apr_off_t len = 0;
-
-    if (r->clength > 0) {
-        return r->clength;
-    }
-    else if (r->main == NULL) {
-        const char *clp = apr_table_get(r->headers_in, "Content-Length");
-
-        if (clp) {
-            char *errp;
-            if (apr_strtoff(&len, clp, &errp, 10) || *errp || len < 0) {
-                len = 0; /* parse error */
-            }
-        }
-    }
-
-    return len;
 }
 
 /*
@@ -170,9 +122,8 @@ static int ap_proxy_ajp_request(apr_pool_t *p, request_rec *r,
     apr_bucket_brigade *input_brigade;
     apr_bucket_brigade *output_brigade;
     ajp_msg_t *msg;
-    apr_size_t bufsiz = 0;
+    apr_size_t bufsiz;
     char *buff;
-    char *send_body_chunk_buff;
     apr_uint16_t size;
     const char *tenc;
     int havebody = 1;
@@ -180,7 +131,6 @@ static int ap_proxy_ajp_request(apr_pool_t *p, request_rec *r,
     int backend_failed = 0;
     apr_off_t bb_len;
     int data_sent = 0;
-    int request_ended = 0;
     int headers_sent = 0;
     int rv = 0;
     apr_int32_t conn_poll_fd;
@@ -188,8 +138,6 @@ static int ap_proxy_ajp_request(apr_pool_t *p, request_rec *r,
     proxy_server_conf *psf =
     ap_get_module_config(r->server->module_config, &proxy_module);
     apr_size_t maxsize = AJP_MSG_BUFFER_SZ;
-    int send_body = 0;
-    apr_off_t content_length = 0;
 
     if (psf->io_buffer_size_set)
        maxsize = psf->io_buffer_size;
@@ -198,7 +146,7 @@ static int ap_proxy_ajp_request(apr_pool_t *p, request_rec *r,
     else if (maxsize < AJP_MSG_BUFFER_SZ)
        maxsize = AJP_MSG_BUFFER_SZ;
     maxsize = APR_ALIGN(maxsize, 1024);
-
+       
     /*
      * Send the AJP request to the remote server
      */
@@ -213,17 +161,8 @@ static int ap_proxy_ajp_request(apr_pool_t *p, request_rec *r,
                      conn->worker->hostname);
         if (status == AJP_EOVERFLOW)
             return HTTP_BAD_REQUEST;
-        else {
-            /*
-             * This is only non fatal when the method is idempotent. In this
-             * case we can dare to retry it with a different worker if we are
-             * a balancer member.
-             */
-            if (is_idempotent(r) == METHOD_IDEMPOTENT) {
-                return HTTP_SERVICE_UNAVAILABLE;
-            }
-            return HTTP_INTERNAL_SERVER_ERROR;
-        }
+        else
+            return HTTP_SERVICE_UNAVAILABLE;
     }
 
     /* allocate an AJP message to store the data of the buckets */
@@ -245,8 +184,6 @@ static int ap_proxy_ajp_request(apr_pool_t *p, request_rec *r,
         ap_log_error(APLOG_MARK, APLOG_DEBUG, 0, r->server,
                      "proxy: request is chunked");
     } else {
-        /* Get client provided Content-Length header */
-        content_length = get_content_length(r);
         status = ap_get_brigade(r->input_filters, input_brigade,
                                 AP_MODE_READBYTES, APR_BLOCK_READ,
                                 maxsize - AJP_HEADER_SZ);
@@ -294,31 +231,9 @@ static int ap_proxy_ajp_request(apr_pool_t *p, request_rec *r,
                              "proxy: send failed to %pI (%s)",
                              conn->worker->cp->addr,
                              conn->worker->hostname);
-                /*
-                 * It is fatal when we failed to send a (part) of the request
-                 * body.
-                 */
-                return HTTP_INTERNAL_SERVER_ERROR;
+                return HTTP_SERVICE_UNAVAILABLE;
             }
             conn->worker->s->transferred += bufsiz;
-            send_body = 1;
-        }
-        else if (content_length > 0) {
-            ap_log_error(APLOG_MARK, APLOG_ERR, status, r->server,
-                         "proxy: read zero bytes, expecting"
-                         " %" APR_OFF_T_FMT " bytes",
-                         content_length);
-            /*
-             * We can only get here if the client closed the connection
-             * to us without sending the body.
-             * Now the connection is in the wrong state on the backend.
-             * Sending an empty data msg doesn't help either as it does
-             * not move this connection to the correct state on the backend
-             * for later resusage by the next request again.
-             * Close it to clean things up.
-             */
-            conn->close++;
-            return HTTP_BAD_REQUEST;
         }
     }
 
@@ -334,16 +249,7 @@ static int ap_proxy_ajp_request(apr_pool_t *p, request_rec *r,
                      "proxy: read response failed from %pI (%s)",
                      conn->worker->cp->addr,
                      conn->worker->hostname);
-        /*
-         * This is only non fatal when we have not sent (parts) of a possible
-         * request body so far (we do not store it and thus cannot sent it
-         * again) and the method is idempotent. In this case we can dare to
-         * retry it with a different worker if we are a balancer member.
-         */
-        if (!send_body && (is_idempotent(r) == METHOD_IDEMPOTENT)) {
-            return HTTP_SERVICE_UNAVAILABLE;
-        }
-        return HTTP_INTERNAL_SERVER_ERROR;
+        return HTTP_SERVICE_UNAVAILABLE;
     }
     /* parse the reponse */
     result = ajp_parse_type(r, conn->data);
@@ -416,15 +322,6 @@ static int ap_proxy_ajp_request(apr_pool_t *p, request_rec *r,
                 }
                 break;
             case CMD_AJP13_SEND_HEADERS:
-                if (headers_sent) {
-                    /* Do not send anything to the client.
-                     * Backend already send us the headers.
-                     */
-                    backend_failed = 1;
-                    ap_log_error(APLOG_MARK, APLOG_DEBUG, 0, r->server,
-                                 "proxy: Backend sent headers twice.");
-                    break;
-                }
                 /* AJP13_SEND_HEADERS: process them */
                 status = ajp_parse_header(r, conf, conn->data);
                 if (status != APR_SUCCESS) {
@@ -434,7 +331,7 @@ static int ap_proxy_ajp_request(apr_pool_t *p, request_rec *r,
                 break;
             case CMD_AJP13_SEND_BODY_CHUNK:
                 /* AJP13_SEND_BODY_CHUNK: piece of data */
-                status = ajp_parse_data(r, conn->data, &size, &send_body_chunk_buff);
+                status = ajp_parse_data(r, conn->data, &size, &buff);
                 if (status == APR_SUCCESS) {
                     /* AJP13_SEND_BODY_CHUNK with zero length
                      * is explicit flush message
@@ -450,7 +347,7 @@ static int ap_proxy_ajp_request(apr_pool_t *p, request_rec *r,
                         }
                     }
                     else {
-                        e = apr_bucket_transient_create(send_body_chunk_buff, size,
+                        e = apr_bucket_transient_create(buff, size,
                                                     r->connection->bucket_alloc);
                         APR_BRIGADE_INSERT_TAIL(output_brigade, e);
 
@@ -490,7 +387,6 @@ static int ap_proxy_ajp_request(apr_pool_t *p, request_rec *r,
                 }
                 /* XXX: what about flush here? See mod_jk */
                 data_sent = 1;
-                request_ended = 1;
                 break;
             default:
                 backend_failed = 1;
@@ -547,17 +443,6 @@ static int ap_proxy_ajp_request(apr_pool_t *p, request_rec *r,
             rv = DONE;
         }
     }
-    else if (!request_ended) {
-        ap_log_error(APLOG_MARK, APLOG_DEBUG, 0, r->server,
-                     "proxy: Processing of request didn't terminate cleanly");
-        /* We had a failure: Close connection to backend */
-        conn->close++;
-        backend_failed = 1;
-        /* Return DONE to avoid error messages being added to the stream */
-        if (data_sent) {
-            rv = DONE;
-        }
-    }
     else {
         ap_log_error(APLOG_MARK, APLOG_DEBUG, 0, r->server,
                      "proxy: got response from %pI (%s)",
@@ -598,10 +483,6 @@ static int ap_proxy_ajp_request(apr_pool_t *p, request_rec *r,
 
     apr_brigade_destroy(output_brigade);
 
-    if (apr_table_get(r->subprocess_env, "proxy-nokeepalive")) {
-        conn->close++;
-    }
-
     return rv;
 }
 
@@ -618,7 +499,6 @@ static int proxy_ajp_handler(request_rec *r, proxy_worker *worker,
     conn_rec *origin = NULL;
     proxy_conn_rec *backend = NULL;
     const char *scheme = "AJP";
-    int retry;
     proxy_dir_conf *dconf = ap_get_module_config(r->per_dir_config,
                                                  &proxy_module);
 
@@ -649,67 +529,58 @@ static int proxy_ajp_handler(request_rec *r, proxy_worker *worker,
                  "proxy: AJP: serving URL %s", url);
 
     /* create space for state information */
-    status = ap_proxy_acquire_connection(scheme, &backend, worker,
-                                         r->server);
-    if (status != OK) {
-        if (backend) {
-            backend->close = 1;
-            ap_proxy_release_connection(scheme, backend, r->server);
+    if (!backend) {
+        status = ap_proxy_acquire_connection(scheme, &backend, worker,
+                                             r->server);
+        if (status != OK) {
+            if (backend) {
+                backend->close_on_recycle = 1;
+                ap_proxy_release_connection(scheme, backend, r->server);
+            }
+            return status;
         }
-        return status;
     }
 
     backend->is_ssl = 0;
-    backend->close = 0;
+    backend->close_on_recycle = 0;
 
-    retry = 0;
-    while (retry < 2) {
-        char *locurl = url;
-        /* Step One: Determine Who To Connect To */
-        status = ap_proxy_determine_connection(p, r, conf, worker, backend,
-                                               uri, &locurl, proxyname, proxyport,
-                                               server_portstr,
-                                               sizeof(server_portstr));
+    /* Step One: Determine Who To Connect To */
+    status = ap_proxy_determine_connection(p, r, conf, worker, backend,
+                                           uri, &url, proxyname, proxyport,
+                                           server_portstr,
+                                           sizeof(server_portstr));
 
-        if (status != OK)
-            break;
+    if (status != OK)
+        goto cleanup;
 
-        /* Step Two: Make the Connection */
-        if (ap_proxy_connect_backend(scheme, backend, worker, r->server)) {
-            ap_log_error(APLOG_MARK, APLOG_ERR, 0, r->server,
-                         "proxy: AJP: failed to make connection to backend: %s",
-                         backend->hostname);
-            status = HTTP_SERVICE_UNAVAILABLE;
-            break;
-        }
-
-        /* Handle CPING/CPONG */
-        if (worker->ping_timeout_set) {
-            status = ajp_handle_cping_cpong(backend->sock, r,
-                                            worker->ping_timeout);
-            /*
-             * In case the CPING / CPONG failed for the first time we might be
-             * just out of luck and got a faulty backend connection, but the
-             * backend might be healthy nevertheless. So ensure that the backend
-             * TCP connection gets closed and try it once again.
-             */
-            if (status != APR_SUCCESS) {
-                backend->close++;
-                ap_log_error(APLOG_MARK, APLOG_ERR, status, r->server,
-                             "proxy: AJP: cping/cpong failed to %pI (%s)",
-                             worker->cp->addr,
-                             worker->hostname);
-                status = HTTP_SERVICE_UNAVAILABLE;
-                retry++;
-                continue;
-            }
-        }
-        /* Step Three: Process the Request */
-        status = ap_proxy_ajp_request(p, r, backend, origin, dconf, uri, locurl,
-                                      server_portstr);
-        break;
+    /* Step Two: Make the Connection */
+    if (ap_proxy_connect_backend(scheme, backend, worker, r->server)) {
+        ap_log_error(APLOG_MARK, APLOG_ERR, 0, r->server,
+                     "proxy: AJP: failed to make connection to backend: %s",
+                     backend->hostname);
+        status = HTTP_SERVICE_UNAVAILABLE;
+        goto cleanup;
     }
 
+    /* Handle CPING/CPONG */
+    if (worker->ping_timeout_set) {
+        status = ajp_handle_cping_cpong(backend->sock, r,
+                                        worker->ping_timeout);
+        if (status != APR_SUCCESS) {
+            backend->close++;
+            ap_log_error(APLOG_MARK, APLOG_ERR, status, r->server,
+                         "proxy: AJP: cping/cpong failed to %pI (%s)",
+                         worker->cp->addr,
+                         worker->hostname);
+            status = HTTP_SERVICE_UNAVAILABLE;
+            goto cleanup;
+        }
+    }
+    /* Step Three: Process the Request */
+    status = ap_proxy_ajp_request(p, r, backend, origin, dconf, uri, url,
+                                  server_portstr);
+
+cleanup:
     /* Do not close the socket */
     ap_proxy_release_connection(scheme, backend, r->server);
     return status;
