@@ -89,7 +89,7 @@ static int sc_for_req_header(const char *header_name)
         case 'C':
             if(strcmp(p, "OOKIE2") == 0)
                 return SC_COOKIE2;
-            else if (strcmp(p, "OOKIE") == 0)
+	    else if (strcmp(p, "OOKIE") == 0)
                 return SC_COOKIE;
             else if(strcmp(p, "ONNECTION") == 0)
                 return SC_CONNECTION;
@@ -159,13 +159,24 @@ static const unsigned char sc_for_req_method_table[] = {
     SC_M_MKACTIVITY,
     SC_M_BASELINE_CONTROL,
     SC_M_MERGE,
-    0                       /* M_INVALID */
+    SC_M_ACL,
+    0,
+    SC_M_SEARCH,
 };
 
 static int sc_for_req_method_by_id(request_rec *r)
 {
     int method_id = r->method_number;
-    if (method_id < 0 || method_id > M_INVALID) {
+//debug idega, eiki and palli
+//ap_log_error(APLOG_MARK, APLOG_ERR, 0, r->server,"IDEGA DEBUG: Method number %i", method_id);
+
+//this will not work because the value of M_INVALID is 26 but apache slide webdav sends the code 28 for HTTP method 
+//comparing to the array is just weird, instead of comparing it to valid HTTP methods
+//this is the old way
+//    if (method_id < 0 || method_id > M_INVALID) {
+
+//this is the hack fix
+    if (method_id < 0 || method_id > 28) {
         return UNKNOWN_METHOD;
     }
     else if (r->header_only) {
@@ -243,7 +254,7 @@ static apr_status_t ajp_marshal_into_msgb(ajp_msg_t *msg,
     ajp_msg_reset(msg);
 
     if (ajp_msg_append_uint8(msg, CMD_AJP13_FORWARD_REQUEST)     ||
-        ajp_msg_append_uint8(msg, (apr_byte_t) method)           ||
+        ajp_msg_append_uint8(msg, method)                        ||
         ajp_msg_append_string(msg, r->protocol)                  ||
         ajp_msg_append_string(msg, uri->path)                    ||
         ajp_msg_append_string(msg, r->connection->remote_ip)     ||
@@ -403,26 +414,6 @@ static apr_status_t ajp_marshal_into_msgb(ajp_msg_t *msg,
             }
         }
     }
-    /* Forward the remote port information, which was forgotten
-     * from the builtin data of the AJP 13 protocol.
-     * Since the servlet spec allows to retrieve it via getRemotePort(),
-     * we provide the port to the Tomcat connector as a request
-     * attribute. Modern Tomcat versions know how to retrieve
-     * the remote port from this attribute.
-     */
-    {
-        const char *key = SC_A_REQ_REMOTE_PORT;
-        char *val = apr_itoa(r->pool, r->connection->remote_addr->port);
-        if (ajp_msg_append_uint8(msg, SC_A_REQ_ATTRIBUTE) ||
-            ajp_msg_append_string(msg, key)   ||
-            ajp_msg_append_string(msg, val)) {
-            ap_log_error(APLOG_MARK, APLOG_ERR, 0, r->server,
-                    "ajp_marshal_into_msgb: "
-                    "Error appending attribute %s=%s",
-                    key, val);
-            return AJP_EOVERFLOW;
-        }
-    }
     /* Use the environment vars prefixed with AJP_
      * and pass it to the header striping that prefix.
      */
@@ -477,11 +468,6 @@ body_chunk :=
 
  */
 
-static int addit_dammit(void *v, const char *key, const char *val)
-{
-    apr_table_addn(v, key, val);
-    return 1;
-}
 
 static apr_status_t ajp_unmarshal_response(ajp_msg_t *msg,
                                            request_rec *r,
@@ -504,7 +490,7 @@ static apr_status_t ajp_unmarshal_response(ajp_msg_t *msg,
 
     rc = ajp_msg_get_string(msg, &ptr);
     if (rc == APR_SUCCESS) {
-#if APR_CHARSET_EBCDIC /* copy only if we have to */
+#if defined(AS400) || defined(_OSD_POSIX) /* EBCDIC platforms */
         ptr = apr_pstrdup(r->pool, ptr);
         ap_xlate_proto_from_ascii(ptr, strlen(ptr));
 #endif
@@ -518,17 +504,7 @@ static apr_status_t ajp_unmarshal_response(ajp_msg_t *msg,
 
     rc = ajp_msg_get_uint16(msg, &num_headers);
     if (rc == APR_SUCCESS) {
-        apr_table_t *save_table;
-
-        /* First, tuck away all already existing cookies */
-        /*
-         * Could optimize here, but just in case we want to
-         * also save other headers, keep this logic.
-         */
-        save_table = apr_table_make(r->pool, num_headers + 2);
-        apr_table_do(addit_dammit, save_table, r->headers_out,
-                     "Set-Cookie", NULL);
-        r->headers_out = save_table;
+        r->headers_out = apr_table_make(r->pool, num_headers);
     } else {
         r->headers_out = NULL;
         num_headers = 0;
@@ -566,7 +542,9 @@ static apr_status_t ajp_unmarshal_response(ajp_msg_t *msg,
                        "Null header name");
                 return rc;
             }
+#if defined(AS400) || defined(_OSD_POSIX)
             ap_xlate_proto_from_ascii(stringname, strlen(stringname));
+#endif
         }
 
         rc = ajp_msg_get_string(msg, &value);
@@ -591,7 +569,9 @@ static apr_status_t ajp_unmarshal_response(ajp_msg_t *msg,
           value = ap_proxy_location_reverse_map(r, dconf, value);
         }
 
+#if defined(AS400) || defined(_OSD_POSIX)
         ap_xlate_proto_from_ascii(value, strlen(value));
+#endif
         ap_log_error(APLOG_MARK, APLOG_DEBUG, 0, r->server,
                "ajp_unmarshal_response: Header[%d] [%s] = [%s]",
                        i, stringname, value);
